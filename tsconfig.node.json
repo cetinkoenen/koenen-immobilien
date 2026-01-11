@@ -10,7 +10,7 @@
     "lib": ["ES2023"],
 
     /* Node-style modules for config files */
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["node"],
 
