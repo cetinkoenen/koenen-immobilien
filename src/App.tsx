@@ -10,6 +10,7 @@ import {
   useLocation,
   useNavigate,
   useParams
+import RequireRole from "./components/RequireRole";
 } from "react-router-dom";
 
 import RequireAuth from "./components/RequireAuth";
@@ -46,6 +47,7 @@ const EntryAdd = React.lazy(() => import("./pages/EntryAdd"));
 const Objekte = React.lazy(() => import("./pages/Objekte"));
 const ObjektDetail = React.lazy(() => import("./pages/ObjektDetail"));
 const Portfolio = React.lazy(() => import("./pages/Portfolio"));
+const Exports = React.lazy(() => import("./pages/Exports"));
 
 const PortfolioPropertyLayout = React.lazy(() => import("./pages/portfolio/PortfolioPropertyLayout"));
 const PortfolioAddress = React.lazy(() => import("./pages/portfolio/PortfolioAddress"));
@@ -307,6 +309,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
   const navItems = useMemo(
     () => [
       { to: "/portfolio", label: "Portfolio" },
+      { to: "/exports", label: "Exports" },
       { to: "/darlehensuebersicht", label: "Darlehensübersicht" },
       { to: "/uebersicht", label: "Übersicht" },
       { to: "/auswertung", label: "Auswertung" },
@@ -644,6 +647,16 @@ export default function App() {
           />
 
           <Route path="/loan-import" element={wrap("Loan Import", <LoanImport />)} />
+
+          <Route
+            path="/exports"
+            element={wrap(
+              "Exports",
+              <RequireRole minRole="admin">
+                <Exports />
+              </RequireRole>
+            )}
+          />
 
           <Route path="*" element={<Navigate to="/portfolio" replace />} />
         </Route>
