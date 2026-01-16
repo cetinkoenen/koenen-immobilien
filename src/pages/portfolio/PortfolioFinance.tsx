@@ -1,5 +1,5 @@
 // src/pages/portfolio/PortfolioFinance.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { normalizeUuid } from "../../lib/ids";
@@ -9,6 +9,7 @@ const FINANCE_TABLE = "portfolio_property_finance";
 
 type FinanceRow = {
   property_id: string;
+
   ownership?: string | null;
 
   purchase_price?: number | null;
@@ -26,15 +27,30 @@ type FinanceRow = {
 };
 
 function toNumberOrNull(v: string): number | null {
-  const s = v.trim().replace(",", ".");
+  const s = (v ?? "").trim().replace(",", ".");
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
 
-export default function PortfolioFinance() {
-  const { corePropertyId, mapErr, mapLoading } = useOutletContext<PortfolioOutletContext>();
+function inputStyle(disabled: boolean): React.CSSProperties {
+  return {
+    marginTop: 6,
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    fontWeight: 800,
+    background: disabled ? "#f9fafb" : "white",
+    opacity: disabled ? 0.85 : 1,
+  };
+}
 
+export default function PortfolioFinance() {
+  const { corePropertyId, mapErr, mapLoading } =
+    useOutletContext<PortfolioOutletContext>();
+
+  // MUST be UUID
   const safeCorePropertyId = useMemo(
     () => normalizeUuid(String(corePropertyId ?? "").trim()),
     [corePropertyId]
@@ -44,7 +60,9 @@ export default function PortfolioFinance() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
 
+  // form
   const [ownership, setOwnership] = useState("");
 
   const [purchasePrice, setPurchasePrice] = useState("");
@@ -52,7 +70,6 @@ export default function PortfolioFinance() {
   const [purchaseDate, setPurchaseDate] = useState("");
 
   const [otherInvestmentCosts, setOtherInvestmentCosts] = useState("");
-
   const [currentNetRentMonthly, setCurrentNetRentMonthly] = useState("");
 
   const [landValuePerM2, setLandValuePerM2] = useState("");
@@ -61,31 +78,37 @@ export default function PortfolioFinance() {
   const [soldPrice, setSoldPrice] = useState("");
   const [soldDate, setSoldDate] = useState("");
 
+  // verhindert Race Conditions bei schnellen Routenwechseln
   const requestSeq = useRef(0);
 
   const effectiveDisabled = useMemo(() => {
     if (mapLoading) return true;
-    if (mapErr) return true;
+    if (Boolean(mapErr)) return true;
     if (!hasCore) return true;
     return false;
   }, [mapLoading, mapErr, hasCore]);
 
-  function resetForm() {
+  const resetForm = useCallback(() => {
     setOwnership("");
+
     setPurchasePrice("");
     setPurchaseCosts("");
     setPurchaseDate("");
+
     setOtherInvestmentCosts("");
     setCurrentNetRentMonthly("");
+
     setLandValuePerM2("");
     setLandValueReferenceDate("");
+
     setSoldPrice("");
     setSoldDate("");
-  }
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     const seq = ++requestSeq.current;
     setErr(null);
+    setOk(null);
 
     if (!hasCore) {
       resetForm();
@@ -94,7 +117,6 @@ export default function PortfolioFinance() {
     }
 
     setLoading(true);
-
     try {
       const { data, error } = await supabase
         .from(FINANCE_TABLE)
@@ -116,7 +138,9 @@ export default function PortfolioFinance() {
         .eq("property_id", safeCorePropertyId)
         .maybeSingle();
 
+      // falls ein neuer load gestartet wurde, diesen verwerfen
       if (seq !== requestSeq.current) return;
+
       if (error) throw error;
 
       const f = (data as FinanceRow | null) ?? null;
@@ -127,36 +151,26 @@ export default function PortfolioFinance() {
       setPurchaseCosts(f?.purchase_costs != null ? String(f.purchase_costs) : "");
       setPurchaseDate(f?.purchase_date ?? "");
 
-      setOtherInvestmentCosts(f?.other_investment_costs != null ? String(f.other_investment_costs) : "");
-      setCurrentNetRentMonthly(f?.current_net_rent_monthly != null ? String(f.current_net_rent_monthly) : "");
+      setOtherInvestmentCosts(
+        f?.other_investment_costs != null ? String(f.other_investment_costs) : ""
+      );
+      setCurrentNetRentMonthly(
+        f?.current_net_rent_monthly != null ? String(f.current_net_rent_monthly) : ""
+      );
 
       setLandValuePerM2(f?.land_value_per_m2 != null ? String(f.land_value_per_m2) : "");
       setLandValueReferenceDate(f?.land_value_reference_date ?? "");
 
       setSoldPrice(f?.sold_price != null ? String(f.sold_price) : "");
       setSoldDate(f?.sold_date ?? "");
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (seq !== requestSeq.current) return;
       console.error("PortfolioFinance load failed:", e);
-      setErr(e?.message ?? String(e));
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    setErr(null);
-    setSaving(false);
-    resetForm();
-
-    if (mapLoading) {
-      setLoading(true);
-      return;
-    }
-
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeCorePropertyId, mapLoading, mapErr]);
+  }, [hasCore, resetForm, safeCorePropertyId]);
 
   function validate(): string | null {
     if (!hasCore) {
@@ -173,7 +187,9 @@ export default function PortfolioFinance() {
     ];
 
     for (const [label, raw] of nums) {
-      if (raw.trim() && toNumberOrNull(raw) === null) return `${label} muss eine Zahl sein.`;
+      if (raw.trim() && toNumberOrNull(raw) === null) {
+        return `${label} muss eine Zahl sein.`;
+      }
     }
 
     return null;
@@ -188,10 +204,12 @@ export default function PortfolioFinance() {
 
     setSaving(true);
     setErr(null);
+    setOk(null);
 
     try {
       const payload: FinanceRow = {
         property_id: safeCorePropertyId,
+
         ownership: ownership.trim() || null,
 
         purchase_price: toNumberOrNull(purchasePrice),
@@ -208,17 +226,38 @@ export default function PortfolioFinance() {
         sold_date: soldDate.trim() || null,
       };
 
-      const { error } = await supabase.from(FINANCE_TABLE).upsert(payload, { onConflict: "property_id" });
+      // Wichtig: In deinem alten Code stand propertyId (nicht definiert) und update() ohne catch/finally.
+      // Lösung: upsert auf property_id (oder alternativ: update + insert fallback).
+      const { error } = await supabase
+        .from(FINANCE_TABLE)
+        .upsert(payload, { onConflict: "property_id" });
+
       if (error) throw error;
 
+      setOk("Gespeichert ✅");
       await load();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("PortfolioFinance save failed:", e);
-      setErr(e?.message ?? String(e));
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    setErr(null);
+    setOk(null);
+    setSaving(false);
+
+    // wenn Map noch lädt, UI auf "loading"
+    if (mapLoading) {
+      setLoading(true);
+      return;
+    }
+
+    // wenn Map-Fehler: trotzdem nicht crashen, Formular bleibt disabled
+    void load();
+  }, [safeCorePropertyId, mapLoading, mapErr, load]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -280,12 +319,12 @@ export default function PortfolioFinance() {
         </div>
       )}
 
-      {err && (
+      {(err || ok) && (
         <div
           style={{
-            border: "1px solid #fecaca",
-            background: "#fff1f2",
-            color: "#7f1d1d",
+            border: `1px solid ${err ? "#fecaca" : "#bbf7d0"}`,
+            background: err ? "#fff1f2" : "#f0fdf4",
+            color: err ? "#7f1d1d" : "#14532d",
             padding: 12,
             borderRadius: 12,
             whiteSpace: "pre-wrap",
@@ -293,7 +332,7 @@ export default function PortfolioFinance() {
             fontWeight: 800,
           }}
         >
-          {err}
+          {err ?? ok}
         </div>
       )}
 
@@ -315,7 +354,7 @@ export default function PortfolioFinance() {
             onChange={(e) => setOwnership(e.target.value)}
             disabled={loading || effectiveDisabled}
             placeholder="z.B. 100% / 50%"
-            style={inputStyle(loading)}
+            style={inputStyle(loading || effectiveDisabled)}
           />
         </label>
 
@@ -328,7 +367,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 350000"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -339,7 +378,7 @@ export default function PortfolioFinance() {
               value={purchaseDate}
               onChange={(e) => setPurchaseDate(e.target.value)}
               disabled={loading || effectiveDisabled}
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -351,7 +390,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 25000"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -363,7 +402,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 10000"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -375,7 +414,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 1200"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -387,7 +426,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 450"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -398,7 +437,7 @@ export default function PortfolioFinance() {
               value={landValueReferenceDate}
               onChange={(e) => setLandValueReferenceDate(e.target.value)}
               disabled={loading || effectiveDisabled}
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -410,7 +449,7 @@ export default function PortfolioFinance() {
               disabled={loading || effectiveDisabled}
               inputMode="decimal"
               placeholder="z.B. 420000"
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
 
@@ -421,7 +460,7 @@ export default function PortfolioFinance() {
               value={soldDate}
               onChange={(e) => setSoldDate(e.target.value)}
               disabled={loading || effectiveDisabled}
-              style={inputStyle(loading)}
+              style={inputStyle(loading || effectiveDisabled)}
             />
           </label>
         </div>
@@ -434,16 +473,4 @@ export default function PortfolioFinance() {
       </div>
     </div>
   );
-}
-
-function inputStyle(loading: boolean): React.CSSProperties {
-  return {
-    marginTop: 6,
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    fontWeight: 800,
-    background: loading ? "#f9fafb" : "white",
-  };
 }

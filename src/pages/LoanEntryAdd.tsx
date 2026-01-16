@@ -6,12 +6,23 @@ import { normalizeUuid } from "../lib/ids";
 
 type PropertyRow = { id: string; name: string };
 
-function toNumberOrNull(v: string) {
+function toNumberOrNull(v: string): number | null {
   // Accept: "1.234,56" or "1234,56" or "1234.56"
-  const s = v.trim().replace(/\./g, "").replace(",", ".");
+  const s = (v ?? "").trim().replace(/\./g, "").replace(",", ".");
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+function inputStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: disabled ? "#f9fafb" : "white",
+    fontWeight: 800,
+    opacity: disabled ? 0.85 : 1,
+  };
 }
 
 export default function LoanEntryAdd() {
@@ -23,6 +34,7 @@ export default function LoanEntryAdd() {
 
   const [prop, setProp] = useState<PropertyRow | null>(null);
   const [year, setYear] = useState<number>(() => new Date().getFullYear());
+
   const [interest, setInterest] = useState("");
   const [principal, setPrincipal] = useState("");
   const [balance, setBalance] = useState("");
@@ -41,6 +53,11 @@ export default function LoanEntryAdd() {
     };
   }, [interest, principal, balance]);
 
+  // canonical back link
+  const backHref = safePropertyId
+    ? `/darlehensuebersicht/${safePropertyId}`
+    : "/darlehensuebersicht";
+
   useEffect(() => {
     let alive = true;
 
@@ -55,37 +72,38 @@ export default function LoanEntryAdd() {
         return;
       }
 
-      // ✅ IMPORTANT: only query the single property that matches the route param
-      const { data, error } = await supabase
-        .from("properties")
-        .select("id,name")
-        .eq("id", safePropertyId)
-        .maybeSingle();
+      try {
+        // ✅ IMPORTANT: only query the single property that matches the route param
+        const { data, error } = await supabase
+          .from("properties")
+          .select("id,name")
+          .eq("id", safePropertyId)
+          .maybeSingle();
 
-      if (!alive) return;
+        if (!alive) return;
 
-      if (error) {
-        console.error(error);
-        setError(error.message);
+        if (error) throw error;
+
+        const found = (data as PropertyRow | null) ?? null;
+
+        // ✅ Important: show clear error if ID is from the wrong "world"
+        if (!found) {
+          setError(
+            "Immobilie nicht gefunden. Diese ID existiert nicht in 'properties'. " +
+              "Wenn du aus dem Portfolio kommst: Portfolio-IDs (portfolio_properties.id) dürfen hier nicht verwendet werden."
+          );
+          setProp(null);
+        } else {
+          setProp(found);
+        }
+      } catch (e: unknown) {
+        if (!alive) return;
+        console.error("LoanEntryAdd load property failed:", e);
+        setError(e instanceof Error ? e.message : String(e));
         setProp(null);
-        setLoadingProp(false);
-        return;
+      } finally {
+        if (alive) setLoadingProp(false);
       }
-
-      const found = (data as PropertyRow | null) ?? null;
-
-      // ✅ Important: show clear error if ID is from the wrong "world"
-      if (!found) {
-        setError(
-          "Immobilie nicht gefunden. Diese ID existiert nicht in 'properties'. " +
-            "Wenn du aus dem Portfolio kommst: Portfolio-IDs (portfolio_properties.id) dürfen hier nicht verwendet werden."
-        );
-        setProp(null);
-      } else {
-        setProp(found);
-      }
-
-      setLoadingProp(false);
     })();
 
     return () => {
@@ -121,27 +139,48 @@ export default function LoanEntryAdd() {
     return newId;
   }
 
-  async function save() {
-    try {
-      setSaving(true);
-      setError(null);
+  function validate(): string | null {
+    if (!safePropertyId) return "Ungültige property_id (keine UUID).";
+    if (!prop?.id) {
+      return (
+        "Kann nicht speichern: Immobilie existiert nicht in 'properties' " +
+        "(falsche ID oder falscher Entry-Pfad)."
+      );
+    }
+    if (!year || !Number.isFinite(year)) return "Bitte Jahr prüfen.";
 
-      if (!safePropertyId) throw new Error("Ungültige property_id (keine UUID).");
-      if (!year || !Number.isFinite(year)) throw new Error("Bitte Jahr prüfen.");
-
-      // ✅ Don't allow saving if property doesn't exist
-      if (!prop?.id) {
-        throw new Error(
-          "Kann nicht speichern: Immobilie existiert nicht in 'properties' (falsche ID oder falscher Entry-Pfad)."
-        );
+    const nums: Array<[string, string]> = [
+      ["Zinsen", interest],
+      ["Tilgung", principal],
+      ["Saldo", balance],
+    ];
+    for (const [label, raw] of nums) {
+      if (raw.trim() && toNumberOrNull(raw) === null) {
+        return `${label} muss eine Zahl sein (z.B. 1.234,56).`;
       }
+    }
+    return null;
+  }
 
-      const loanId = await ensureLoanId(safePropertyId);
+  async function save() {
+    const v = validate();
+    if (v) {
+      setError(v);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const pid = safePropertyId; // safe because validate() checked it
+
+      const loanId = await ensureLoanId(pid);
 
       // Upsert in property_loan_ledger über UNIQUE(property_id, year)
       const payload = {
         loan_id: loanId,
-        property_id: safePropertyId,
+        property_id: pid,
         year,
         interest: parsed.interest ?? 0,
         principal: parsed.principal ?? 0,
@@ -149,24 +188,47 @@ export default function LoanEntryAdd() {
         source,
       };
 
-      const { error: uerr } = await supabase.from("property_loan_ledger").upsert(payload, {
-        onConflict: "property_id,year",
-      });
+      /**
+       * FIX (wie von dir gewünscht):
+       * Statt upsert(payload, { onConflict: "property_id,year" })
+       * machen wir: SELECT -> UPDATE oder INSERT.
+       */
+      const { data: existing, error: selErr } = await supabase
+        .from("property_loan_ledger")
+        .select("id") // oder PK-Spalte, falls anders
+        .eq("property_id", pid)
+        .eq("year", year)
+        .maybeSingle();
 
-      if (uerr) throw uerr;
+      if (selErr) throw selErr;
 
-      // ✅ Go to the new, canonical route (no legacy)
-      navigate(`/darlehensuebersicht/${safePropertyId}`);
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message ?? "Unbekannter Fehler");
+      if (existing) {
+        const { error: updErr } = await supabase
+          .from("property_loan_ledger")
+          .update(payload)
+          .eq("property_id", pid)
+          .eq("year", year);
+
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from("property_loan_ledger")
+          .insert(payload);
+
+        if (insErr) throw insErr;
+      }
+
+      // optional: zurück zur Übersicht oder einfach Meldung
+      navigate(backHref);
+    } catch (e: unknown) {
+      console.error("LoanEntryAdd save failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
-  // ✅ Canonical back link (no legacy)
-  const backHref = safePropertyId ? `/darlehensuebersicht/${safePropertyId}` : "/darlehensuebersicht";
+  const disabled = saving || !safePropertyId || !prop;
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -187,11 +249,21 @@ export default function LoanEntryAdd() {
         </Link>
       </div>
 
-      <div style={{ padding: 16, border: "1px solid #e5e7eb", borderRadius: 14, background: "white" }}>
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          background: "white",
+        }}
+      >
         <div style={{ fontWeight: 900, fontSize: 18 }}>Darlehenszeile hinzufügen</div>
 
         <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
-          Objekt: <span style={{ fontWeight: 900 }}>{prop ? prop.name : loadingProp ? "Lädt…" : "—"}</span>
+          Objekt:{" "}
+          <span style={{ fontWeight: 900 }}>
+            {prop ? prop.name : loadingProp ? "Lädt…" : "—"}
+          </span>
         </div>
 
         {error && (
@@ -207,8 +279,8 @@ export default function LoanEntryAdd() {
               type="number"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              disabled={saving || !safePropertyId || !prop}
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #e5e7eb" }}
+              disabled={disabled}
+              style={inputStyle(disabled)}
             />
           </label>
 
@@ -218,8 +290,8 @@ export default function LoanEntryAdd() {
               value={interest}
               onChange={(e) => setInterest(e.target.value)}
               placeholder="z.B. 1.234,56"
-              disabled={saving || !safePropertyId || !prop}
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #e5e7eb" }}
+              disabled={disabled}
+              style={inputStyle(disabled)}
             />
           </label>
 
@@ -229,8 +301,8 @@ export default function LoanEntryAdd() {
               value={principal}
               onChange={(e) => setPrincipal(e.target.value)}
               placeholder="z.B. 3.000,00"
-              disabled={saving || !safePropertyId || !prop}
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #e5e7eb" }}
+              disabled={disabled}
+              style={inputStyle(disabled)}
             />
           </label>
 
@@ -240,8 +312,8 @@ export default function LoanEntryAdd() {
               value={balance}
               onChange={(e) => setBalance(e.target.value)}
               placeholder="z.B. 95.000,00"
-              disabled={saving || !safePropertyId || !prop}
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #e5e7eb" }}
+              disabled={disabled}
+              style={inputStyle(disabled)}
             />
           </label>
 
@@ -250,8 +322,8 @@ export default function LoanEntryAdd() {
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              disabled={saving || !safePropertyId || !prop}
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #e5e7eb" }}
+              disabled={disabled}
+              style={inputStyle(disabled)}
             >
               <option value="manual">manual</option>
               <option value="import">import</option>
@@ -261,7 +333,7 @@ export default function LoanEntryAdd() {
 
           <button
             onClick={save}
-            disabled={saving || !safePropertyId || !prop}
+            disabled={disabled}
             style={{
               marginTop: 6,
               padding: "10px 12px",
@@ -270,8 +342,8 @@ export default function LoanEntryAdd() {
               background: "#111827",
               color: "white",
               fontWeight: 900,
-              cursor: saving || !safePropertyId || !prop ? "not-allowed" : "pointer",
-              opacity: saving || !safePropertyId || !prop ? 0.6 : 1,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.6 : 1,
             }}
           >
             {saving ? "Speichern…" : "Speichern"}

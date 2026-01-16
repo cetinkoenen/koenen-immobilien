@@ -1,22 +1,21 @@
 // src/pages/Portfolio.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabaseClient";
 
 type PropertyType = "HOUSE" | "APARTMENT" | "GARAGE";
 
 type PortfolioProperty = {
-  id: string;
+  id: string; // portfolio_properties.id
   name: string;
   type: PropertyType;
   sort_index: number;
   created_at: string;
-  // ✅ neu
   is_test?: boolean | null;
 };
 
 type FinanceRow = {
-  property_id: string;
+  property_id: string; // portfolio_properties.id
   purchase_price: number | null;
 };
 
@@ -57,31 +56,32 @@ export default function Portfolio() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [reloading, setReloading] = useState(false);
   const [error, setError] = useState("");
 
   const [rows, setRows] = useState<PortfolioProperty[]>([]);
   const [finance, setFinance] = useState<Record<string, FinanceRow>>({});
 
-  // UI state
+  // UI
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<PropertyType | "ALL">("ALL");
 
-  async function load() {
-    setLoading(true);
+  async function load(mode: "initial" | "reload" = "initial") {
+    if (mode === "reload") setReloading(true);
+    else setLoading(true);
+
     setError("");
 
     try {
-      // 1) Properties
-      // ✅ IMPORTANT:
-      // - try to fetch is_test from the view
-      // - then filter it out in DB query
+      // 1) Portfolio Properties
+      // is_test: wir wollen NICHT TRUE (also FALSE oder NULL sind ok)
+      // Supabase hat dafür `.not("is_test","is",true)` statt `.eq("is_test", false)`
       const { data: pData, error: pErr } = await supabase
-  .from("portfolio_properties")
-  .select("id,name,type,sort_index,created_at")
-  .eq("is_test", false)
-  .order("sort_index", { ascending: true })
-  .order("created_at", { ascending: true });
-
+        .from("portfolio_properties")
+        .select("id,name,type,sort_index,created_at,is_test")
+        .not("is_test", "is", true)
+        .order("sort_index", { ascending: true })
+        .order("created_at", { ascending: true });
 
       if (pErr) throw pErr;
 
@@ -109,16 +109,17 @@ export default function Portfolio() {
       }
     } catch (e: any) {
       console.error("Portfolio load failed:", e);
-      setError(e?.message ?? "Unbekannter Fehler beim Laden.");
+      setError(e?.message ?? e?.details ?? "Unbekannter Fehler beim Laden.");
       setRows([]);
       setFinance({});
     } finally {
       setLoading(false);
+      setReloading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void load("initial");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -153,43 +154,35 @@ export default function Portfolio() {
   }, [filteredRows, finance]);
 
   function goToProperty(p: PortfolioProperty) {
-    navigate(`/portfolio/${encodeURIComponent(p.id)}`);
+    // ✅ canonical route: immer direkt zur Subpage
+    navigate(`/portfolio/${encodeURIComponent(p.id)}/address`);
   }
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 280px" }}>
-          <h1 style={{ margin: 0, fontSize: 28, letterSpacing: "-0.02em" }}>
-            Portfolio
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 28, letterSpacing: "-0.02em" }}>Portfolio</h1>
           <div style={{ marginTop: 6, opacity: 0.7 }}>
             Übersicht über alle Objekte (Haus / Wohnungen / Garagen) inkl. Kennzahlen.
           </div>
         </div>
 
         <button
-          onClick={() => void load()}
-          disabled={loading}
+          onClick={() => void load("reload")}
+          disabled={loading || reloading}
           style={{
             padding: "10px 12px",
             borderRadius: 12,
             border: "1px solid #e5e7eb",
             background: "white",
             fontWeight: 900,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.7 : 1,
+            cursor: loading || reloading ? "not-allowed" : "pointer",
+            opacity: loading || reloading ? 0.7 : 1,
           }}
         >
-          {loading ? "Lädt…" : "Aktualisieren"}
+          {loading || reloading ? "Lädt…" : "Aktualisieren"}
         </button>
       </div>
 
@@ -261,7 +254,14 @@ export default function Portfolio() {
       </div>
 
       {/* List */}
-      <div style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "white", overflow: "hidden" }}>
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          background: "white",
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
             padding: 14,

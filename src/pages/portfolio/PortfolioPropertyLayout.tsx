@@ -1,8 +1,15 @@
 // src/pages/portfolio/PortfolioPropertyLayout.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { supabase } from "../../lib/supabaseClient";
 import { normalizeUuid } from "../../lib/ids";
+
+export type PortfolioOutletContext = {
+  portfolioId: string; // portfolio_properties.id
+  corePropertyId: string | null; // portfolio_properties.core_property_id (properties.id)
+  mapErr: string | null;
+  mapLoading: boolean;
+};
 
 const TABS = [
   { to: "address", label: "Adresse" },
@@ -10,257 +17,228 @@ const TABS = [
   { to: "finance", label: "Finanzen" },
   { to: "energy", label: "Energie" },
   { to: "renting", label: "Vermietung" },
-];
+] as const;
 
-type PortfolioPropertyCoreMap = {
-  id: string;
-  core_property_id: string | null;
-};
-
-export type PortfolioOutletContext = {
-  portfolioId: string; // portfolio_properties.id (normalized UUID or "")
-  corePropertyId: string; // properties.id (normalized UUID or "")
-  mapLoading: boolean;
-  mapErr: string | null;
-};
+type MapState =
+  | { status: "loading"; portfolioId: string; corePropertyId: null; err: null }
+  | { status: "error"; portfolioId: string; corePropertyId: null; err: string }
+  | { status: "ok"; portfolioId: string; corePropertyId: string | null; err: null };
 
 export default function PortfolioPropertyLayout() {
-  const { id } = useParams();
+  const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
-  const rawPortfolioId = (id ?? "").trim();
-  const safePortfolioId = useMemo(() => normalizeUuid(rawPortfolioId), [rawPortfolioId]);
+  // Canonical: /portfolio/:portfolioId/*
+  // Legacy: if you still have /portfolio/:id/*
+  const raw = (params.portfolioId ?? (params as any).id ?? "").trim();
 
-  const [corePropertyId, setCorePropertyId] = useState<string>("");
-  const [mapErr, setMapErr] = useState<string | null>(null);
-  const [mapLoading, setMapLoading] = useState(false);
+  const safeId = useMemo(() => normalizeUuid(String(raw)), [raw]);
 
-  // Prevent late responses from overwriting state
-  const reqSeq = useRef(0);
+  const [state, setState] = useState<MapState>(() => ({
+    status: "loading",
+    portfolioId: safeId,
+    corePropertyId: null,
+    err: null,
+  }));
 
   useEffect(() => {
-    const seq = ++reqSeq.current;
-
-    // reset for this id
-    setMapErr(null);
-    setCorePropertyId("");
-    setMapLoading(false);
-
-    if (!safePortfolioId) {
-      setMapErr("Ungültige Portfolio-Objekt-ID in URL (keine UUID).");
-      return;
-    }
-
-    setMapLoading(true);
+    let alive = true;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("portfolio_properties")
-        .select("id, core_property_id")
-        .eq("id", safePortfolioId)
-        .maybeSingle();
-
-      // ignore outdated responses
-      if (seq !== reqSeq.current) return;
-
-      if (error) {
-        console.error("PortfolioPropertyLayout map load failed:", error);
-        setMapErr(error.message);
-        setMapLoading(false);
+      // invalid uuid
+      if (!safeId) {
+        if (!alive) return;
+        setState({
+          status: "error",
+          portfolioId: "",
+          corePropertyId: null,
+          err: "Ungültige Portfolio-ID in der URL (keine UUID).",
+        });
         return;
       }
 
-      const row = (data as PortfolioPropertyCoreMap | null) ?? null;
+      if (!alive) return;
+      setState({ status: "loading", portfolioId: safeId, corePropertyId: null, err: null });
 
-      // If row doesn't exist, that's a different problem than "core_property_id null"
-      if (!row) {
-        setMapErr("Portfolio-Objekt nicht gefunden (portfolio_properties.id existiert nicht).");
-        setMapLoading(false);
-        return;
+      try {
+        // hard verify: must exist in portfolio_properties
+        const { data, error } = await supabase
+          .from("portfolio_properties")
+          .select("id, core_property_id")
+          .eq("id", safeId)
+          .maybeSingle();
+
+        if (!alive) return;
+        if (error) throw error;
+
+        if (!data) {
+          setState({
+            status: "error",
+            portfolioId: safeId,
+            corePropertyId: null,
+            err:
+              "Diese ID existiert nicht als Portfolio-Property (portfolio_properties.id). " +
+              "Vermutlich wurde eine Core-ID (properties.id) in die URL navigiert oder ein alter Bookmark benutzt.",
+          });
+          return;
+        }
+
+        const cid = (data as any).core_property_id as string | null;
+        setState({
+          status: "ok",
+          portfolioId: safeId,
+          corePropertyId: cid ? normalizeUuid(String(cid).trim()) : null,
+          err: null,
+        });
+      } catch (e: any) {
+        if (!alive) return;
+        setState({
+          status: "error",
+          portfolioId: safeId,
+          corePropertyId: null,
+          err: e?.message ?? e?.details ?? String(e),
+        });
       }
-
-      const safeCore = normalizeUuid(row.core_property_id ?? "");
-      setCorePropertyId(safeCore);
-      setMapLoading(false);
     })();
-  }, [safePortfolioId]);
 
-  const loanDisabled = mapLoading || !corePropertyId;
+    return () => {
+      alive = false;
+    };
+  }, [safeId]);
 
-  const outletCtx: PortfolioOutletContext = useMemo(
-    () => ({
-      portfolioId: safePortfolioId, // "" if invalid
-      corePropertyId,               // "" if missing
-      mapLoading,
-      mapErr,
-    }),
-    [safePortfolioId, corePropertyId, mapLoading, mapErr]
-  );
+  const navBase = useMemo(() => {
+    return state.portfolioId ? `/portfolio/${encodeURIComponent(state.portfolioId)}` : "/portfolio";
+  }, [state.portfolioId]);
+
+  const tabStyle = ({ isActive }: { isActive: boolean }) =>
+    ({
+      padding: "9px 12px",
+      borderRadius: 12,
+      border: `1px solid ${isActive ? "#111827" : "#e5e7eb"}`,
+      background: isActive ? "#111827" : "white",
+      color: isActive ? "white" : "#111827",
+      textDecoration: "none",
+      fontWeight: 900,
+      fontSize: 12,
+      whiteSpace: "nowrap",
+    }) as const;
+
+  // Context for children (only meaningful in OK state)
+  const ctx: PortfolioOutletContext = {
+    portfolioId: state.status === "ok" ? state.portfolioId : "",
+    corePropertyId: state.status === "ok" ? state.corePropertyId : null,
+    mapErr: state.status === "error" ? state.err : null,
+    mapLoading: state.status === "loading",
+  };
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      {/* Top actions */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          onClick={() => navigate("/portfolio")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          ← Zurück zum Portfolio
-        </button>
-
-        <button
-          onClick={() => {
-            if (!loanDisabled) navigate(`/darlehensuebersicht/${corePropertyId}`);
-          }}
-          disabled={loanDisabled}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: loanDisabled ? "not-allowed" : "pointer",
-            opacity: loanDisabled ? 0.6 : 1,
-          }}
-          title={
-            loanDisabled
-              ? "Dieses Portfolio-Objekt ist keiner Immobilien-ID (properties.id) zugeordnet."
-              : "Zur Darlehensübersicht dieses Objekts"
-          }
-        >
-          Darlehen anzeigen
-        </button>
-
-        <button
-          onClick={() => {
-            if (!loanDisabled) navigate(`/darlehensuebersicht/${corePropertyId}/loan/new`);
-          }}
-          disabled={loanDisabled}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: loanDisabled ? "not-allowed" : "pointer",
-            opacity: loanDisabled ? 0.6 : 1,
-          }}
-          title={
-            loanDisabled
-              ? "Dieses Portfolio-Objekt ist keiner Immobilien-ID (properties.id) zugeordnet."
-              : "Neue Darlehenszeile hinzufügen"
-          }
-        >
-          + Darlehenszeile hinzufügen
-        </button>
-
-        <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.65 }}>
-          Portfolio-ID:{" "}
-          <span
-            style={{
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            }}
-          >
-            {safePortfolioId || "—"}
-          </span>
-          {" · "}
-          Core-ID:{" "}
-          <span
-            style={{
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            }}
-          >
-            {corePropertyId || "—"}
-          </span>
-        </div>
-      </div>
-
-      {mapErr && (
-        <div
-          style={{
-            border: "1px solid #fecaca",
-            background: "#fff1f2",
-            color: "#7f1d1d",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          {mapErr}
-        </div>
-      )}
-
-      {!mapErr && safePortfolioId && mapLoading && (
-        <div style={{ fontSize: 12, opacity: 0.7 }}>Lade Verknüpfung (core_property_id)…</div>
-      )}
-
-      {!mapErr && safePortfolioId && !mapLoading && !corePropertyId && (
-        <div
-          style={{
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            color: "#7c2d12",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          Dieses Portfolio-Objekt hat keine Verknüpfung zu <b>properties</b> (core_property_id ist leer).
-          <br />
-          Fix: Beim Erstellen des properties-Datensatzes die <b>properties.id</b> hier eintragen:
-          <br />
-          <code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-            portfolio_properties.core_property_id
-          </code>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={t.to}
-            style={({ isActive }) => ({
-              padding: "8px 12px",
-              borderRadius: 12,
-              textDecoration: "none",
-              fontWeight: 900,
-              border: "1px solid #e5e7eb",
-              background: isActive ? "#111827" : "white",
-              color: isActive ? "white" : "#111827",
-              opacity: mapLoading ? 0.75 : 1,
-            })}
-          >
-            {t.label}
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Tab Content */}
+    <div style={{ display: "grid", gap: 12 }}>
+      {/* Header + Tabs */}
       <div
         style={{
           border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
           background: "white",
+          borderRadius: 16,
+          padding: 12,
+          display: "grid",
+          gap: 10,
         }}
       >
-        <Outlet context={outletCtx} />
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 950, fontSize: 16 }}>Objekt</div>
+
+          <div style={{ fontSize: 12, opacity: 0.65 }}>
+            Portfolio-ID:{" "}
+            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+              {state.portfolioId || "—"}
+            </span>
+          </div>
+
+          <div style={{ fontSize: 12, opacity: 0.65 }}>
+            Core-ID:{" "}
+            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+              {state.status === "ok" ? state.corePropertyId || "—" : "—"}
+            </span>
+          </div>
+
+          <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.65 }}>
+            {state.status === "loading" ? "Mapping lädt…" : state.status === "error" ? "Ungültig" : "OK"}
+          </div>
+        </div>
+
+        {/* Tabs only if OK */}
+        {state.status === "ok" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {TABS.map((t) => (
+              <NavLink
+                key={t.to}
+                to={`${navBase}/${t.to}`}
+                style={tabStyle}
+                state={location.state}
+              >
+                {t.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+
+        {/* Error UI */}
+        {state.status === "error" && (
+          <div
+            style={{
+              border: "1px solid #fecaca",
+              background: "#fff1f2",
+              color: "#7f1d1d",
+              padding: 12,
+              borderRadius: 12,
+              fontSize: 13,
+              fontWeight: 800,
+              whiteSpace: "pre-wrap",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div>{state.err}</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => navigate("/portfolio", { replace: true, state: location.state })}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "white",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Zurück zur Portfolio-Liste
+              </button>
+
+              {/* Optional: wenn jemand nur /portfolio/:id ohne subroute aufruft, hier direkt auf address */}
+              {state.portfolioId && (
+                <button
+                  onClick={() => navigate(`/portfolio/${encodeURIComponent(state.portfolioId)}/address`, { replace: true })}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    background: "white",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Trotzdem öffnen (falls ID stimmt)
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Child route only if OK.
+          This prevents children from running with empty/invalid portfolioId. */}
+      {state.status === "ok" ? <Outlet context={ctx} /> : null}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
 } from "react-router-dom";
 
 import RequireAuth from "./components/RequireAuth";
-import { supabase } from "./lib/supabase";
+import { supabase } from "./lib/supabaseClient";
 
 /* =========================
    Theme (CI / Design)
@@ -167,6 +167,130 @@ function LegacyObjekteRedirect({ target }: { target: (id: string) => string }) {
   }, [id, navigate, target, location]);
 
   return null;
+}
+
+/* =========================
+   Portfolio URL Normalizer
+   - old: /portfolio/:id
+   - new: /portfolio/:portfolioId
+========================= */
+function LegacyPortfolioRedirect() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const safe = normalizeUuid(id ?? "");
+    if (!safe) {
+      navigate("/portfolio", {
+        replace: true,
+        state: { ...(location.state as any), legacy_portfolio_redirect_error: "invalid_id" }
+      });
+      return;
+    }
+    // Default Tab: address
+    navigate(`/portfolio/${encodeURIComponent(safe)}/address`, { replace: true, state: location.state });
+  }, [id, navigate, location]);
+
+  return null;
+}
+
+/* =========================
+   Portfolio Guard
+   Verhindert "Core-ID in URL":
+   prüft, ob portfolio_properties.id existiert.
+========================= */
+function RequirePortfolioProperty({ children }: { children: React.ReactNode }) {
+  const { portfolioId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [state, setState] = useState<{ loading: boolean; ok: boolean; err?: string }>({
+    loading: true,
+    ok: false
+  });
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const safe = normalizeUuid(portfolioId ?? "");
+      if (!safe) {
+        if (alive) setState({ loading: false, ok: false, err: "Ungültige Portfolio-ID (keine UUID)." });
+        return;
+      }
+
+      try {
+        // Prüfen: existiert diese ID in portfolio_properties?
+        const { data, error } = await supabase
+          .from("portfolio_properties")
+          .select("id")
+          .eq("id", safe)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          if (alive)
+            setState({
+              loading: false,
+              ok: false,
+              err:
+                "Diese ID ist keine Portfolio-Property-ID. " +
+                "Vermutlich wurde eine Core-Property-ID (properties.id) in die URL navigiert."
+            });
+          return;
+        }
+
+        if (alive) setState({ loading: false, ok: true });
+      } catch (e: any) {
+        if (!alive) return;
+        const msg = e?.message ?? e?.details ?? String(e);
+        setState({ loading: false, ok: false, err: msg });
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [portfolioId]);
+
+  if (state.loading) return <div style={{ padding: 16 }}>Lädt…</div>;
+
+  if (!state.ok) {
+    return (
+      <div
+        style={{
+          padding: 16,
+          border: `1px solid ${THEME.border}`,
+          borderRadius: 14,
+          background: THEME.surface,
+          boxShadow: THEME.shadow
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>Portfolio-Link ungültig</div>
+        <div style={{ fontSize: 13, color: THEME.muted, whiteSpace: "pre-wrap" }}>{state.err}</div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            onClick={() => navigate("/portfolio", { replace: true, state: location.state })}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: `1px solid ${THEME.border}`,
+              background: THEME.surface,
+              fontWeight: 900,
+              cursor: "pointer"
+            }}
+          >
+            Zurück zum Portfolio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 /* =========================
@@ -418,6 +542,24 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
    App Root
 ========================= */
 export default function App() {
+  // Optional: einmaliger Auth-Debug beim App-Start (hilft bei RLS/auth.uid() Problemen)
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+        console.log("[AUTH DEBUG] session:", session);
+        console.log("[AUTH DEBUG] user:", user);
+      } catch (e) {
+        console.error("[AUTH DEBUG] failed:", e);
+      }
+    })();
+  }, []);
+
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -444,7 +586,17 @@ export default function App() {
           <Route path="/" element={<Navigate to="/portfolio" replace />} />
 
           <Route path="/portfolio" element={wrap("Portfolio", <Portfolio />)} />
-          <Route path="/portfolio/:id" element={wrap("Portfolio Layout", <PortfolioPropertyLayout />)}>
+
+          {/* ✅ NEW canonical route */}
+          <Route
+            path="/portfolio/:portfolioId"
+            element={wrap(
+              "Portfolio Layout",
+              <RequirePortfolioProperty>
+                <PortfolioPropertyLayout />
+              </RequirePortfolioProperty>
+            )}
+          >
             <Route index element={<Navigate to="address" replace />} />
             <Route path="address" element={wrap("Portfolio Address", <PortfolioAddress />)} />
             <Route path="details" element={wrap("Portfolio Details", <PortfolioDetails />)} />
@@ -452,6 +604,14 @@ export default function App() {
             <Route path="energy" element={wrap("Portfolio Energy", <PortfolioEnergy />)} />
             <Route path="renting" element={wrap("Portfolio Renting", <PortfolioRenting />)} />
           </Route>
+
+          {/* ✅ Legacy support: old /portfolio/:id -> redirect to canonical */}
+          <Route path="/portfolio/:id/address" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/details" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/finance" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/energy" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/renting" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id" element={<LegacyPortfolioRedirect />} />
 
           <Route path="/uebersicht" element={wrap("Übersicht", <Uebersicht />)} />
           <Route path="/auswertung" element={wrap("Auswertung", <Auswertung />)} />

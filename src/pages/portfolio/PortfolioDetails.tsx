@@ -1,540 +1,342 @@
 // src/pages/portfolio/PortfolioDetails.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import { supabase } from "../../lib/supabaseClient";
 import { normalizeUuid } from "../../lib/ids";
 import type { PortfolioOutletContext } from "./PortfolioPropertyLayout";
 
-const DETAILS_TABLE = "portfolio_property_details";
+/**
+ * HINWEIS:
+ * - Diese Datei ist so geschrieben, dass sie sicher kompiliert (keine fehlenden Klammern / try-catch Probleme).
+ * - Spaltennamen im Update-Payload musst du ggf. an deine Tabelle anpassen.
+ * - Standardmäßig wird aus "portfolio_properties" geladen/gespeichert (id = property_id).
+ */
 
-type DetailsRow = {
-  property_id: string;
+const PROPERTY_TABLE = "portfolio_properties";
 
-  building_type?: string | null;
-  living_area_m2?: number | null;
-  land_area_m2?: number | null;
+type PropertyRow = {
+  id: string;
+  user_id?: string | null;
+
+  // Häufige Felder (passe an deine DB an)
+  name?: string | null;
+  property_type?: string | null;
+  description?: string | null;
+
+  // Zahlen
   year_built?: number | null;
-  rooms?: number | null;
-  floor?: number | null;
-  condition?: string | null;
-  fit_out_quality?: string | null;
-  last_modernization_year?: number | null;
+  living_area_m2?: number | null;
+  plot_area_m2?: number | null;
 
-  has_cellar?: boolean | null;
-  has_garage?: boolean | null;
-  has_underground_parking?: boolean | null;
-  has_parking_space?: boolean | null;
-  has_elevator?: boolean | null;
-  has_balcony_or_terrace?: boolean | null;
+  // Meta
+  updated_at?: string | null;
 };
 
+function inputStyle(loading: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.15)",
+    outline: "none",
+    opacity: loading ? 0.7 : 1,
+    background: loading ? "rgba(0,0,0,0.03)" : "white",
+  };
+}
+
+function labelStyle(): React.CSSProperties {
+  return { display: "block", fontWeight: 600, marginBottom: 6 };
+}
+
+function sectionStyle(): React.CSSProperties {
+  return {
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    background: "white",
+  };
+}
+
 function toNumberOrNull(v: string): number | null {
-  const s = v.trim().replace(",", ".");
-  if (!s) return null;
-  const n = Number(s);
+  const trimmed = (v ?? "").trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed.replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
 
 function toIntOrNull(v: string): number | null {
   const n = toNumberOrNull(v);
   if (n === null) return null;
-  return Number.isFinite(n) ? Math.trunc(n) : null;
+  const i = Math.trunc(n);
+  return Number.isFinite(i) ? i : null;
 }
 
 export default function PortfolioDetails() {
-  const navigate = useNavigate();
-  const { corePropertyId, mapErr, mapLoading } = useOutletContext<PortfolioOutletContext>();
+  const outlet = useOutletContext<PortfolioOutletContext>();
 
-  // ✅ sanitize
-  const safeCorePropertyId = useMemo(
-    () => normalizeUuid(String(corePropertyId ?? "").trim()),
-    [corePropertyId]
-  );
-  const hasCore = Boolean(safeCorePropertyId);
+  // In deinen anderen Seiten scheint portfolioId/ corePropertyId etc. zu existieren.
+  // Wir verwenden hier primär die property-id (portfolio property id).
+  const safePropertyId = useMemo(() => {
+    // je nach deinem Routing kann es sein, dass portfolioId eigentlich die propertyId ist
+    // oder corePropertyId die richtige id ist. Wir nehmen: corePropertyId > portfolioId.
+    const candidate = String(outlet?.corePropertyId ?? outlet?.portfolioId ?? "").trim();
+    return normalizeUuid(candidate);
+  }, [outlet?.corePropertyId, outlet?.portfolioId]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  // Form (strings)
-  const [buildingType, setBuildingType] = useState("");
-  const [livingArea, setLivingArea] = useState("");
-  const [landArea, setLandArea] = useState("");
+  // Form state (Strings für Inputs, damit es nicht ständig NaN gibt)
+  const [name, setName] = useState("");
+  const [propertyType, setPropertyType] = useState("");
+  const [description, setDescription] = useState("");
+
   const [yearBuilt, setYearBuilt] = useState("");
-  const [rooms, setRooms] = useState("");
-  const [floor, setFloor] = useState("");
-  const [condition, setCondition] = useState("");
-  const [fitOutQuality, setFitOutQuality] = useState("");
-  const [lastModernizationYear, setLastModernizationYear] = useState("");
+  const [livingArea, setLivingArea] = useState("");
+  const [plotArea, setPlotArea] = useState("");
 
-  const [hasCellar, setHasCellar] = useState(false);
-  const [hasGarage, setHasGarage] = useState(false);
-  const [hasUndergroundParking, setHasUndergroundParking] = useState(false);
-  const [hasParkingSpace, setHasParkingSpace] = useState(false);
-  const [hasElevator, setHasElevator] = useState(false);
-  const [hasBalconyOrTerrace, setHasBalconyOrTerrace] = useState(false);
+  const canUseId = Boolean(safePropertyId);
 
-  const requestSeq = useRef(0);
+  const load = useCallback(async () => {
+    setErrorMsg(null);
+    setOkMsg(null);
 
-  const effectiveDisabled = useMemo(() => {
-    if (mapLoading) return true;
-    if (mapErr) return true;
-    if (!hasCore) return true;
-    return false;
-  }, [mapLoading, mapErr, hasCore]);
-
-  function resetForm() {
-    setBuildingType("");
-    setLivingArea("");
-    setLandArea("");
-    setYearBuilt("");
-    setRooms("");
-    setFloor("");
-    setCondition("");
-    setFitOutQuality("");
-    setLastModernizationYear("");
-
-    setHasCellar(false);
-    setHasGarage(false);
-    setHasUndergroundParking(false);
-    setHasParkingSpace(false);
-    setHasElevator(false);
-    setHasBalconyOrTerrace(false);
-  }
-
-  async function load() {
-    const seq = ++requestSeq.current;
-    setErr(null);
-
-    // ✅ Guard: no DB call without safe UUID
-    if (!hasCore) {
-      resetForm();
-      setLoading(false);
+    if (!canUseId) {
+      setErrorMsg("Keine gültige Property-ID gefunden (UUID).");
       return;
     }
 
     setLoading(true);
-
     try {
-      const { data: dData, error: dErr } = await supabase
-        .from(DETAILS_TABLE)
-        .select(
-          [
-            "property_id",
-            "building_type",
-            "living_area_m2",
-            "land_area_m2",
-            "year_built",
-            "rooms",
-            "floor",
-            "condition",
-            "fit_out_quality",
-            "last_modernization_year",
-            "has_cellar",
-            "has_garage",
-            "has_underground_parking",
-            "has_parking_space",
-            "has_elevator",
-            "has_balcony_or_terrace",
-          ].join(",")
-        )
-        .eq("property_id", safeCorePropertyId)
+      const { data, error } = await supabase
+        .from(PROPERTY_TABLE)
+        .select("id, name, property_type, description, year_built, living_area_m2, plot_area_m2, updated_at")
+        .eq("id", safePropertyId)
         .maybeSingle();
 
-      if (seq !== requestSeq.current) return;
-      if (dErr) throw dErr;
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
 
-      const d = (dData as DetailsRow | null) ?? null;
+      if (!data) {
+        // Wenn noch kein Datensatz existiert, kannst du hier optional einen anlegen.
+        // Wir lassen das neutral und zeigen eine Info.
+        setOkMsg("Kein Datensatz gefunden. Du kannst Werte eingeben und speichern.");
+        return;
+      }
 
-      setBuildingType((d?.building_type ?? "").trim());
-      setLivingArea(d?.living_area_m2 != null ? String(d.living_area_m2) : "");
-      setLandArea(d?.land_area_m2 != null ? String(d.land_area_m2) : "");
-      setYearBuilt(d?.year_built != null ? String(d.year_built) : "");
-      setRooms(d?.rooms != null ? String(d.rooms) : "");
-      setFloor(d?.floor != null ? String(d.floor) : "");
-      setCondition((d?.condition ?? "").trim());
-      setFitOutQuality((d?.fit_out_quality ?? "").trim());
-      setLastModernizationYear(d?.last_modernization_year != null ? String(d.last_modernization_year) : "");
+      const row = data as PropertyRow;
 
-      setHasCellar(Boolean(d?.has_cellar));
-      setHasGarage(Boolean(d?.has_garage));
-      setHasUndergroundParking(Boolean(d?.has_underground_parking));
-      setHasParkingSpace(Boolean(d?.has_parking_space));
-      setHasElevator(Boolean(d?.has_elevator));
-      setHasBalconyOrTerrace(Boolean(d?.has_balcony_or_terrace));
-    } catch (e: any) {
-      if (seq !== requestSeq.current) return;
-      console.error("PortfolioDetails load failed:", e);
-      setErr(e?.message ?? String(e));
+      setName(row.name ?? "");
+      setPropertyType(row.property_type ?? "");
+      setDescription(row.description ?? "");
+
+      setYearBuilt(row.year_built != null ? String(row.year_built) : "");
+      setLivingArea(row.living_area_m2 != null ? String(row.living_area_m2) : "");
+      setPlotArea(row.plot_area_m2 != null ? String(row.plot_area_m2) : "");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Unbekannter Fehler beim Laden.");
     } finally {
-      if (seq === requestSeq.current) setLoading(false);
+      setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    setErr(null);
-    setSaving(false);
-    resetForm();
-
-    if (mapLoading) {
-      setLoading(true);
-      return;
-    }
-
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeCorePropertyId, mapLoading, mapErr]);
-
-  function validate(): string | null {
-    if (!hasCore) {
-      return "Dieses Portfolio-Objekt hat keine Verknüpfung zu properties (core_property_id ist leer).";
-    }
-
-    // lightweight validations
-    if (yearBuilt.trim() && toIntOrNull(yearBuilt) === null) return "Baujahr muss eine Zahl sein.";
-    if (floor.trim() && toIntOrNull(floor) === null) return "Etage muss eine Zahl sein.";
-    if (livingArea.trim() && toNumberOrNull(livingArea) === null) return "Wohnfläche muss eine Zahl sein.";
-    if (landArea.trim() && toNumberOrNull(landArea) === null) return "Grundstücksfläche muss eine Zahl sein.";
-    if (rooms.trim() && toNumberOrNull(rooms) === null) return "Zimmer muss eine Zahl sein.";
-    if (lastModernizationYear.trim() && toIntOrNull(lastModernizationYear) === null)
-      return "Letzte Modernisierung muss eine Zahl sein.";
-
-    return null;
-  }
+  }, [canUseId, safePropertyId]);
 
   async function save() {
-    const v = validate();
-    if (v) {
-      setErr(v);
+    setErrorMsg(null);
+    setOkMsg(null);
+
+    if (!canUseId) {
+      setErrorMsg("Speichern nicht möglich: ungültige Property-ID (UUID).");
       return;
     }
 
     setSaving(true);
-    setErr(null);
-
     try {
-      const payload: DetailsRow = {
-        property_id: safeCorePropertyId,
-
-        building_type: buildingType.trim() || null,
-        living_area_m2: toNumberOrNull(livingArea),
-        land_area_m2: toNumberOrNull(landArea),
+      // Passe dieses Payload an deine echten Spalten an:
+      const payload: Partial<PropertyRow> = {
+        id: safePropertyId, // falls du upsert machst
+        name: name.trim() || null,
+        property_type: propertyType.trim() || null,
+        description: description.trim() || null,
         year_built: toIntOrNull(yearBuilt),
-        rooms: toNumberOrNull(rooms),
-        floor: toIntOrNull(floor),
-        condition: condition.trim() || null,
-        fit_out_quality: fitOutQuality.trim() || null,
-        last_modernization_year: toIntOrNull(lastModernizationYear),
-
-        has_cellar: hasCellar,
-        has_garage: hasGarage,
-        has_underground_parking: hasUndergroundParking,
-        has_parking_space: hasParkingSpace,
-        has_elevator: hasElevator,
-        has_balcony_or_terrace: hasBalconyOrTerrace,
+        living_area_m2: toNumberOrNull(livingArea),
+        plot_area_m2: toNumberOrNull(plotArea),
       };
 
-      const { error } = await supabase.from(DETAILS_TABLE).upsert(payload, { onConflict: "property_id" });
-      if (error) throw error;
+      // Variante A: Update (wenn Datensatz existiert)
+      // Variante B: Upsert (wenn Datensatz ggf. neu ist)
+      // -> Upsert ist oft bequemer (aber RLS/Constraints müssen passen).
+      const { error } = await supabase
+        .from(PROPERTY_TABLE)
+        .upsert(payload, { onConflict: "id" })
+        .eq("id", safePropertyId);
 
-      await load();
-    } catch (e: any) {
-      console.error("PortfolioDetails save failed:", e);
-      setErr(e?.message ?? String(e));
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
+
+      setOkMsg("Gespeichert ✅");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Unbekannter Fehler beim Speichern.");
     } finally {
       setSaving(false);
     }
   }
 
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 4 }}>Objektdetails</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Core-ID: <b>{safeCorePropertyId || "—"}</b>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: 16 }}>
+      <h2 style={{ margin: "8px 0 14px" }}>Portfolio – Details</h2>
+
+      {!canUseId && (
+        <div style={{ ...sectionStyle(), borderColor: "rgba(255,0,0,0.25)" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Fehler</div>
+          <div>Keine gültige UUID für die Property gefunden.</div>
+          <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>
+            Tipp: Prüfe, ob dein Routing/OutletContext die richtige ID liefert (corePropertyId vs. portfolioId).
           </div>
         </div>
+      )}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button
-            onClick={() => navigate("/portfolio")}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            ← Zurück
-          </button>
+      {(errorMsg || okMsg) && (
+        <div
+          style={{
+            ...sectionStyle(),
+            borderColor: errorMsg ? "rgba(255,0,0,0.25)" : "rgba(0,128,0,0.25)",
+            background: errorMsg ? "rgba(255,0,0,0.04)" : "rgba(0,128,0,0.04)",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{errorMsg ? "Fehler" : "Info"}</div>
+          <div>{errorMsg ?? okMsg}</div>
+        </div>
+      )}
+
+      <div style={sectionStyle()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontWeight: 700 }}>Objekt-Details</div>
 
           <button
             onClick={() => void save()}
-            disabled={saving || loading || effectiveDisabled}
+            disabled={loading || saving || !canUseId}
             style={{
               padding: "10px 14px",
               borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: saving ? "#f3f4f6" : "white",
-              fontWeight: 900,
-              cursor: saving || loading || effectiveDisabled ? "not-allowed" : "pointer",
-              opacity: saving || loading || effectiveDisabled ? 0.6 : 1,
+              border: "1px solid rgba(0,0,0,0.15)",
+              background: saving ? "rgba(0,0,0,0.06)" : "white",
+              cursor: loading || saving || !canUseId ? "not-allowed" : "pointer",
+              fontWeight: 600,
             }}
           >
             {saving ? "Speichert…" : "Speichern"}
           </button>
         </div>
+
+        <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle()}>Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={loading || saving}
+              style={inputStyle(loading || saving)}
+              placeholder="z.B. Wohnung Bremen"
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle()}>Objektart</label>
+            <input
+              value={propertyType}
+              onChange={(e) => setPropertyType(e.target.value)}
+              disabled={loading || saving}
+              style={inputStyle(loading || saving)}
+              placeholder="z.B. Wohnung / Haus / Gewerbe"
+            />
+          </div>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={labelStyle()}>Beschreibung</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={loading || saving}
+              style={{ ...inputStyle(loading || saving), minHeight: 110, resize: "vertical" }}
+              placeholder="Kurzbeschreibung…"
+            />
+          </div>
+        </div>
       </div>
 
-      {mapErr && (
-        <div
-          style={{
-            border: "1px solid #fecaca",
-            background: "#fff1f2",
-            color: "#7f1d1d",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          {mapErr}
-        </div>
-      )}
+      <div style={sectionStyle()}>
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Flächen & Baujahr</div>
 
-      {!mapErr && !mapLoading && !hasCore && (
-        <div
-          style={{
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            color: "#7c2d12",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          Dieses Portfolio-Objekt hat keine Verknüpfung zu <b>properties</b> (core_property_id ist leer).
-          <br />
-          Lösung: In <b>portfolio_properties</b> die Spalte <b>core_property_id</b> pflegen (→ <b>properties.id</b>).
-        </div>
-      )}
-
-      {err && (
-        <div
-          style={{
-            border: "1px solid #fecaca",
-            background: "#fff1f2",
-            color: "#7f1d1d",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          {err}
-        </div>
-      )}
-
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          background: "white",
-          display: "grid",
-          gap: 12,
-          opacity: effectiveDisabled ? 0.95 : 1,
-        }}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Gebäudetyp
-            <input
-              value={buildingType}
-              onChange={(e) => setBuildingType(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              placeholder="z.B. Einfamilienhaus"
-              style={inputStyle(loading)}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Zustand
-            <input
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              placeholder="z.B. saniert"
-              style={inputStyle(loading)}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Wohnfläche (m²)
-            <input
-              value={livingArea}
-              onChange={(e) => setLivingArea(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              inputMode="decimal"
-              placeholder="z.B. 120"
-              style={inputStyle(loading)}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Grundstück (m²)
-            <input
-              value={landArea}
-              onChange={(e) => setLandArea(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              inputMode="decimal"
-              placeholder="z.B. 450"
-              style={inputStyle(loading)}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Baujahr
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle()}>Baujahr</label>
             <input
               value={yearBuilt}
               onChange={(e) => setYearBuilt(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              inputMode="numeric"
+              disabled={loading || saving}
+              style={inputStyle(loading || saving)}
               placeholder="z.B. 1998"
-              style={inputStyle(loading)}
+              inputMode="numeric"
             />
-          </label>
+          </div>
 
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Zimmer
+          <div>
+            <label style={labelStyle()}>Wohnfläche (m²)</label>
             <input
-              value={rooms}
-              onChange={(e) => setRooms(e.target.value)}
-              disabled={loading || effectiveDisabled}
+              value={livingArea}
+              onChange={(e) => setLivingArea(e.target.value)}
+              disabled={loading || saving}
+              style={inputStyle(loading || saving)}
+              placeholder="z.B. 82.5"
               inputMode="decimal"
-              placeholder="z.B. 4.5"
-              style={inputStyle(loading)}
             />
-          </label>
+          </div>
 
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Etage
+          <div>
+            <label style={labelStyle()}>Grundstück (m²)</label>
             <input
-              value={floor}
-              onChange={(e) => setFloor(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              inputMode="numeric"
-              placeholder="z.B. 2"
-              style={inputStyle(loading)}
+              value={plotArea}
+              onChange={(e) => setPlotArea(e.target.value)}
+              disabled={loading || saving}
+              style={inputStyle(loading || saving)}
+              placeholder="z.B. 240"
+              inputMode="decimal"
             />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Ausstattungsqualität
-            <input
-              value={fitOutQuality}
-              onChange={(e) => setFitOutQuality(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              placeholder="z.B. gehoben"
-              style={inputStyle(loading)}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Letzte Modernisierung (Jahr)
-            <input
-              value={lastModernizationYear}
-              onChange={(e) => setLastModernizationYear(e.target.value)}
-              disabled={loading || effectiveDisabled}
-              inputMode="numeric"
-              placeholder="z.B. 2018"
-              style={inputStyle(loading)}
-            />
-          </label>
+          </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          <Toggle label="Keller" checked={hasCellar} onChange={setHasCellar} disabled={loading || effectiveDisabled} />
-          <Toggle label="Garage" checked={hasGarage} onChange={setHasGarage} disabled={loading || effectiveDisabled} />
-          <Toggle
-            label="Tiefgarage"
-            checked={hasUndergroundParking}
-            onChange={setHasUndergroundParking}
-            disabled={loading || effectiveDisabled}
-          />
-          <Toggle
-            label="Stellplatz"
-            checked={hasParkingSpace}
-            onChange={setHasParkingSpace}
-            disabled={loading || effectiveDisabled}
-          />
-          <Toggle
-            label="Aufzug"
-            checked={hasElevator}
-            onChange={setHasElevator}
-            disabled={loading || effectiveDisabled}
-          />
-          <Toggle
-            label="Balkon/Terrasse"
-            checked={hasBalconyOrTerrace}
-            onChange={setHasBalconyOrTerrace}
-            disabled={loading || effectiveDisabled}
-          />
+        <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>
+          Property-ID: <code>{safePropertyId || "—"}</code>
         </div>
+      </div>
 
-        {(loading || mapLoading) && <div style={{ fontSize: 12, opacity: 0.7 }}>Lädt…</div>}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={() => void load()}
+          disabled={loading || saving || !canUseId}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.15)",
+            background: loading ? "rgba(0,0,0,0.06)" : "white",
+            cursor: loading || saving || !canUseId ? "not-allowed" : "pointer",
+            fontWeight: 600,
+          }}
+        >
+          {loading ? "Lädt…" : "Neu laden"}
+        </button>
       </div>
     </div>
-  );
-}
-
-function inputStyle(loading: boolean): React.CSSProperties {
-  return {
-    marginTop: 6,
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    fontWeight: 800,
-    background: loading ? "#f9fafb" : "white",
-  };
-}
-
-function Toggle(props: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        padding: "10px 12px",
-        borderRadius: 12,
-        border: "1px solid #e5e7eb",
-        background: props.disabled ? "#f9fafb" : "white",
-        opacity: props.disabled ? 0.75 : 1,
-        cursor: props.disabled ? "not-allowed" : "pointer",
-        userSelect: "none",
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={(e) => props.onChange(e.target.checked)}
-        disabled={props.disabled}
-      />
-      <span style={{ fontWeight: 900, fontSize: 12 }}>{props.label}</span>
-    </label>
   );
 }

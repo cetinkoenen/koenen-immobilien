@@ -29,10 +29,11 @@ type EnergyFormState = {
   energy_consumption: string; // keep as string for input
 };
 
+const ENERGY_TABLE = "portfolio_property_energy";
 const EFFICIENCY_OPTIONS = ["A+", "A", "B", "C", "D", "E", "H"] as const;
 
 function toNullableNumber(value: string): number | null {
-  const v = value.trim();
+  const v = (value ?? "").trim();
   if (!v) return null;
   const normalized = v.replace(",", ".");
   const n = Number(normalized);
@@ -127,30 +128,32 @@ export default function PortfolioEnergy({ propertyId }: Props) {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase
-      .from("portfolio_property_energy")
-      .select("*")
-      .eq("property_id", safeCorePropertyId) // ✅ always resolved property id
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from(ENERGY_TABLE)
+        .select("*")
+        .eq("property_id", safeCorePropertyId) // ✅ always resolved property id
+        .maybeSingle();
 
-    if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current) return;
 
-    if (error) {
-      setError(error.message);
+      if (error) throw error;
+
+      const row = (data as EnergyRow | null) ?? null;
+      setDbRow(row);
+      setForm({
+        efficiency_class: row?.efficiency_class ?? "",
+        energy_consumption: formatNullableNumber(row?.energy_consumption),
+      });
+    } catch (e: unknown) {
+      if (seq !== requestSeq.current) return;
+      console.error("PortfolioEnergy load failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
       setDbRow(null);
       setForm({ efficiency_class: "", energy_consumption: "" });
-      setLoading(false);
-      return;
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
     }
-
-    const row = (data as EnergyRow) ?? null;
-    setDbRow(row);
-    setForm({
-      efficiency_class: row?.efficiency_class ?? "",
-      energy_consumption: formatNullableNumber(row?.energy_consumption),
-    });
-
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -205,26 +208,42 @@ export default function PortfolioEnergy({ propertyId }: Props) {
       energy_consumption: toNullableNumber(form.energy_consumption),
     };
 
-    const { data, error } = await supabase
-      .from("portfolio_property_energy")
-      .upsert(payload, { onConflict: "property_id" })
-      .select("*")
-      .single();
+    try {
+      /**
+       * WICHTIGER FIX:
+       * - In deinem alten Code stand:
+       *    .eq("property_id", propertyId)  // propertyId kann undefined sein!
+       *    if (error) { ... }             // '...' ist ungültig
+       *
+       * - Lösung:
+       *    Upsert auf property_id (oder update + fallback insert).
+       *    Upsert ist robust, wenn es die Zeile noch nicht gibt.
+       */
+      const { data, error } = await supabase
+        .from(ENERGY_TABLE)
+        .upsert(payload, { onConflict: "property_id" })
+        .select("*")
+        .maybeSingle();
 
-    if (error) {
-      setError(error.message);
+      if (error) throw error;
+
+      if (!data) {
+        setError("Speichern hat keine Zeile zurückgegeben (evtl. RLS blockiert).");
+        return;
+      }
+
+      const row = data as EnergyRow;
+      setDbRow(row);
+      setForm({
+        efficiency_class: row.efficiency_class ?? "",
+        energy_consumption: formatNullableNumber(row.energy_consumption),
+      });
+    } catch (e: unknown) {
+      console.error("PortfolioEnergy save failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const row = data as EnergyRow;
-    setDbRow(row);
-    setForm({
-      efficiency_class: row.efficiency_class ?? "",
-      energy_consumption: formatNullableNumber(row.energy_consumption),
-    });
-
-    setSaving(false);
   }
 
   // ✅ If missing corePropertyId => stop UI + no queries

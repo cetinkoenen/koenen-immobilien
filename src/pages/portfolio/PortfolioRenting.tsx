@@ -21,8 +21,15 @@ type RentalRow = {
   id: string;
   property_id: string;
 
+  // intern (bei euch z.B. "MONTHLY") – wir zeigen es NICHT in der UI
   rent_type: string | null;
+
+  // Warmmiete (Kalt + Nebenkosten) – wird automatisch berechnet/gespeichert
   rent_monthly: number | null;
+
+  // getrennte Felder
+  kaltmiete_laut_mietvertrag: number | null;
+  nebenkosten: number | null;
 
   start_date: string | null; // YYYY-MM-DD
   end_date: string | null; // YYYY-MM-DD
@@ -35,8 +42,10 @@ type RentalRow = {
 
 type RentalFormState = {
   id?: string; // edit
-  rent_type: string;
-  rent_monthly: string;
+
+  kaltmiete: string;
+  nebenkosten: string;
+
   start_date: string;
   end_date: string; // "" = open ended
 };
@@ -110,14 +119,14 @@ export default function PortfolioRenting({ propertyId }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<RentalRow[]>([]);
 
+  const [rows, setRows] = useState<RentalRow[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
+
   const [form, setForm] = useState<RentalFormState>({
-    rent_type: "",
-    rent_monthly: "",
+    kaltmiete: "",
+    nebenkosten: "",
     start_date: "",
     end_date: "",
   });
@@ -130,8 +139,16 @@ export default function PortfolioRenting({ propertyId }: Props) {
     [busy, loading, safeCorePropertyId]
   );
 
+  // ✅ Warmmiete (Kalt + NK) automatisch berechnen
+  const warmmietePreview = useMemo(() => {
+    const k = toNullableNumber(form.kaltmiete);
+    const n = toNullableNumber(form.nebenkosten);
+    if (k === null && n === null) return "";
+    if (!form.kaltmiete.trim() && !form.nebenkosten.trim()) return "";
+    return String((k ?? 0) + (n ?? 0));
+  }, [form.kaltmiete, form.nebenkosten]);
+
   async function loadRenting() {
-    // ✅ Guard: never query if missing/invalid
     if (!safeCorePropertyId) return;
 
     const seq = ++requestSeq.current;
@@ -140,8 +157,22 @@ export default function PortfolioRenting({ propertyId }: Props) {
 
     const { data, error } = await supabase
       .from("portfolio_property_rentals")
-      .select("*")
-      .eq("property_id", safeCorePropertyId) // ✅ always resolved property id
+      .select(
+        [
+          "id",
+          "property_id",
+          "rent_type",
+          "rent_monthly",
+          "kaltmiete_laut_mietvertrag",
+          "nebenkosten",
+          "start_date",
+          "end_date",
+          "notes",
+          "created_at",
+          "updated_at",
+        ].join(",")
+      )
+      .eq("property_id", safeCorePropertyId)
       .order("start_date", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
@@ -165,17 +196,15 @@ export default function PortfolioRenting({ propertyId }: Props) {
     setLoading(false);
     setBusy(false);
     setIsFormOpen(false);
-    setForm({ rent_type: "", rent_monthly: "", start_date: "", end_date: "" });
+    setForm({ kaltmiete: "", nebenkosten: "", start_date: "", end_date: "" });
 
-    // ✅ Guard
     if (!safeCorePropertyId) return;
-
     void loadRenting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeCorePropertyId]);
 
   function resetForm() {
-    setForm({ rent_type: "", rent_monthly: "", start_date: "", end_date: "" });
+    setForm({ kaltmiete: "", nebenkosten: "", start_date: "", end_date: "" });
   }
 
   function openCreate() {
@@ -187,8 +216,8 @@ export default function PortfolioRenting({ propertyId }: Props) {
   function openEdit(r: RentalRow) {
     setForm({
       id: r.id,
-      rent_type: r.rent_type ?? "",
-      rent_monthly: formatNullableNumber(r.rent_monthly),
+      kaltmiete: formatNullableNumber(r.kaltmiete_laut_mietvertrag),
+      nebenkosten: formatNullableNumber(r.nebenkosten),
       start_date: r.start_date ?? "",
       end_date: r.end_date ?? "",
     });
@@ -212,9 +241,14 @@ export default function PortfolioRenting({ propertyId }: Props) {
 
     if (end && start > end) return "Anfangsdatum darf nicht nach Enddatum liegen.";
 
-    const monthlyRaw = form.rent_monthly.trim();
-    if (monthlyRaw && toNullableNumber(monthlyRaw) === null) {
-      return "Miete muss eine Zahl sein (z.B. 1200 oder 1200.50).";
+    const kRaw = form.kaltmiete.trim();
+    if (kRaw && toNullableNumber(kRaw) === null) {
+      return "Kaltmiete muss eine Zahl sein (z.B. 800 oder 800.50).";
+    }
+
+    const nRaw = form.nebenkosten.trim();
+    if (nRaw && toNullableNumber(nRaw) === null) {
+      return "Nebenkosten müssen eine Zahl sein (z.B. 200 oder 200.00).";
     }
 
     const newStart = start;
@@ -242,16 +276,31 @@ export default function PortfolioRenting({ propertyId }: Props) {
       return;
     }
 
-    // ✅ hard guard
     if (!safeCorePropertyId) return;
 
     setBusy(true);
     setError(null);
 
+    const kaltmieteNum = toNullableNumber(form.kaltmiete);
+    const nebenkostenNum = toNullableNumber(form.nebenkosten);
+
+    // Warmmiete = Kalt + NK (wenn beide leer => null speichern)
+    const hasAny = Boolean(form.kaltmiete.trim() || form.nebenkosten.trim());
+    const warmmieteNum = hasAny ? (kaltmieteNum ?? 0) + (nebenkostenNum ?? 0) : null;
+
     const payload = {
       property_id: safeCorePropertyId,
-      rent_type: form.rent_type.trim() || null,
-      rent_monthly: toNullableNumber(form.rent_monthly),
+
+      // intern beibehalten (UI zeigt es nicht)
+      rent_type: "MONTHLY" as string | null,
+
+      // Warmmiete
+      rent_monthly: warmmieteNum,
+
+      // getrennte Felder
+      kaltmiete_laut_mietvertrag: kaltmieteNum,
+      nebenkosten: nebenkostenNum,
+
       start_date: form.start_date.trim() || null,
       end_date: form.end_date.trim() || null,
       notes: null as string | null,
@@ -284,7 +333,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
   }
 
   async function onDelete(rowId: string) {
-    // ✅ Guard
     if (!safeCorePropertyId) return;
 
     const ok = window.confirm("Diesen Vermietungszeitraum wirklich löschen?");
@@ -309,25 +357,13 @@ export default function PortfolioRenting({ propertyId }: Props) {
     await loadRenting();
   }
 
-  // ✅ If missing corePropertyId => stop UI + no queries
   if (!safeCorePropertyId) {
     return (
       <div style={{ display: "grid", gap: 16 }}>
         <div style={{ fontSize: 22, fontWeight: 900 }}>Vermietung</div>
         {error ? (
-          <div
-            style={{
-              border: "1px solid #fecaca",
-              background: "#fff1f2",
-              color: "#7f1d1d",
-              padding: 12,
-              borderRadius: 12,
-              whiteSpace: "pre-wrap",
-              fontSize: 13,
-              fontWeight: 800,
-            }}
-          >
-            {error}
+          <div style={errorBox}>
+            <strong>Fehler:</strong> {error}
           </div>
         ) : (
           <CoreLinkMissingBox />
@@ -340,29 +376,13 @@ export default function PortfolioRenting({ propertyId }: Props) {
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ fontSize: 22, fontWeight: 900 }}>Vermietung</div>
 
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          background: "white",
-          display: "grid",
-          gap: 14,
-        }}
-      >
+      <div style={card}>
         <p style={{ margin: 0, opacity: 0.75 }}>
           Vermietungszeiträume protokollieren (alt + neu). Überschneidungen werden verhindert.
         </p>
 
         {error && (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid rgba(255,0,0,0.35)",
-              background: "rgba(255,0,0,0.06)",
-            }}
-          >
+          <div style={errorBox}>
             <strong>Fehler:</strong> {error}
           </div>
         )}
@@ -371,36 +391,11 @@ export default function PortfolioRenting({ propertyId }: Props) {
           <div style={{ fontWeight: 800 }}>Vermietungszeiträume</div>
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={loadRenting}
-              disabled={busy || loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                fontWeight: 600,
-                cursor: busy || loading ? "not-allowed" : "pointer",
-                opacity: busy || loading ? 0.6 : 1,
-              }}
-            >
+            <button onClick={loadRenting} disabled={busy || loading} style={btnSecondary(busy || loading)}>
               Neu laden
             </button>
 
-            <button
-              onClick={openCreate}
-              disabled={!canOpenCreate}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                background: "#111827",
-                color: "white",
-                fontWeight: 600,
-                cursor: !canOpenCreate ? "not-allowed" : "pointer",
-                opacity: !canOpenCreate ? 0.6 : 1,
-              }}
-            >
+            <button onClick={openCreate} disabled={!canOpenCreate} style={btnPrimary(!canOpenCreate)}>
               + Neuer Zeitraum
             </button>
           </div>
@@ -409,132 +404,91 @@ export default function PortfolioRenting({ propertyId }: Props) {
         {loading && <div>Lade Vermietung…</div>}
 
         {isFormOpen && (
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 14,
-              padding: 14,
-              background: "white",
-              display: "grid",
-              gap: 12,
-            }}
-          >
+          <div style={innerCard}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
               <strong>{isEditing ? "Zeitraum bearbeiten" : "Neuer Vermietungszeitraum"}</strong>
 
-              <button
-                onClick={closeForm}
-                disabled={busy}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "white",
-                  fontWeight: 600,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
+              <button onClick={closeForm} disabled={busy} style={btnSecondary(busy)}>
                 Schließen
               </button>
             </div>
 
+            {/* ✅ Maske: Kaltmiete + Nebenkosten (Typ entfernt) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Miete</span>
+              <label style={label}>
+                <span>Miete (Kaltmiete)</span>
                 <input
-                  value={form.rent_monthly}
-                  onChange={(e) => setForm((s) => ({ ...s, rent_monthly: e.target.value }))}
+                  value={form.kaltmiete}
+                  onChange={(e) => setForm((s) => ({ ...s, kaltmiete: e.target.value }))}
                   inputMode="decimal"
-                  placeholder="z.B. 1200"
+                  placeholder="z.B. 800"
                   disabled={busy}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                  }}
+                  style={input}
                 />
-                {form.rent_monthly.trim() && toNullableNumber(form.rent_monthly) === null && (
-                  <small style={{ color: "rgba(220,38,38,0.9)" }}>
-                    Bitte eine gültige Zahl eingeben.
-                  </small>
+                {form.kaltmiete.trim() && toNullableNumber(form.kaltmiete) === null && (
+                  <small style={smallError}>Bitte eine gültige Zahl eingeben.</small>
                 )}
               </label>
 
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>Typ</span>
+              <label style={label}>
+                <span>Nebenkosten</span>
                 <input
-                  value={form.rent_type}
-                  onChange={(e) => setForm((s) => ({ ...s, rent_type: e.target.value }))}
-                  placeholder="z.B. Kaltmiete / Warmmiete / Gewerbe …"
+                  value={form.nebenkosten}
+                  onChange={(e) => setForm((s) => ({ ...s, nebenkosten: e.target.value }))}
+                  inputMode="decimal"
+                  placeholder="z.B. 200"
                   disabled={busy}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                  }}
+                  style={input}
                 />
+                {form.nebenkosten.trim() && toNullableNumber(form.nebenkosten) === null && (
+                  <small style={smallError}>Bitte eine gültige Zahl eingeben.</small>
+                )}
               </label>
 
-              <label style={{ display: "grid", gap: 6 }}>
+              <label style={label}>
+                <span>Miete (Kalt + Nebenkosten) – automatisch</span>
+                <input value={warmmietePreview} disabled style={{ ...input, background: "#f9fafb" }} />
+                <small style={{ opacity: 0.65 }}>Wird automatisch gespeichert.</small>
+              </label>
+
+              <label style={label}>
                 <span>Anfangsdatum</span>
                 <input
                   type="date"
                   value={form.start_date}
                   onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))}
                   disabled={busy}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                  }}
+                  style={input}
                 />
               </label>
 
-              <label style={{ display: "grid", gap: 6 }}>
+              <label style={label}>
                 <span>Enddatum</span>
                 <input
                   type="date"
                   value={form.end_date}
                   onChange={(e) => setForm((s) => ({ ...s, end_date: e.target.value }))}
                   disabled={busy}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                  }}
+                  style={input}
                 />
                 <small style={{ opacity: 0.65 }}>Leer lassen = läuft noch.</small>
               </label>
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <button
-                onClick={onSave}
-                disabled={busy}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "#111827",
-                  color: "white",
-                  fontWeight: 600,
-                  cursor: busy ? "not-allowed" : "pointer",
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
+              <button onClick={onSave} disabled={busy} style={btnPrimary(busy)}>
                 {busy ? "Speichere…" : isEditing ? "Änderungen speichern" : "Zeitraum hinzufügen"}
               </button>
             </div>
           </div>
         )}
 
+        {/* ✅ Tabelle: zeigt Warmmiete (Kalt + NK) */}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
             <thead>
               <tr>
-                <th style={th}>Miete</th>
-                <th style={th}>Typ</th>
+                <th style={th}>Miete (Kalt + NK)</th>
                 <th style={th}>Anfangsdatum</th>
                 <th style={th}>Enddatum</th>
                 <th style={th}>Aktion</th>
@@ -543,39 +497,85 @@ export default function PortfolioRenting({ propertyId }: Props) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td style={td} colSpan={5}>
+                  <td style={td} colSpan={4}>
                     Noch keine Vermietungszeiträume.
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
-                  <tr key={r.id}>
-                    <td style={td}>{r.rent_monthly ?? "—"}</td>
-                    <td style={td}>{r.rent_type ?? "—"}</td>
-                    <td style={td}>{prettyDate(r.start_date)}</td>
-                    <td style={td}>{prettyDate(r.end_date)}</td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>
-                      <button onClick={() => openEdit(r)} disabled={busy} style={smallActionBtn}>
-                        Bearbeiten
-                      </button>
-                      <button
-                        onClick={() => onDelete(r.id)}
-                        disabled={busy}
-                        style={{ ...smallActionBtn, marginLeft: 8 }}
-                      >
-                        Löschen
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                rows.map((r) => {
+                  // Anzeige: bevorzugt rent_monthly (Warmmiete), sonst berechnen
+                  const warm =
+                    r.rent_monthly ??
+                    (r.kaltmiete_laut_mietvertrag ?? 0) + (r.nebenkosten ?? 0);
+
+                  return (
+                    <tr key={r.id}>
+                      <td style={td}>{Number.isFinite(warm as number) ? warm : "—"}</td>
+                      <td style={td}>{prettyDate(r.start_date)}</td>
+                      <td style={td}>{prettyDate(r.end_date)}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>
+                        <button onClick={() => openEdit(r)} disabled={busy} style={smallActionBtn}>
+                          Bearbeiten
+                        </button>
+                        <button
+                          onClick={() => onDelete(r.id)}
+                          disabled={busy}
+                          style={{ ...smallActionBtn, marginLeft: 8 }}
+                        >
+                          Löschen
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
+        </div>
+
+        <div style={{ fontSize: 12, opacity: 0.7 }}>
+          Hinweis: Wenn du nach dem Update noch „Typ“ siehst, läuft noch ein alter Build/Cache.
+          Bitte Dev-Server neu starten und Hard Reload machen.
         </div>
       </div>
     </div>
   );
 }
+
+const card: CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 16,
+  background: "white",
+  display: "grid",
+  gap: 14,
+};
+
+const innerCard: CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 14,
+  background: "white",
+  display: "grid",
+  gap: 12,
+};
+
+const errorBox: CSSProperties = {
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid rgba(255,0,0,0.35)",
+  background: "rgba(255,0,0,0.06)",
+};
+
+const label: CSSProperties = { display: "grid", gap: 6 };
+
+const input: CSSProperties = {
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #e5e7eb",
+};
+
+const smallError: CSSProperties = { color: "rgba(220,38,38,0.9)" };
 
 const th: CSSProperties = {
   textAlign: "left",
@@ -589,6 +589,31 @@ const td: CSSProperties = {
   borderBottom: "1px solid #f3f4f6",
   verticalAlign: "top",
 };
+
+function btnSecondary(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "white",
+    fontWeight: 600,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function btnPrimary(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "#111827",
+    color: "white",
+    fontWeight: 600,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
 
 const smallActionBtn: CSSProperties = {
   padding: "8px 10px",

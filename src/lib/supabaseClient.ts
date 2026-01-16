@@ -1,16 +1,15 @@
 // src/lib/supabaseClient.ts
-import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+/**
+ * ⚠️ WICHTIG
+ * Diese Datei darf KEINEN eigenen Supabase-Client erzeugen.
+ * Sie re-exportiert ausschließlich die Singleton-Instanz aus `supabase.ts`.
+ *
+ * Grund:
+ * - Mehrere createClient()-Instanzen = verlorene Session
+ * - verlorene Session = auth.uid() === null
+ * - auth.uid() === null = RLS blockiert
+ */
 
-console.log("SUPABASE_URL:", supabaseUrl);
-console.log("SUPABASE_KEY prefix:", (supabaseAnonKey || "").slice(0, 12));
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Check .env.local and restart dev server."
-  );
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase } from "./supabase";
+export type { SupabaseClient } from "@supabase/supabase-js";

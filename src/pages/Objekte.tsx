@@ -26,6 +26,37 @@ function yearOrDash(v: number | string | null | undefined) {
 }
 
 /**
+ * EXTREM robust: erkennt "core-shadow" in allen realistischen Schreibweisen
+ * (auch Unicode-Dash, underscores, Klammerzusätze, etc.)
+ */
+function isCoreShadowName(name: string) {
+  const s = String(name ?? "");
+  // "core" + beliebige Trennzeichen/Whitespace/Underscore/Dash/Unicode-Dash + "shadow"
+  return /core[\s\W_]*shadow/i.test(s);
+}
+
+/**
+ * Entfernt core-shadow Marker in allen Varianten:
+ * - "(...core—shadow...)" komplette Klammer raus
+ * - standalone "core-shadow"/"core shadow"/"core_shadow" raus
+ * - Whitespace clean
+ */
+function stripCoreShadow(name: string) {
+  let s = String(name ?? "");
+
+  // Entferne Klammerzusätze, die core-shadow enthalten
+  s = s.replace(/\s*\([^)]*core[\s\W_]*shadow[^)]*\)\s*/gi, " ");
+
+  // Entferne standalone Tokens
+  s = s.replace(/\bcore[\s\W_]*shadow\b/gi, " ");
+
+  // Whitespace säubern
+  s = s.replace(/\s+/g, " ").trim();
+
+  return s;
+}
+
+/**
  * Sehr robuste Normalisierung:
  * - Unicode vereinheitlichen (NFKC)
  * - unsichtbare Whitespaces entfernen
@@ -33,7 +64,7 @@ function yearOrDash(v: number | string | null | undefined) {
  * - alle Dash-Varianten, Interpunktion -> Space
  * - "..." und "…" entfernen
  * - straße/strasse/str. -> str
- * - zusammengesetztes "...strasse" -> "... str" (wichtig für rosensteinstrasse)
+ * - zusammengesetztes "...strasse" -> "... str"
  * - entfernt PLZ+Rest am Ende (z.B. "28211 Bremen", "70174 Stuttgart", "D-28211 Bremen")
  */
 function normalizeKey(input: string) {
@@ -44,7 +75,7 @@ function normalizeKey(input: string) {
 
   // Ellipsis Varianten
   s = s.replace(/…/g, " ");
-  s = s.replace(/\.{3,}/g, " "); // "..." -> Space
+  s = s.replace(/\.{3,}/g, " ");
 
   // Deutsche Sonderzeichen
   s = s.replace(/ß/g, "ss").replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue");
@@ -85,18 +116,16 @@ function looksIncomplete(name: string) {
 }
 
 /**
- * City am Ende extrahieren (ohne hartes Bremen!)
- * - erkennt "70174 Stuttgart" und "Stuttgart"
- * - wenn nix sicher: "" (unknown)
+ * City am Ende extrahieren
  */
 function extractCity(raw: string) {
   const s = String(raw ?? "").normalize("NFKC").trim();
 
-  // Fall: "70174 Stuttgart" oder "28211 Bremen"
+  // "70174 Stuttgart" oder "28211 Bremen"
   let m = s.match(/\b\d{4,5}\s+([A-Za-zÄÖÜäöüß\- ]+)\s*$/);
   if (m?.[1]) return m[1].trim().toLowerCase();
 
-  // Fall: "... Stuttgart" (ohne PLZ)
+  // "... Stuttgart" (ohne PLZ)
   m = s.match(/\s([A-Za-zÄÖÜäöüß\- ]+)\s*$/);
   if (m?.[1]) {
     const city = m[1].trim().toLowerCase();
@@ -109,25 +138,19 @@ function extractCity(raw: string) {
 /**
  * Base-Key für Merge:
  * - normalizeKey
+ * - City am Ende entfernen
  * - Hausnummer am Ende entfernen
- * => so matchen "Hohenloher Str. 78" und "Hohenloher Str. ... Stuttgart" über base
  */
 function baseStreetKey(name: string) {
-  // 1) normalisieren
   let s = normalizeKey(name);
 
-  // 2) wenn City erkannt wird, City am Ende abschneiden
-  //    (wichtig: macht "rosenstein str bremen" -> "rosenstein str")
   const city = extractCity(name);
   if (city) {
-    // normalizeKey auf city anwenden, damit "Stuttgart" exakt gleich behandelt wird
     const cityNorm = normalizeKey(city);
     s = s.replace(new RegExp(`\\s+${cityNorm}$`), "").trim();
   }
 
-  // 3) Hausnummer am Ende entfernen (macht "str 78" -> "str")
   s = s.replace(/\s+\d{1,4}\s*[a-z]?\b$/i, "").trim();
-
   return s;
 }
 
@@ -144,8 +167,13 @@ function score(r: Row) {
 
 /** "Besser"-Score fürs Merge/Drop */
 function betterScore(r: Row) {
-  const name = r.property_name ?? "";
-  return (hasHouseNumber(name) ? 100 : 0) + (looksIncomplete(name) ? -50 : 0) + score(r);
+  const rawName = String(r.property_name ?? "");
+  const cleanName = stripCoreShadow(rawName);
+
+  // Shadow soll NIE gewinnen, wenn ein echter Datensatz existiert
+  const shadowPenalty = isCoreShadowName(rawName) ? -1000 : 0;
+
+  return (hasHouseNumber(cleanName) ? 100 : 0) + (looksIncomplete(cleanName) ? -50 : 0) + score(r) + shadowPenalty;
 }
 
 /** Testdaten filtern (Frontend) */
@@ -153,7 +181,6 @@ function isTestPropertyName(name: string) {
   const n = String(name ?? "").trim().toLowerCase();
   if (!n) return true;
 
-  // Sehr gezielt (du kannst hier später anpassen)
   if (n.startsWith("rls test")) return true;
   if (n.startsWith("trigger test")) return true;
   if (n.includes(" rls ")) return true;
@@ -193,26 +220,23 @@ export default function Objekte() {
       // 1) Testdaten raus
       const cleaned = incoming.filter((r) => !isTestPropertyName(r.property_name));
 
-      // 2) Erstes Dedupe über normalizeKey (streng)
+      // 2) Dedupe über normalizeKey (streng) – auf BEREINIGTEM Namen
       const byKey = new Map<string, Row>();
       for (const r of cleaned) {
-        const k = normalizeKey(r.property_name || "");
+        const cleanName = stripCoreShadow(r.property_name || "");
+        const k = normalizeKey(cleanName);
         const prev = byKey.get(k);
         if (!prev || betterScore(r) > betterScore(prev)) byKey.set(k, r);
       }
       let unique = Array.from(byKey.values());
 
-      // 3) Zweites Dedupe/Drop: unvollständige Zeilen droppen,
-      //    wenn es eine bessere Zeile mit gleicher BASE gibt (city-aware!)
-      //
-      // City-Regel:
-      // - Wenn beide City bekannt: nur matchen wenn gleich
-      // - Wenn eine City unknown: darf matchen (unknown passt zu allem)
+      // 3) Zweites Dedupe/Drop: unvollständige Zeilen droppen (city-aware)
       const bestByBaseCityBucket = new Map<string, Row>();
 
       for (const r of unique) {
-        const base = baseStreetKey(r.property_name || "");
-        const city = extractCity(r.property_name || ""); // "" möglich
+        const cleanName = stripCoreShadow(r.property_name || "");
+        const base = baseStreetKey(cleanName);
+        const city = extractCity(cleanName);
         const bucket = `${base}__${city}`;
 
         const prev = bestByBaseCityBucket.get(bucket);
@@ -220,22 +244,19 @@ export default function Objekte() {
       }
 
       unique = unique.filter((r) => {
-        const name = r.property_name || "";
-        const base = baseStreetKey(name);
-        const city = extractCity(name); // "" möglich
+        const cleanName = stripCoreShadow(r.property_name || "");
 
-        const rIsIncomplete = !hasHouseNumber(name) || looksIncomplete(name);
+        const base = baseStreetKey(cleanName);
+        const city = extractCity(cleanName);
+
+        const rIsIncomplete = !hasHouseNumber(cleanName) || looksIncomplete(cleanName);
         if (!rIsIncomplete) return true;
 
-        // finde "best" Kandidaten für gleiche base, city-kompatibel
         const candidates: Row[] = [];
         for (const [bucket, best] of bestByBaseCityBucket.entries()) {
           const [b, c] = bucket.split("__");
           if (b !== base) continue;
 
-          // city kompatibel?
-          // - r.city bekannt: candidate.city muss gleich sein ODER candidate.city unknown
-          // - r.city unknown: candidate darf jede city haben
           if (city) {
             if (c === city || c === "") candidates.push(best);
           } else {
@@ -245,19 +266,18 @@ export default function Objekte() {
 
         if (candidates.length === 0) return true;
 
-        // best candidate wählen
         const best = candidates.reduce((acc, cur) => (betterScore(cur) > betterScore(acc) ? cur : acc));
 
-        // wenn es einen anderen besseren Datensatz gibt -> droppen
-        if (best.property_id !== r.property_id) return false;
-
-        return true;
+        return best.property_id === r.property_id;
       });
 
-      unique.sort((a, b) => (a.property_name ?? "").localeCompare(b.property_name ?? "", "de"));
-      setRowsUnique(unique);
+      unique.sort((a, b) => {
+        const an = stripCoreShadow(a.property_name ?? "");
+        const bn = stripCoreShadow(b.property_name ?? "");
+        return an.localeCompare(bn, "de");
+      });
 
-      console.log("Objekte loaded — raw:", incoming.length, "cleaned:", cleaned.length, "shown:", unique.length);
+      setRowsUnique(unique);
     } catch (e: any) {
       console.error(e);
       setError(e?.message ?? "Unbekannter Fehler beim Laden.");
@@ -270,18 +290,25 @@ export default function Objekte() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
 
     return rowsUnique.filter((r) => {
+      const rawName = String(r.property_name ?? "");
+
+      // ✅ HARDFILTER: core-shadow IMMER raus
+      if (isCoreShadowName(rawName)) return false;
+
       if (hideZeroBalance) {
         const b = Number(r.last_balance ?? 0);
         if (!Number.isFinite(b) || b <= 0) return false;
       }
+
       if (!q) return true;
-      return `${r.property_name} ${r.property_id}`.toLowerCase().includes(q);
+      return `${stripCoreShadow(rawName)} ${r.property_id}`.toLowerCase().includes(q);
     });
   }, [rowsUnique, query, hideZeroBalance]);
 
@@ -294,7 +321,6 @@ export default function Objekte() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* Header */}
       <div
         style={{
           padding: 16,
@@ -310,9 +336,7 @@ export default function Objekte() {
       >
         <div>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Darlehensübersicht</div>
-          <div style={{ fontSize: 12, opacity: 0.6 }}>
-            Letzter gespeicherter Stand je Immobilie
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>Letzter gespeicherter Stand je Immobilie</div>
 
           <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
             raw={rowsRaw.length} · unique={rowsUnique.length} · shown={filtered.length}
@@ -334,7 +358,6 @@ export default function Objekte() {
         </div>
       </div>
 
-      {/* Controls */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input
           value={query}
@@ -381,7 +404,6 @@ export default function Objekte() {
         </button>
       </div>
 
-      {/* Liste */}
       {filtered.length === 0 ? (
         <div
           style={{
@@ -397,9 +419,12 @@ export default function Objekte() {
         </div>
       ) : (
         filtered.map((r) => {
-          const base = baseStreetKey(r.property_name || "");
-          const city = extractCity(r.property_name || "");
-          const key = normalizeKey(r.property_name || "");
+          const rawName = String(r.property_name ?? "");
+          const displayName = stripCoreShadow(rawName);
+
+          const base = baseStreetKey(displayName);
+          const city = extractCity(displayName);
+          const key = normalizeKey(displayName);
 
           return (
             <Link
@@ -419,7 +444,7 @@ export default function Objekte() {
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 900 }}>{r.property_name}</div>
+                <div style={{ fontWeight: 900 }}>{displayName}</div>
 
                 <div style={{ fontSize: 12, opacity: 0.6 }}>
                   Zeitraum: {yearOrDash(r.first_year)}–{yearOrDash(r.last_year)} (Stand:{" "}
@@ -438,13 +463,15 @@ export default function Objekte() {
 
                 {showDebug && (
                   <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6, fontFamily: "monospace" }}>
+                    raw: {JSON.stringify(rawName)}
+                    <br />
+                    isShadow: {String(isCoreShadowName(rawName))}
+                    <br />
                     key: {key}
                     <br />
                     base: {base}
                     <br />
                     city: {city || "—"}
-                    <br />
-                    raw: {JSON.stringify(r.property_name)}
                   </div>
                 )}
               </div>

@@ -2,8 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
-import Navbar from "./ui/Navbar";
+import { supabase } from "../lib/supabaseClient";
 
 type Props = {
   /**
@@ -13,7 +12,7 @@ type Props = {
   children: (session: Session) => ReactNode;
 
   /**
-   * Optional: eigener Loader-Text
+   * Optional: eigener Loader
    */
   loadingFallback?: ReactNode;
 };
@@ -25,20 +24,23 @@ export default function RequireAuth({ children, loadingFallback }: Props) {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
+    // 1) Initiale Session laden
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) console.error("getSession error in RequireAuth:", error);
         if (!mounted) return;
         setSession(data.session);
-        setLoading(false);
-      })
-      .catch((e) => {
+      } catch (e) {
         console.error("getSession failed in RequireAuth:", e);
         if (!mounted) return;
         setSession(null);
-        setLoading(false);
-      });
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
 
+    // 2) Session-Änderungen abonnieren
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
       setSession(newSession);
@@ -59,10 +61,6 @@ export default function RequireAuth({ children, loadingFallback }: Props) {
     return <Navigate to="/login" replace />;
   }
 
-  return (
-    <>
-      <Navbar />
-      <div style={{ padding: "0 16px 24px" }}>{children(session)}</div>
-    </>
-  );
+  // Nur guarden – Layout (Header/Nav) macht dein ProtectedLayout
+  return <>{children(session)}</>;
 }
