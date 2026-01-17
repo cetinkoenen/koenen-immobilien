@@ -9,47 +9,32 @@ type PortfolioOutletContext = {
 };
 
 type Props = {
-  /**
-   * Optional: wenn PortfolioRenting direkt gerendert wird (z.B. in Tabs),
-   * kann propertyId übergeben werden.
-   * Wenn nicht gesetzt, wird corePropertyId aus dem OutletContext genutzt.
-   */
   propertyId?: string;
 };
 
 type RentalRow = {
   id: string;
   property_id: string;
-
-  // intern (bei euch z.B. "MONTHLY") – wir zeigen es NICHT in der UI
   rent_type: string | null;
-
-  // Warmmiete (Kalt + Nebenkosten) – wird automatisch berechnet/gespeichert
   rent_monthly: number | null;
-
-  // getrennte Felder
   kaltmiete_laut_mietvertrag: number | null;
   nebenkosten: number | null;
-
-  start_date: string | null; // YYYY-MM-DD
-  end_date: string | null; // YYYY-MM-DD
-
+  start_date: string | null;
+  end_date: string | null;
   notes: string | null;
-
   created_at: string;
   updated_at: string;
 };
 
 type RentalFormState = {
-  id?: string; // edit
-
+  id?: string;
   kaltmiete: string;
   nebenkosten: string;
-
   start_date: string;
-  end_date: string; // "" = open ended
+  end_date: string; // "" = offen
 };
 
+// ---------------- helpers ----------------
 function toNullableNumber(value: string): number | null {
   const v = value.trim();
   if (!v) return null;
@@ -58,7 +43,7 @@ function toNullableNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function formatNullableNumber(n: number | null | undefined): string {
+function formatInputNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "";
   return String(n);
 }
@@ -66,7 +51,13 @@ function formatNullableNumber(n: number | null | undefined): string {
 function prettyDate(value: string | null): string {
   if (!value) return "—";
   const d = new Date(value + "T00:00:00");
-  return d.toLocaleDateString();
+  return d.toLocaleDateString("de-DE");
+}
+
+function euro(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 }
 
 function dayKey(dateStr: string): number {
@@ -74,17 +65,28 @@ function dayKey(dateStr: string): number {
   return Math.floor(d.getTime() / 86400000);
 }
 
-function rangesOverlap(
-  aStart: string,
-  aEnd: string | null,
-  bStart: string,
-  bEnd: string | null
-): boolean {
+function rangesOverlap(aStart: string, aEnd: string | null, bStart: string, bEnd: string | null): boolean {
   const aS = dayKey(aStart);
   const aE = aEnd ? dayKey(aEnd) : Number.POSITIVE_INFINITY;
   const bS = dayKey(bStart);
   const bE = bEnd ? dayKey(bEnd) : Number.POSITIVE_INFINITY;
   return aS <= bE && bS <= aE;
+}
+
+/**
+ * ✅ THE FIX:
+ * Supabase ist bei dir so typisiert, dass "data" manchmal als GenericStringError[] kommt.
+ * Deshalb behandeln wir data als unknown und machen runtime-Validation → danach ist es sicher RentalRow[].
+ */
+function isRentalRow(x: unknown): x is RentalRow {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Record<string, unknown>;
+  return typeof r.id === "string" && typeof r.property_id === "string";
+}
+
+function sanitizeRows(data: unknown): RentalRow[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter(isRentalRow);
 }
 
 function CoreLinkMissingBox() {
@@ -112,18 +114,14 @@ export default function PortfolioRenting({ propertyId }: Props) {
   const { corePropertyId } = useOutletContext<PortfolioOutletContext>();
 
   const resolvedId = propertyId ?? corePropertyId ?? "";
+  const safeCorePropertyId = useMemo(() => normalizeUuid(String(resolvedId ?? "").trim()), [resolvedId]);
 
-  const safeCorePropertyId = useMemo(() => {
-    return normalizeUuid(String(resolvedId ?? "").trim());
-  }, [resolvedId]);
-
+  const [rows, setRows] = useState<RentalRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [rows, setRows] = useState<RentalRow[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
-
   const [form, setForm] = useState<RentalFormState>({
     kaltmiete: "",
     nebenkosten: "",
@@ -132,20 +130,19 @@ export default function PortfolioRenting({ propertyId }: Props) {
   });
 
   const requestSeq = useRef(0);
-
   const isEditing = useMemo(() => Boolean(form.id), [form.id]);
+
   const canOpenCreate = useMemo(
     () => !busy && !loading && Boolean(safeCorePropertyId),
     [busy, loading, safeCorePropertyId]
   );
 
-  // ✅ Warmmiete (Kalt + NK) automatisch berechnen
-  const warmmietePreview = useMemo(() => {
+  const warmmietePreviewNum = useMemo(() => {
+    const hasAny = Boolean(form.kaltmiete.trim() || form.nebenkosten.trim());
+    if (!hasAny) return null;
     const k = toNullableNumber(form.kaltmiete);
     const n = toNullableNumber(form.nebenkosten);
-    if (k === null && n === null) return "";
-    if (!form.kaltmiete.trim() && !form.nebenkosten.trim()) return "";
-    return String((k ?? 0) + (n ?? 0));
+    return (k ?? 0) + (n ?? 0);
   }, [form.kaltmiete, form.nebenkosten]);
 
   async function loadRenting() {
@@ -185,12 +182,13 @@ export default function PortfolioRenting({ propertyId }: Props) {
       return;
     }
 
-    setRows((data ?? []) as RentalRow[]);
+    // ✅ TS-safe + runtime-safe
+    const clean = sanitizeRows((data ?? []) as unknown);
+    setRows(clean);
     setLoading(false);
   }
 
   useEffect(() => {
-    // Reset between properties
     setRows([]);
     setError(null);
     setLoading(false);
@@ -216,8 +214,8 @@ export default function PortfolioRenting({ propertyId }: Props) {
   function openEdit(r: RentalRow) {
     setForm({
       id: r.id,
-      kaltmiete: formatNullableNumber(r.kaltmiete_laut_mietvertrag),
-      nebenkosten: formatNullableNumber(r.nebenkosten),
+      kaltmiete: formatInputNumber(r.kaltmiete_laut_mietvertrag),
+      nebenkosten: formatInputNumber(r.nebenkosten),
       start_date: r.start_date ?? "",
       end_date: r.end_date ?? "",
     });
@@ -233,26 +231,20 @@ export default function PortfolioRenting({ propertyId }: Props) {
     if (!safeCorePropertyId) {
       return "Dieses Portfolio-Objekt hat keine Verknüpfung zu properties (core_property_id ist leer).";
     }
-
     if (!form.start_date.trim()) return "Bitte ein Anfangsdatum setzen.";
 
     const start = form.start_date.trim();
-    const end = form.end_date.trim() || "";
-
+    const end = form.end_date.trim();
     if (end && start > end) return "Anfangsdatum darf nicht nach Enddatum liegen.";
 
     const kRaw = form.kaltmiete.trim();
-    if (kRaw && toNullableNumber(kRaw) === null) {
-      return "Kaltmiete muss eine Zahl sein (z.B. 800 oder 800.50).";
-    }
+    if (kRaw && toNullableNumber(kRaw) === null) return "Kaltmiete muss eine Zahl sein (z.B. 800 oder 800,50).";
 
     const nRaw = form.nebenkosten.trim();
-    if (nRaw && toNullableNumber(nRaw) === null) {
-      return "Nebenkosten müssen eine Zahl sein (z.B. 200 oder 200.00).";
-    }
+    if (nRaw && toNullableNumber(nRaw) === null) return "Nebenkosten müssen eine Zahl sein (z.B. 200 oder 200,00).";
 
     const newStart = start;
-    const newEnd = end || null;
+    const newEnd = end ? end : null;
 
     const conflicting = rows.find((r) => {
       if (!r.start_date) return false;
@@ -275,7 +267,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
       setError(v);
       return;
     }
-
     if (!safeCorePropertyId) return;
 
     setBusy(true);
@@ -284,23 +275,15 @@ export default function PortfolioRenting({ propertyId }: Props) {
     const kaltmieteNum = toNullableNumber(form.kaltmiete);
     const nebenkostenNum = toNullableNumber(form.nebenkosten);
 
-    // Warmmiete = Kalt + NK (wenn beide leer => null speichern)
     const hasAny = Boolean(form.kaltmiete.trim() || form.nebenkosten.trim());
     const warmmieteNum = hasAny ? (kaltmieteNum ?? 0) + (nebenkostenNum ?? 0) : null;
 
     const payload = {
       property_id: safeCorePropertyId,
-
-      // intern beibehalten (UI zeigt es nicht)
       rent_type: "MONTHLY" as string | null,
-
-      // Warmmiete
       rent_monthly: warmmieteNum,
-
-      // getrennte Felder
       kaltmiete_laut_mietvertrag: kaltmieteNum,
       nebenkosten: nebenkostenNum,
-
       start_date: form.start_date.trim() || null,
       end_date: form.end_date.trim() || null,
       notes: null as string | null,
@@ -378,7 +361,7 @@ export default function PortfolioRenting({ propertyId }: Props) {
 
       <div style={card}>
         <p style={{ margin: 0, opacity: 0.75 }}>
-          Vermietungszeiträume protokollieren (alt + neu). Überschneidungen werden verhindert.
+          Vermietungszeiträume protokollieren. Überschneidungen werden verhindert.
         </p>
 
         {error && (
@@ -407,13 +390,11 @@ export default function PortfolioRenting({ propertyId }: Props) {
           <div style={innerCard}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
               <strong>{isEditing ? "Zeitraum bearbeiten" : "Neuer Vermietungszeitraum"}</strong>
-
               <button onClick={closeForm} disabled={busy} style={btnSecondary(busy)}>
                 Schließen
               </button>
             </div>
 
-            {/* ✅ Maske: Kaltmiete + Nebenkosten (Typ entfernt) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <label style={label}>
                 <span>Miete (Kaltmiete)</span>
@@ -425,9 +406,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
                   disabled={busy}
                   style={input}
                 />
-                {form.kaltmiete.trim() && toNullableNumber(form.kaltmiete) === null && (
-                  <small style={smallError}>Bitte eine gültige Zahl eingeben.</small>
-                )}
               </label>
 
               <label style={label}>
@@ -440,14 +418,15 @@ export default function PortfolioRenting({ propertyId }: Props) {
                   disabled={busy}
                   style={input}
                 />
-                {form.nebenkosten.trim() && toNullableNumber(form.nebenkosten) === null && (
-                  <small style={smallError}>Bitte eine gültige Zahl eingeben.</small>
-                )}
               </label>
 
               <label style={label}>
-                <span>Miete (Kalt + Nebenkosten) – automatisch</span>
-                <input value={warmmietePreview} disabled style={{ ...input, background: "#f9fafb" }} />
+                <span>Warmmiete (Kalt + Nebenkosten) – automatisch</span>
+                <input
+                  value={warmmietePreviewNum === null ? "" : euro(warmmietePreviewNum)}
+                  disabled
+                  style={inputDisabled}
+                />
                 <small style={{ opacity: 0.65 }}>Wird automatisch gespeichert.</small>
               </label>
 
@@ -483,12 +462,11 @@ export default function PortfolioRenting({ propertyId }: Props) {
           </div>
         )}
 
-        {/* ✅ Tabelle: zeigt Warmmiete (Kalt + NK) */}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
             <thead>
               <tr>
-                <th style={th}>Miete (Kalt + NK)</th>
+                <th style={th}>Warmmiete</th>
                 <th style={th}>Anfangsdatum</th>
                 <th style={th}>Enddatum</th>
                 <th style={th}>Aktion</th>
@@ -503,14 +481,10 @@ export default function PortfolioRenting({ propertyId }: Props) {
                 </tr>
               ) : (
                 rows.map((r) => {
-                  // Anzeige: bevorzugt rent_monthly (Warmmiete), sonst berechnen
-                  const warm =
-                    r.rent_monthly ??
-                    (r.kaltmiete_laut_mietvertrag ?? 0) + (r.nebenkosten ?? 0);
-
+                  const warm = r.rent_monthly ?? (r.kaltmiete_laut_mietvertrag ?? 0) + (r.nebenkosten ?? 0);
                   return (
                     <tr key={r.id}>
-                      <td style={td}>{Number.isFinite(warm as number) ? warm : "—"}</td>
+                      <td style={td}>{euro(warm)}</td>
                       <td style={td}>{prettyDate(r.start_date)}</td>
                       <td style={td}>{prettyDate(r.end_date)}</td>
                       <td style={{ ...td, whiteSpace: "nowrap" }}>
@@ -532,16 +506,12 @@ export default function PortfolioRenting({ propertyId }: Props) {
             </tbody>
           </table>
         </div>
-
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Hinweis: Wenn du nach dem Update noch „Typ“ siehst, läuft noch ein alter Build/Cache.
-          Bitte Dev-Server neu starten und Hard Reload machen.
-        </div>
       </div>
     </div>
   );
 }
 
+// ---------------- styles ----------------
 const card: CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: 14,
@@ -575,7 +545,10 @@ const input: CSSProperties = {
   border: "1px solid #e5e7eb",
 };
 
-const smallError: CSSProperties = { color: "rgba(220,38,38,0.9)" };
+const inputDisabled: CSSProperties = {
+  ...input,
+  background: "#f9fafb",
+};
 
 const th: CSSProperties = {
   textAlign: "left",
