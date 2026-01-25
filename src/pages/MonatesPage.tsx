@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
 
 type MonatRow = {
   id: string; // UUID
@@ -14,13 +14,8 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; table: string; rows: MonatRow[] };
 
-function env(name: "VITE_SUPABASE_URL" | "VITE_SUPABASE_ANON_KEY") {
-  const v = import.meta.env[name] as string | undefined;
-  return v?.trim() ? v.trim() : undefined;
-}
-
 async function findFirstExistingTable(
-  supabase: SupabaseClient,
+  supabase: any,
   candidates: string[]
 ): Promise<string> {
   // Try each candidate with a tiny select. If table doesn't exist, PostgREST returns an error.
@@ -34,13 +29,7 @@ async function findFirstExistingTable(
 }
 
 export default function Monate() {
-  const supabaseUrl = env("VITE_SUPABASE_URL");
-  const supabaseKey = env("VITE_SUPABASE_ANON_KEY");
 
-  const supabase = useMemo(() => {
-    if (!supabaseUrl || !supabaseKey) return null;
-    return createClient(supabaseUrl, supabaseKey);
-  }, [supabaseUrl, supabaseKey]);
 
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
@@ -100,8 +89,6 @@ export default function Monate() {
 
       <div style={card}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>ENV</div>
-        <div>VITE_SUPABASE_URL: {supabaseUrl ? "✅ gesetzt" : "❌ fehlt"}</div>
-        <div>VITE_SUPABASE_ANON_KEY: {supabaseKey ? "✅ gesetzt" : "❌ fehlt"}</div>
         {!supabase && (
           <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>
             Supabase ENV fehlt → bitte .env prüfen und Vite neu starten.

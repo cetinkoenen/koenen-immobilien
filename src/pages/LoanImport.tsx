@@ -1,5 +1,5 @@
 // src/pages/LoanImport.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { normalizeUuid } from "../lib/ids";
@@ -19,10 +19,6 @@ type Parsed = {
 };
 
 /* ----------------------------- Helpers ----------------------------- */
-
-function norm(s: string) {
-  return s.toLowerCase().replace(/\s+/g, " ").trim();
-}
 
 function parseNumber(v: string): number {
   const s = v.replace(/\./g, "").replace(",", ".");

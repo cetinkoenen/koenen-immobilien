@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
 
 type Category = {
   id: string; // UUID
@@ -7,19 +7,7 @@ type Category = {
   created_at: string;
 };
 
-function mustGetEnv(key: "VITE_SUPABASE_URL" | "VITE_SUPABASE_ANON_KEY") {
-  const v = import.meta.env[key] as string | undefined;
-  return v?.trim() ? v.trim() : undefined;
-}
-
 export default function CategoryAdminPage() {
-  const supabaseUrl = mustGetEnv("VITE_SUPABASE_URL");
-  const supabaseAnonKey = mustGetEnv("VITE_SUPABASE_ANON_KEY");
-
-  const supabase: SupabaseClient | null = useMemo(() => {
-    if (!supabaseUrl || !supabaseAnonKey) return null;
-    return createClient(supabaseUrl, supabaseAnonKey);
-  }, [supabaseUrl, supabaseAnonKey]);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -148,8 +136,6 @@ export default function CategoryAdminPage() {
 
       <div style={card}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>ENV</div>
-        <div>VITE_SUPABASE_URL: {supabaseUrl ? "✅ gesetzt" : "❌ fehlt"}</div>
-        <div>VITE_SUPABASE_ANON_KEY: {supabaseAnonKey ? "✅ gesetzt" : "❌ fehlt"}</div>
         {!supabase && (
           <div style={{ marginTop: 8, color: "crimson", fontWeight: 700 }}>
             Supabase ENV fehlt. Prüfe deine <code>.env</code> im Projekt-Root und starte Vite neu.
