@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PropertyLoanDashboard, { type Row } from "../components/PropertyLoanDashboard";
-import { supabase } from "../lib/supabase"; // <- muss existieren (createClient mit anon key)
+import { supabase } from "../lib/supabaseClient"; // <- muss existieren (createClient mit anon key)
 
 function eur(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";

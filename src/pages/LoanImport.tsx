@@ -1,93 +1,67 @@
 // src/pages/LoanImport.tsx
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabaseClient";
+import { normalizeUuid } from "../lib/ids";
+
+/* ----------------------------- Types ----------------------------- */
+
+type PropertyMini = {
+  id: string;
+  name: string;
+};
 
 type Parsed = {
-  property_name: string;
   year: number;
   interest: number;
   principal: number;
   balance: number;
-  source: string;
 };
 
-type PropertyMini = { id: string; name: string };
+/* ----------------------------- Helpers ----------------------------- */
 
-function parseNumberDE(raw: string) {
-  const s = (raw ?? "").trim().replace(/\./g, "").replace(",", ".");
+function norm(s: string) {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function parseNumber(v: string): number {
+  const s = v.replace(/\./g, "").replace(",", ".");
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
-function simpleCsvParse(text: string): string[][] {
-  // Minimal CSV parser: unterstützt Quotes "..."
-  const rows: string[][] = [];
-  let cur: string[] = [];
-  let cell = "";
-  let inQuotes = false;
+function simpleCsvParse(csv: string): Parsed[] {
+  const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  const out: Parsed[] = [];
 
-    if (ch === '"') {
-      const next = text[i + 1];
-      if (inQuotes && next === '"') {
-        cell += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
+  for (let i = 1; i < lines.length; i++) {
+    const [year, interest, principal, balance] = lines[i].split(";");
 
-    if (!inQuotes && (ch === "," || ch === ";")) {
-      cur.push(cell);
-      cell = "";
-      continue;
-    }
-
-    if (!inQuotes && (ch === "\n" || ch === "\r")) {
-      if (ch === "\r" && text[i + 1] === "\n") i++;
-      cur.push(cell);
-      const cleaned = cur.map((c) => c.trim());
-      if (cleaned.some((x) => x.length)) rows.push(cleaned);
-      cur = [];
-      cell = "";
-      continue;
-    }
-
-    cell += ch;
+    out.push({
+      year: Number(year),
+      interest: parseNumber(interest),
+      principal: parseNumber(principal),
+      balance: parseNumber(balance),
+    });
   }
 
-  cur.push(cell);
-  const cleaned = cur.map((c) => c.trim());
-  if (cleaned.some((x) => x.length)) rows.push(cleaned);
-
-  return rows;
+  return out.filter((r) => Number.isFinite(r.year));
 }
 
-function norm(s: string) {
-  return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function inputStyle(disabled: boolean): React.CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: disabled ? "#f9fafb" : "white",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    fontSize: 12,
-    opacity: disabled ? 0.85 : 1,
-  };
-}
+/* ----------------------------- Component ----------------------------- */
 
 export default function LoanImport() {
   const nav = useNavigate();
   const loc = useLocation();
+
   const qs = useMemo(() => new URLSearchParams(loc.search), [loc.search]);
-  const preselectPropertyId = qs.get("property_id") ?? "";
+  const rawPreselectId = qs.get("property_id") ?? "";
+  const safePreselectId = useMemo(() => normalizeUuid(rawPreselectId), [rawPreselectId]);
+
+  const [properties, setProperties] = useState<PropertyMini[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(safePreselectId);
 
   const [csvText, setCsvText] = useState("");
   const [parsed, setParsed] = useState<Parsed[]>([]);
@@ -95,7 +69,7 @@ export default function LoanImport() {
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [properties, setProperties] = useState<PropertyMini[]>([]);
+  /* ----------------------------- Load properties ----------------------------- */
 
   useEffect(() => {
     let alive = true;
@@ -105,17 +79,18 @@ export default function LoanImport() {
         const { data, error } = await supabase
           .from("properties")
           .select("id,name")
-          .eq("is_test", false) // ✅ Wichtig: Test-Properties ausblenden
+          .eq("is_test", false)
           .order("name");
 
         if (!alive) return;
-
         if (error) throw error;
-        setProperties(((data ?? []) as any) as PropertyMini[]);
-      } catch (e: unknown) {
+
+        setProperties((data ?? []) as PropertyMini[]);
+      } catch (e: any) {
         if (!alive) return;
         console.error("LoanImport load properties failed:", e);
         setProperties([]);
+        setError(e?.message ?? String(e));
       }
     })();
 
@@ -124,371 +99,142 @@ export default function LoanImport() {
     };
   }, []);
 
-  const propByName = useMemo(() => {
-    const m = new Map<string, PropertyMini>();
-    for (const p of properties) m.set(norm(p.name), p);
-    return m;
-  }, [properties]);
+  /* ----------------------------- Parse CSV ----------------------------- */
 
   function doParse() {
     try {
       setError(null);
       setOk(null);
-
       const rows = simpleCsvParse(csvText);
-      if (!rows.length) {
-        setParsed([]);
-        setError("CSV ist leer.");
-        return;
-      }
-
-      // Header erkennen
-      const header = rows[0].map((h) => norm(h));
-      const idx = {
-        property_name: header.indexOf("property_name"),
-        year: header.indexOf("year"),
-        interest: header.indexOf("interest"),
-        principal: header.indexOf("principal"),
-        balance: header.indexOf("balance"),
-        source: header.indexOf("source"),
-      };
-
-      if (idx.property_name < 0 || idx.year < 0) {
-        throw new Error(
-          "Header fehlt. Erwartet: property_name, year, interest, principal, balance, source"
-        );
-      }
-
-      const out: Parsed[] = [];
-      for (let i = 1; i < rows.length; i++) {
-        const r = rows[i];
-
-        const property_name = (r[idx.property_name] ?? "").trim();
-        if (!property_name) continue;
-
-        const year = Number((r[idx.year] ?? "").trim());
-        if (!Number.isFinite(year)) continue;
-
-        const interest = idx.interest >= 0 ? parseNumberDE(r[idx.interest] ?? "0") : 0;
-        const principal = idx.principal >= 0 ? parseNumberDE(r[idx.principal] ?? "0") : 0;
-        const balance = idx.balance >= 0 ? parseNumberDE(r[idx.balance] ?? "0") : 0;
-        const source =
-          idx.source >= 0 ? (r[idx.source] ?? "import").trim() || "import" : "import";
-
-        out.push({ property_name, year, interest, principal, balance, source });
-      }
-
-      if (!out.length) throw new Error("Keine gültigen Datenzeilen gefunden.");
-      setParsed(out);
-    } catch (e: unknown) {
+      if (!rows.length) throw new Error("CSV enthält keine gültigen Daten.");
+      setParsed(rows);
+    } catch (e: any) {
       setParsed([]);
-      setError(e instanceof Error ? e.message : "Parse Fehler");
+      setError(e?.message ?? String(e));
     }
   }
 
-  async function ensureLoanId(property_id: string): Promise<string> {
-    // 1) latest loan
-    const { data: existing, error: e1 } = await supabase
-      .from("property_loans")
-      .select("id,created_at")
-      .eq("property_id", property_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+  /* ----------------------------- Save ----------------------------- */
 
-    if (e1) throw e1;
-
-    const got = (existing ?? [])[0]?.id as string | undefined;
-    if (got) return got;
-
-    // 2) create
-    const { data: created, error: e2 } = await supabase
-      .from("property_loans")
-      .insert({ property_id })
-      .select("id")
-      .limit(1);
-
-    if (e2) throw e2;
-
-    const newId = (created ?? [])[0]?.id as string | undefined;
-    if (!newId) throw new Error("Konnte loan_id nicht erzeugen.");
-    return newId;
-  }
-
-  async function upsertLedgerRow(row: {
-    loan_id: string;
-    property_id: string;
-    year: number;
-    interest: number;
-    principal: number;
-    balance: number;
-    source: string;
-  }) {
-    // ✅ FIX (wie von dir gewünscht):
-    // Statt upsert(... onConflict ...) machen wir SELECT -> UPDATE oder INSERT pro Zeile.
-    const { data: existing, error: selErr } = await supabase
-      .from("property_loan_ledger")
-      .select("id")
-      .eq("property_id", row.property_id)
-      .eq("year", row.year)
-      .maybeSingle();
-
-    if (selErr) throw selErr;
-
-    if (existing) {
-      const { error: updErr } = await supabase
-        .from("property_loan_ledger")
-        .update(row)
-        .eq("property_id", row.property_id)
-        .eq("year", row.year);
-
-      if (updErr) throw updErr;
-    } else {
-      const { error: insErr } = await supabase.from("property_loan_ledger").insert(row);
-      if (insErr) throw insErr;
+  async function doSave() {
+    if (!selectedId) {
+      setError("Bitte eine Immobilie auswählen.");
+      return;
     }
-  }
+    if (!parsed.length) {
+      setError("Keine Daten zum Importieren.");
+      return;
+    }
 
-  async function commit() {
     setBusy(true);
     setError(null);
     setOk(null);
 
     try {
-      if (!parsed.length) throw new Error("Nichts zu importieren. Erst Vorschau erzeugen.");
+      // 1) Loan sicherstellen
+      const { data: loans, error: e1 } = await supabase
+        .from("property_loans")
+        .select("id,created_at")
+        .eq("property_id", selectedId)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      // Map property_name -> property_id (normalisiert)
-      const mapped = parsed.map((p) => {
-        const found = propByName.get(norm(p.property_name));
-        return { ...p, property: found ?? null };
-      });
+      if (e1) throw e1;
 
-      const missing = mapped.filter((m) => !m.property);
-      if (missing.length) {
-        throw new Error(
-          `Unbekannte Objekte (Mapping fehlt): ${missing
-            .slice(0, 5)
-            .map((x) => x.property_name)
-            .join(", ")}${missing.length > 5 ? " ..." : ""}`
-        );
+      let loanId = loans?.[0]?.id as string | undefined;
+
+      if (!loanId) {
+        const { data: created, error: e2 } = await supabase
+          .from("property_loans")
+          .insert({ property_id: selectedId })
+          .select("id")
+          .single();
+
+        if (e2) throw e2;
+        loanId = (created as any).id;
       }
 
-      // optional filter to one property_id if opened from detail page
-      const finalRows = preselectPropertyId
-        ? mapped.filter((m) => m.property!.id === preselectPropertyId)
-        : mapped;
-
-      if (!finalRows.length) {
-        throw new Error("Keine Zeilen passen zu diesem Objekt (property_id Filter).");
-      }
-
-      // Group by property_id -> loan_id
-      const loanIdByProperty = new Map<string, string>();
-      for (const r of finalRows) {
-        const pid = r.property!.id;
-        if (!loanIdByProperty.has(pid)) {
-          const loanId = await ensureLoanId(pid);
-          loanIdByProperty.set(pid, loanId);
-        }
-      }
-
-      // pro Zeile committen (SELECT -> UPDATE/INSERT)
-      let okCount = 0;
-      for (const r of finalRows) {
-        const pid = r.property!.id;
-        const loan_id = loanIdByProperty.get(pid)!;
-
-        await upsertLedgerRow({
-          loan_id,
-          property_id: pid,
+      // 2) Ledger upsert
+      for (const r of parsed) {
+        const payload = {
+          loan_id: loanId,
+          property_id: selectedId,
           year: r.year,
           interest: r.interest,
           principal: r.principal,
           balance: r.balance,
-          source: r.source || "import",
-        });
+          source: "import",
+        };
 
-        okCount++;
+        const { error: upErr } = await supabase
+          .from("property_loan_ledger")
+          .upsert(payload, { onConflict: "property_id,year" });
+
+        if (upErr) throw upErr;
       }
 
-      setOk(`Import abgeschlossen ✅ (${okCount} Zeilen verarbeitet)`);
-    } catch (e: unknown) {
-      console.error("LoanImport commit failed:", e);
-      setError(e instanceof Error ? e.message : String(e));
+      setOk(`Import erfolgreich (${parsed.length} Zeilen).`);
+      setParsed([]);
+      setCsvText("");
+    } catch (e: any) {
+      console.error("LoanImport save failed:", e);
+      setError(e?.message ?? String(e));
     } finally {
       setBusy(false);
     }
   }
 
-  const backHref = preselectPropertyId ? `/objekte/${preselectPropertyId}` : "/objekte";
+  /* ----------------------------- Render ----------------------------- */
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Link
-          to={backHref}
-          style={{
-            textDecoration: "none",
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            color: "inherit",
-          }}
-        >
-          ← Zurück
-        </Link>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
+      <h2>Darlehen – CSV Import</h2>
 
-        <button
-          onClick={() => nav(backHref)}
-          style={{
-            textDecoration: "none",
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            color: "inherit",
-            cursor: "pointer",
-          }}
-          title="Zurück"
+      {error && (
+        <div style={{ padding: 12, background: "#fee2e2", borderRadius: 10, fontWeight: 800 }}>
+          {error}
+        </div>
+      )}
+      {ok && (
+        <div style={{ padding: 12, background: "#dcfce7", borderRadius: 10, fontWeight: 800 }}>
+          {ok}
+        </div>
+      )}
+
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Immobilie</div>
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          style={{ padding: 10, width: "100%" }}
         >
-          Übersicht
-        </button>
+          <option value="">— bitte wählen —</option>
+          {properties.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div
-        style={{
-          padding: 16,
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          background: "white",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 18 }}>CSV Import → Darlehens-Ledger</div>
-        <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
-          Erwarteter Header: <b>property_name, year, interest, principal, balance, source</b>
-          {preselectPropertyId ? (
-            <>
-              <br />
-              Filter aktiv: <code>property_id={preselectPropertyId}</code>
-            </>
-          ) : null}
-        </div>
-
-        {(error || ok) && (
-          <div
-            style={{
-              marginTop: 10,
-              fontSize: 12,
-              padding: 10,
-              borderRadius: 12,
-              border: `1px solid ${error ? "#fecaca" : "#bbf7d0"}`,
-              background: error ? "#fff1f2" : "#f0fdf4",
-              color: error ? "#7f1d1d" : "#14532d",
-              fontWeight: 800,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {error ? `Fehler: ${error}` : ok}
-          </div>
-        )}
-
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>CSV (Jahr;Zinsen;Tilgung;Saldo)</div>
         <textarea
           value={csvText}
           onChange={(e) => setCsvText(e.target.value)}
-          placeholder={`property_name,year,interest,principal,balance,source
-Lilienthaler Str. 54 28215 Bremen,2022,1234.56,3000,95000,import`}
-          disabled={busy}
-          style={{
-            marginTop: 12,
-            width: "100%",
-            minHeight: 220,
-            ...inputStyle(busy),
-          }}
+          rows={8}
+          style={{ width: "100%", padding: 10, fontFamily: "monospace" }}
         />
+      </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-          <button
-            onClick={doParse}
-            disabled={busy}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            Vorschau erzeugen
-          </button>
-
-          <button
-            onClick={commit}
-            disabled={busy}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "#111827",
-              color: "white",
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {busy ? "Import…" : "Import ausführen"}
-          </button>
-
-          <div
-            style={{
-              marginLeft: "auto",
-              fontSize: 12,
-              opacity: 0.7,
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            Zeilen in Vorschau: <b>{parsed.length}</b>
-          </div>
-        </div>
-
-        {parsed.length > 0 && (
-          <div style={{ marginTop: 14, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
-              <thead>
-                <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Objekt</th>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Jahr</th>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Zinsen</th>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Tilgung</th>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Saldo</th>
-                  <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parsed.slice(0, 50).map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "10px 8px", fontWeight: 900 }}>{r.property_name}</td>
-                    <td style={{ padding: "10px 8px" }}>{r.year}</td>
-                    <td style={{ padding: "10px 8px" }}>{r.interest}</td>
-                    <td style={{ padding: "10px 8px" }}>{r.principal}</td>
-                    <td style={{ padding: "10px 8px" }}>{r.balance}</td>
-                    <td style={{ padding: "10px 8px", fontSize: 12, opacity: 0.75 }}>{r.source}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {parsed.length > 50 && (
-              <div style={{ fontSize: 12, opacity: 0.65, marginTop: 8 }}>
-                Vorschau zeigt nur die ersten 50 Zeilen.
-              </div>
-            )}
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        <button onClick={doParse} disabled={busy}>
+          CSV prüfen
+        </button>
+        <button onClick={doSave} disabled={busy || !parsed.length}>
+          Importieren
+        </button>
+        <button onClick={() => nav(-1)}>Zurück</button>
       </div>
     </div>
   );

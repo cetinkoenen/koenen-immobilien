@@ -10,10 +10,10 @@ import {
   useLocation,
   useNavigate,
   useParams
-import RequireRole from "./components/RequireRole";
 } from "react-router-dom";
 
 import RequireAuth from "./components/RequireAuth";
+import RequireRole from "./components/RequireRole";
 import { supabase } from "./lib/supabaseClient";
 
 /* =========================

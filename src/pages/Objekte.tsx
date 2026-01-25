@@ -1,7 +1,7 @@
 // src/pages/Objekte.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabaseClient";
 
 type Row = {
   property_id: string;
@@ -206,7 +206,7 @@ export default function Objekte() {
 
     try {
       const { data, error } = await supabase
-        .from("vw_property_loan_dashboard_display_v4")
+        .from("vw_property_loan_dashboard_display")
         .select(
           "property_id, property_name, first_year, last_year, last_balance_year, last_balance, interest_total, principal_total"
         )

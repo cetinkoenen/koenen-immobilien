@@ -20,7 +20,7 @@ type PropertyRow = {
 
   // Häufige Felder (passe an deine DB an)
   name?: string | null;
-  property_type?: string | null;
+  type?: string | null;
   description?: string | null;
 
   // Zahlen
@@ -113,7 +113,7 @@ export default function PortfolioDetails() {
     try {
       const { data, error } = await supabase
         .from(PROPERTY_TABLE)
-        .select("id, name, property_type, description, year_built, living_area_m2, plot_area_m2, updated_at")
+        .select("id, name, type, description, year_built, living_area_m2, plot_area_m2, updated_at")
         .eq("id", safePropertyId)
         .maybeSingle();
 
@@ -132,7 +132,7 @@ export default function PortfolioDetails() {
       const row = data as PropertyRow;
 
       setName(row.name ?? "");
-      setPropertyType(row.property_type ?? "");
+      setPropertyType(row.type ?? "");
       setDescription(row.description ?? "");
 
       setYearBuilt(row.year_built != null ? String(row.year_built) : "");
@@ -160,7 +160,7 @@ export default function PortfolioDetails() {
       const payload: Partial<PropertyRow> = {
         id: safePropertyId, // falls du upsert machst
         name: name.trim() || null,
-        property_type: propertyType.trim() || null,
+        type: propertyType.trim() || null,
         description: description.trim() || null,
         year_built: toIntOrNull(yearBuilt),
         living_area_m2: toNumberOrNull(livingArea),

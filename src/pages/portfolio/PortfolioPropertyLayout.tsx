@@ -16,7 +16,7 @@ const TABS = [
   { to: "details", label: "Details" },
   { to: "finance", label: "Finanzen" },
   { to: "energy", label: "Energie" },
-  { to: "renting", label: "Vermietung" },
+  { to: "renting", label: "Vermietung Wohnung" },
 ] as const;
 
 type MapState =

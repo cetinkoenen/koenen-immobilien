@@ -1,5 +1,5 @@
 // src/features/entries/useMonthlyEntries.ts
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../lib/supabaseClient";
 
 export type EntryType = "income" | "expense";
 

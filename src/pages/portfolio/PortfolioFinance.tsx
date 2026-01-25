@@ -1,7 +1,7 @@
 // src/pages/portfolio/PortfolioFinance.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../lib/supabaseClient";
 import { normalizeUuid } from "../../lib/ids";
 import type { PortfolioOutletContext } from "./PortfolioPropertyLayout";
 

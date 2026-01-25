@@ -1,7 +1,7 @@
 // src/pages/ObjektDetail.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabaseClient";
 
 type SummaryRow = {
   property_id: string;
