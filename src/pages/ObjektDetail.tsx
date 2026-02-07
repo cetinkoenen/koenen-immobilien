@@ -15,14 +15,11 @@ type SummaryRow = {
 };
 
 type LedgerRow = {
+  id: number;
   property_id: string;
   property_name: string;
   year: number;
-  interest: number | null;
-  interest_eur?: string | null;
-  principal: number | null;
-  principal_eur?: string | null;
-  balance: number | null;
+  interest: number | null;principal: number | null;balance: number | null;
   source?: string | null;
 };
 
@@ -117,7 +114,7 @@ function computeStatus(progress?: ProgressRow | null) {
 /** ---------- Component ---------- */
 
 export default function ObjektDetail() {
-  const { id } = useParams();
+const { id } = useParams();
   const navigate = useNavigate();
 
   // raw id from URL (might be "undefined")
@@ -175,8 +172,8 @@ export default function ObjektDetail() {
 
       // Ledger
       const { data: lData, error: lErr } = await supabase
-        .from("vw_property_loan_ledger_eur")
-        .select("property_id, property_name, year, interest, interest_eur, principal, principal_eur, balance, source")
+        .from("property_loan_ledger")
+        .select("id, property_id, year, interest, principal, balance, source")
         .eq("property_id", safePropertyId)
         .order("year", { ascending: true });
 
@@ -435,22 +432,31 @@ export default function ObjektDetail() {
                 <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Tilgung</th>
                 <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Saldo</th>
                 <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Quelle</th>
-              </tr>
+              <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb", textAlign: "right", whiteSpace: "nowrap" }}>Aktion</th>
+</tr>
             </thead>
             <tbody>
               {ledger.map((e) => (
                 <tr key={`${e.property_id}-${e.year}`} style={{ borderBottom: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "10px 8px", fontWeight: 900 }}>{e.year}</td>
-                  <td style={{ padding: "10px 8px" }}>{e.interest_eur ?? euro(e.interest)}</td>
-                  <td style={{ padding: "10px 8px" }}>{e.principal_eur ?? euro(e.principal)}</td>
+                  <td style={{ padding: "10px 8px" }}>{euro(e.interest)}</td>
+                  <td style={{ padding: "10px 8px" }}>{euro(e.principal)}</td>
                   <td style={{ padding: "10px 8px", fontWeight: 900 }}>{euro(e.balance)}</td>
                   <td style={{ padding: "10px 8px", fontSize: 12, opacity: 0.75 }}>{e.source ?? "—"}</td>
-                </tr>
+                <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
+  <button
+    onClick={() => console.log("EDIT CLICK", e.id)}
+    style={{ padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "white" }}
+  >
+    Bearbeiten
+  </button>
+</td>
+</tr>
               ))}
 
               {!ledger.length && (
                 <tr>
-                  <td colSpan={5} style={{ padding: "14px 8px", fontSize: 14, opacity: 0.75 }}>
+                  <td colSpan={6} style={{ padding: "14px 8px", fontSize: 14, opacity: 0.75 }}>
                     Keine Ledger-Zeilen gefunden.
                   </td>
                 </tr>

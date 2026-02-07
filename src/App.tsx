@@ -1,6 +1,8 @@
 // src/App.tsx
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { Session } from "@supabase/supabase-js";
+
 import {
   Navigate,
   NavLink,
@@ -634,14 +636,24 @@ export default function App() {
           <Route
             path="/objekte/:id"
             element={
-              <LegacyObjekteRedirect target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}`} />
+              <LegacyObjekteRedirect
+                target={(id) =>
+                  isUuid(id)
+                    ? "/darlehensuebersicht/" + encodeURIComponent(id)
+                    : "/darlehensuebersicht"
+                }
+              />
             }
           />
           <Route
             path="/objekte/:id/loan/new"
             element={
               <LegacyObjekteRedirect
-                target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}/loan/new`}
+                target={(id) =>
+                  isUuid(id)
+                    ? "/darlehensuebersicht/" + encodeURIComponent(id) + "/loan/new"
+                    : "/darlehensuebersicht"
+                }
               />
             }
           />
