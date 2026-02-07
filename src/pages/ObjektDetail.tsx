@@ -272,12 +272,185 @@ const { id } = useParams();
         </Link>
 
         <button
+          onClick={() => navigate(`/darlehensuebersicht/${safePropertyId}/loan/new`)}
+          disabled={!safePropertyId}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "white",
+            fontWeight: 900,
+            cursor: !safePropertyId ? "not-allowed" : "pointer",
+            opacity: !safePropertyId ? 0.6 : 1,
+          }}
+        >
+          + Darlehenszeile hinzufügen
+        </button>
+
+        <button
+          onClick={() => navigate(`/loan-import?property_id=${encodeURIComponent(safePropertyId)}`)}
+          disabled={!safePropertyId}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "white",
+            fontWeight: 900,
+            cursor: !safePropertyId ? "not-allowed" : "pointer",
+            opacity: !safePropertyId ? 0.6 : 1,
+          }}
+        >
+          Import (CSV)
+        </button>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {pill(status.label, status.tone)}
+          {pill(`Getilgt: ${repaidDisplay}`, "gray")}
+        </div>
+      </div>
+
+      {/* Header */}
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          background: "white",
+          display: "flex",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>{summary?.property_name ?? "Immobilie"}</div>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>
+            Zeitraum: {yearOrDash(summary?.first_year)}–{yearOrDash(summary?.last_year)} · Stand:{" "}
+            {yearOrDash(summary?.last_balance_year)}
+          </div>
+          {error && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>
+              Fehler: {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: 12, opacity: 0.6, textAlign: "right" }}>
+          <div>property_id</div>
+          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+            {safePropertyId || "—"}
+          </div>
+          {/* Optional: helps debug if you ever land on /objekte/undefined */}
+          {rawPropertyId && rawPropertyId !== safePropertyId && (
+            <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
+              raw: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{rawPropertyId}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        {kpis.map((k) => (
+          <div
+            key={k.label}
+            style={{
+              padding: 16,
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              background: "white",
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.6 }}>{k.label}</div>
+            <div style={{ fontWeight: 900, fontSize: 18, marginTop: 6 }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* No data hint */}
+      {!hasAnyLoanData && (
+        <div
+          style={{
+            padding: 16,
+            border: "1px solid #e5e7eb",
+            borderRadius: 14,
+            background: "white",
+            fontSize: 14,
+            opacity: 0.85,
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Keine Darlehensdaten vorhanden</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Für diese Immobilie sind noch keine Darlehenswerte hinterlegt. Nutze „+ Darlehenszeile hinzufügen“ oder „Import
+            (CSV)“.
+          </div>
+        </div>
+      )}
+
+      {/* Seed hint */}
+      {showSeedHint && (
+        <div
+          style={{
+            padding: 16,
+            border: "1px solid #e5e7eb",
+            borderRadius: 14,
+            background: "#fffbeb",
+            fontSize: 14,
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Platzhalter-Daten erkannt</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            Diese Immobilie hat aktuell eine Seed-Zeile mit 0-Werten. Trage echte Werte ein oder importiere CSV, dann wird
+            der Verlauf korrekt.
+          </div>
+        </div>
+      )}
+
+      {/* Ledger Table */}
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          background: "white",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 900 }}>Darlehensverlauf (Ledger)</div>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>
+            Zeilen: <span style={{ fontWeight: 900 }}>{ledger.length}</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+            <thead>
+              <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
+                <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Jahr</th>
+                <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Zinsen</th>
+                <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Tilgung</th>
+                <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Saldo</th>
+                <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb" }}>Quelle</th>
+              <th style={{ padding: "10px 8px", borderBottom: "1px solid #e5e7eb", textAlign: "right", whiteSpace: "nowrap" }}>Aktion</th>
+</tr>
+            </thead>
+            <tbody>
+              {ledger.map((e) => (
+                <tr key={`${e.property_id}-${e.year}`} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "10px 8px", fontWeight: 900 }}>{e.year}</td>
+                  <td style={{ padding: "10px 8px" }}>{euro(e.interest)}</td>
+                  <td style={{ padding: "10px 8px" }}>{euro(e.principal)}</td>
+                  <td style={{ padding: "10px 8px", fontWeight: 900 }}>{euro(e.balance)}</td>
+                  <td style={{ padding: "10px 8px", fontSize: 12, opacity: 0.75 }}>{e.source ?? "—"}</td>
+                <td style={{ padding: "10px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
+  <button
     onClick={(ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       navigate(`/darlehensuebersicht/${encodeURIComponent(safePropertyId)}/loan/${encodeURIComponent(String(e.id))}/edit`);
     }}
-    style={{ padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "white", cursor: "pointer" }}
+    style={{ padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "white" }}
   >
     Bearbeiten
   </button>
