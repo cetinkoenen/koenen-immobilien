@@ -631,6 +631,12 @@ export default function App() {
             element={wrap("Loan Entry", <LoanEntryAdd />)}
           />
 
+          
+          <Route
+            path="/darlehensuebersicht/:id/loan/:loanId/edit"
+            element={wrap("Loan Entry Edit", <LoanEntryAdd />)}
+          />
+
           {/* Legacy redirects */}
           <Route path="/objekte" element={<Navigate to="/darlehensuebersicht" replace />} />
           <Route
