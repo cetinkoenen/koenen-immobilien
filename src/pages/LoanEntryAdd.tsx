@@ -279,7 +279,7 @@ navigate(backHref);
         <Link to={backHref} style={{ fontWeight: 900, textDecoration: "none" }}>
           ← Zurück
         </Link>
-        <div style={{ fontSize: 18, fontWeight: 900 }}>Darlehen: Eintrag hinzufügen</div>
+        <div style={{ fontSize: 18, fontWeight: 900 }}>{isEdit ? "Darlehen: Eintrag bearbeiten" : "Darlehen: Eintrag hinzufügen"}</div>
       </div>
 
       {loadingProp ? (
