@@ -71,7 +71,12 @@ async function ensureLoanId(propertyId: string): Promise<string> {
 }
 
 export default function LoanEntryAdd() {
-  const { id } = useParams();
+  const { id, loanId } = useParams();
+  const ledgerRowId = useMemo(() => {
+    const n = Number(loanId);
+    return Number.isFinite(n) ? n : null;
+  }, [loanId]);
+  const isEdit = ledgerRowId !== null;
   const navigate = useNavigate();
 
   const rawUrlId = useMemo(() => String(id ?? "").trim(), [id]);
@@ -149,7 +154,54 @@ export default function LoanEntryAdd() {
     };
   }, [safePropertyId]);
 
-  function validate(): string | null {
+  
+
+  // If edit route: load existing ledger row and prefill form
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!safePropertyId) return;
+      if (!summary) return;
+      if (ledgerRowId === null) return;
+
+      try {
+        setError(null);
+
+        const { data, error: e } = await supabase
+          .from("property_loan_ledger")
+          .select("id, property_id, year, interest, principal, balance, source")
+          .eq("id", ledgerRowId)
+          .single();
+
+        if (!alive) return;
+        if (e) throw e;
+        if (!data) throw new Error("Ledger-Zeile nicht gefunden.");
+
+        // Safety: ensure row belongs to this property
+        if (String(data.property_id) !== String(safePropertyId)) {
+          throw new Error(
+            `Ledger-Zeile gehört nicht zu dieser Immobilie. row.property_id=${data.property_id}, url.property_id=${safePropertyId}`
+          );
+        }
+
+        setYear(Number(data.year ?? new Date().getFullYear()));
+        setInterest(String(data.interest ?? 0));
+        setPrincipal(String(data.principal ?? 0));
+        setBalance(String(data.balance ?? 0));
+        const src = String(data.source ?? "manual").toLowerCase();
+        setSource(src === "import" ? "import" : "manual");
+      } catch (err: any) {
+        if (!alive) return;
+        setError(err?.message ?? err?.details ?? String(err));
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [safePropertyId, summary, ledgerRowId]);
+function validate(): string | null {
     if (!safePropertyId) return "Ungültige Immobilien-ID in der URL (keine UUID).";
     if (!summary) return "Immobilie ist noch nicht geladen.";
     if (!year || !Number.isFinite(year)) return "Jahr ist ungültig.";
@@ -196,13 +248,21 @@ export default function LoanEntryAdd() {
         source,
       };
 
-      const { error: upsertErr } = await supabase
-        .from("property_loan_ledger")
-        .upsert(payload, { onConflict: "property_id,year" });
+            if (isEdit && ledgerRowId !== null) {
+        const { error: updErr } = await supabase
+          .from("property_loan_ledger")
+          .update(payload)
+          .eq("id", ledgerRowId);
 
-      if (upsertErr) throw upsertErr;
+        if (updErr) throw updErr;
+      } else {
+        const { error: upsertErr } = await supabase
+          .from("property_loan_ledger")
+          .upsert(payload, { onConflict: "property_id,year" });
 
-      navigate(backHref);
+        if (upsertErr) throw upsertErr;
+      }
+navigate(backHref);
     } catch (err: any) {
       console.error("LoanEntryAdd save failed:", err);
       setError(err?.message ?? err?.details ?? String(err));
