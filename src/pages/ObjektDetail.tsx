@@ -218,12 +218,38 @@ const { id } = useParams();
     if (rp == null || Number.isNaN(rp)) return "—";
     return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rp) + " %";
   }, [progress]);
+  const ledgerTotals = useMemo(() => {
+    if (!ledger.length) {
+      return {
+        last_balance: summary?.last_balance ?? null,
+        interest_total: summary?.interest_total ?? null,
+        principal_total: summary?.principal_total ?? null,
+      };
+    }
+
+    const interest_total = ledger.reduce((acc, r) => acc + (Number(r.interest ?? 0) || 0), 0);
+    const principal_total = ledger.reduce((acc, r) => acc + (Number(r.principal ?? 0) || 0), 0);
+
+    // last balance = row with max(year), tie-break by max(id)
+    const last = [...ledger].sort((a, b) => {
+      const ya = Number(a.year ?? 0), yb = Number(b.year ?? 0);
+      if (yb !== ya) return yb - ya;
+      return (Number(b.id ?? 0) || 0) - (Number(a.id ?? 0) || 0);
+    })[0];
+
+    return {
+      last_balance: last?.balance ?? null,
+      interest_total,
+      principal_total,
+    };
+  }, [ledger, summary]);
+
 
   const kpis = useMemo(() => {
     return [
-      { label: "Letzter Saldo", value: euro(summary?.last_balance ?? null) },
-      { label: "Zinsen gesamt", value: euro(summary?.interest_total ?? null) },
-      { label: "Tilgung gesamt", value: euro(summary?.principal_total ?? null) },
+      { label: "Letzter Saldo", value: euro(ledgerTotals.last_balance) },
+      { label: "Zinsen gesamt", value: euro(ledgerTotals.interest_total) },
+      { label: "Tilgung gesamt", value: euro(ledgerTotals.principal_total) },
     ];
   }, [summary]);
 
