@@ -322,8 +322,9 @@ export default function PortfolioPropertyTabs() {
             Energie
           </TabButton>
           <TabButton active={activeTab === "renting"} onClick={() => setActiveTab("renting")}>
-            Vermietung
-          </TabButton>
+  Vermietung Wohnung
+</TabButton>
+
         </div>
 
         {!safeSelectedId ? (
