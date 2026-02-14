@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
+~import {
   AreaChart,
   Area,
   XAxis,
@@ -33,11 +33,9 @@ function fmtMonth(iso: string) {
 
 export default function RentDevelopmentChart({
   portfolioUnitId,
-  unitId,
   title = "Mögliche Miete:",
 }: {
-  portfolioUnitId?: string;
-  unitId?: string;
+  portfolioUnitId: string;
   title?: string;
 }) {
   const [range, setRange] = useState<RangeKey>("max");
@@ -50,22 +48,10 @@ export default function RentDevelopmentChart({
 
       const startISO = startISOForRange(range);
 
-      if (!portfolioUnitId && !unitId) {
-        console.error("RentDevelopmentChart: missing portfolioUnitId/unitId");
-        setRows([]);
-        setLoading(false);
-        return;
-      }
-
-      const usePortfolio = Boolean(portfolioUnitId);
-      const viewName = usePortfolio ? "v_portfolio_unit_rent_history_monthly" : "v_unit_rent_history_monthly";
-      const idField = usePortfolio ? "portfolio_unit_id" : "unit_id";
-      const idValue = (usePortfolio ? portfolioUnitId : unitId) as string;
-
       let q = supabase
-        .from(viewName)
+        .from("v_portfolio_unit_rent_history_monthly")
         .select("period, rent_cents")
-        .eq(idField, idValue)
+        .eq("portfolio_unit_id", portfolioUnitId)
         .order("period", { ascending: true });
 
       if (startISO) q = q.gte("period", startISO);
@@ -90,7 +76,7 @@ export default function RentDevelopmentChart({
     }
 
     load();
-  }, [portfolioUnitId, unitId, range]);
+  }, [portfolioUnitId, range]);
 
   const stats = useMemo(() => {
     if (!rows.length) return { current: 0, changePct: 0 };
