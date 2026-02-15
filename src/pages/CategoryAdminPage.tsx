@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import { useEffect, useState } from "react";
 
 type Category = {
   id: string; // UUID
@@ -15,12 +15,6 @@ function mustGetEnv(key: "VITE_SUPABASE_URL" | "VITE_SUPABASE_ANON_KEY") {
 export default function CategoryAdminPage() {
   const supabaseUrl = mustGetEnv("VITE_SUPABASE_URL");
   const supabaseAnonKey = mustGetEnv("VITE_SUPABASE_ANON_KEY");
-
-  const supabase: SupabaseClient | null = useMemo(() => {
-    if (!supabaseUrl || !supabaseAnonKey) return null;
-    return createClient(supabaseUrl, supabaseAnonKey);
-  }, [supabaseUrl, supabaseAnonKey]);
-
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
