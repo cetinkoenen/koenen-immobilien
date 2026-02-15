@@ -3,9 +3,37 @@ import { StrictMode, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { AuthProvider } from "./auth/AuthProvider";
 
-// Falls du eine globale CSS-Datei hast, einkommentieren/anpassen:
-// import "./index.css";
+/* ============================================================
+   TEMP DEBUG: Trace, wer Requests auf portfolio_property_address
+   auslöst. NACH dem Finden bitte wieder entfernen!
+   ============================================================ */
+(function installFetchTrace() {
+  // guard: avoid double-install (HMR etc.)
+  const w = window as any;
+  if (w.__ADDRESS_FETCH_TRACE_INSTALLED__) return;
+  w.__ADDRESS_FETCH_TRACE_INSTALLED__ = true;
+
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : (input as any)?.url ?? String(input);
+
+    if (url.includes("portfolio_property_address")) {
+      console.log("🔥 ADDRESS FETCH", {
+        method: init?.method ?? "GET",
+        url,
+      });
+      console.trace("🔥 STACK TRACE portfolio_property_address");
+    }
+
+    return originalFetch(input as any, init);
+  };
+})();
 
 /**
  * Simple ErrorBoundary, damit du bei Runtime-Errors
@@ -39,7 +67,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
               background: "#f3f4f6",
               borderRadius: 12,
               overflow: "auto",
-              fontSize: 12
+              fontSize: 12,
             }}
           >
             {String(this.state.error)}
@@ -56,7 +84,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </StrictMode>

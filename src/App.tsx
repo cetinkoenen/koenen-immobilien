@@ -1,19 +1,11 @@
 // src/App.tsx
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import {
-  Navigate,
-  NavLink,
-  Outlet,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-  useParams
-} from "react-router-dom";
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import RequireAuth from "./components/RequireAuth";
-import { supabase } from "./lib/supabase";
+import RequireAuthMFA from "./components/RequireAuthMFA";
+import RequireRole from "./components/RequireRole";
+import { supabase } from "./lib/supabaseClient";
 
 /* =========================
    Theme (CI / Design)
@@ -29,7 +21,7 @@ const THEME = {
   activeText: "#ffffff",
   activeBorder: "#111827",
   focusRing: "rgba(17,24,39,0.15)",
-  shadow: "0 18px 40px rgba(0,0,0,0.10)"
+  shadow: "0 18px 40px rgba(0,0,0,0.10)",
 };
 
 const MOBILE_BREAKPOINT = 860;
@@ -38,14 +30,18 @@ const MOBILE_BREAKPOINT = 860;
    Lazy Pages
 ========================= */
 const Login = React.lazy(() => import("./pages/Login"));
+const MFA = React.lazy(() => import("./pages/MFA"));
+
 const Uebersicht = React.lazy(() => import("./pages/Uebersicht"));
 const Monate = React.lazy(() => import("./pages/monate"));
 const Auswertung = React.lazy(() => import("./pages/Auswertung"));
 const CategoryAdminPage = React.lazy(() => import("./pages/CategoryAdminPage"));
 const EntryAdd = React.lazy(() => import("./pages/EntryAdd"));
-const Objekte = React.lazy(() => import("./pages/Objekte"));
-const ObjektDetail = React.lazy(() => import("./pages/ObjektDetail"));
+
 const Portfolio = React.lazy(() => import("./pages/Portfolio"));
+const Exports = React.lazy(() => import("./pages/Exports"));
+const TestRentChart = React.lazy(() => import("./pages/TestRentChart"));
+
 
 const PortfolioPropertyLayout = React.lazy(() => import("./pages/portfolio/PortfolioPropertyLayout"));
 const PortfolioAddress = React.lazy(() => import("./pages/portfolio/PortfolioAddress"));
@@ -54,11 +50,49 @@ const PortfolioFinance = React.lazy(() => import("./pages/portfolio/PortfolioFin
 const PortfolioEnergy = React.lazy(() => import("./pages/portfolio/PortfolioEnergy"));
 const PortfolioRenting = React.lazy(() => import("./pages/portfolio/PortfolioRenting"));
 
+const ObjektDetail = React.lazy(() => import("./pages/ObjektDetail"));
 const LoanEntryAdd = React.lazy(() => import("./pages/LoanEntryAdd"));
 const LoanImport = React.lazy(() => import("./pages/LoanImport"));
 
+// ✅ DIE Seite für /darlehensuebersicht
+const PropertyLoanOverview = React.lazy(() => import("./pages/PropertyDashboard"));
+
+/* =========================
+   Small UI helpers
+========================= */
 function PageFallback() {
   return <div style={{ padding: 24 }}>Lädt…</div>;
+}
+
+function Unauthorized() {
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Keine Berechtigung</h2>
+      <p>Du hast nicht die nötigen Rechte, um diese Seite zu sehen.</p>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div
+      style={{
+        padding: 16,
+        border: `1px solid ${THEME.border}`,
+        borderRadius: 14,
+        background: THEME.surface,
+        boxShadow: THEME.shadow,
+      }}
+    >
+      <div style={{ fontWeight: 900, marginBottom: 8 }}>Route nicht gefunden</div>
+      <div style={{ fontSize: 13, color: THEME.muted }}>Diese URL ist in der App nicht registriert.</div>
+      <div style={{ marginTop: 12 }}>
+        <NavLink to="/portfolio" style={{ fontWeight: 900 }}>
+          Zurück zum Portfolio
+        </NavLink>
+      </div>
+    </div>
+  );
 }
 
 /* =========================
@@ -90,15 +124,13 @@ class RouteErrorBoundary extends React.Component<
           border: `1px solid ${THEME.border}`,
           borderRadius: 14,
           background: THEME.surface,
-          boxShadow: THEME.shadow
+          boxShadow: THEME.shadow,
         }}
       >
         <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
           Seite ist abgestürzt{this.props.name ? `: ${this.props.name}` : ""}.
         </div>
-        <div style={{ color: THEME.muted, fontSize: 13 }}>
-          Öffne die Konsole (F12) für Details.
-        </div>
+        <div style={{ color: THEME.muted, fontSize: 13 }}>Öffne die Konsole (F12) für Details.</div>
         <pre
           style={{
             marginTop: 12,
@@ -106,7 +138,7 @@ class RouteErrorBoundary extends React.Component<
             background: THEME.surfaceMuted,
             borderRadius: 12,
             overflow: "auto",
-            fontSize: 12
+            fontSize: 12,
           }}
         >
           {String(this.state.error)}
@@ -136,6 +168,7 @@ function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
+
 function normalizeUuid(raw: unknown) {
   if (typeof raw !== "string") return "";
   const v = raw.trim();
@@ -146,7 +179,7 @@ function normalizeUuid(raw: unknown) {
 }
 
 /* =========================
-   Legacy Redirect Wrapper
+   Legacy Redirect Wrapper (Objekte)
 ========================= */
 function LegacyObjekteRedirect({ target }: { target: (id: string) => string }) {
   const { id } = useParams();
@@ -158,37 +191,210 @@ function LegacyObjekteRedirect({ target }: { target: (id: string) => string }) {
     if (!safeId) {
       navigate("/darlehensuebersicht", {
         replace: true,
-        state: { ...(location.state as any), legacy_redirect_error: "invalid_id" }
+        state: { ...(location.state as any), legacy_redirect_error: "invalid_id" },
       });
       return;
     }
     navigate(target(safeId), { replace: true, state: location.state });
-    // bewusst OHNE location.state in deps: verhindert unnötige Re-Runs durch state-Referenzen
-  }, [id, navigate, target, location]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, navigate, target]);
 
   return null;
 }
 
 /* =========================
+   Portfolio Redirect (Legacy)
+========================= */
+function LegacyPortfolioRedirect() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const safe = normalizeUuid(id ?? "");
+      if (!safe) {
+        navigate("/portfolio", {
+          replace: true,
+          state: { ...(location.state as any), legacy_portfolio_redirect_error: "invalid_id" },
+        });
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.from("portfolio_properties").select("id").eq("id", safe).maybeSingle();
+        if (!alive) return;
+        if (error) throw error;
+
+        if (!data) {
+          navigate("/portfolio", {
+            replace: true,
+            state: {
+              ...(location.state as any),
+              legacy_portfolio_redirect_error: "not_a_portfolio_id",
+              legacy_portfolio_bad_id: safe,
+            },
+          });
+          return;
+        }
+
+        navigate(`/portfolio/${encodeURIComponent(safe)}/address`, { replace: true, state: location.state });
+      } catch (e: any) {
+        if (!alive) return;
+        const msg = e?.message ?? e?.details ?? String(e);
+        navigate("/portfolio", {
+          replace: true,
+          state: { ...(location.state as any), legacy_portfolio_redirect_error: msg },
+        });
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, navigate]);
+
+  return null;
+}
+
+/* =========================
+   Portfolio Guard
+========================= */
+function RequirePortfolioProperty({ children }: { children: React.ReactNode }) {
+  const { portfolioId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [state, setState] = useState<{ loading: boolean; ok: boolean; err?: string }>({
+    loading: true,
+    ok: false,
+  });
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const safe = normalizeUuid(portfolioId ?? "");
+      if (!safe) {
+        if (alive) setState({ loading: false, ok: false, err: "Ungültige Portfolio-ID (keine UUID)." });
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.from("portfolio_properties").select("id").eq("id", safe).maybeSingle();
+        if (error) throw error;
+
+        if (!data) {
+          if (alive) {
+            setState({
+              loading: false,
+              ok: false,
+              err:
+                "Diese ID ist keine Portfolio-Property-ID.\n" +
+                "Vermutlich wurde eine Core-Property-ID (properties.id) in die URL navigiert oder ein alter Bookmark benutzt.\n" +
+                `ID: ${safe}`,
+            });
+          }
+          return;
+        }
+
+        if (alive) setState({ loading: false, ok: true });
+      } catch (e: any) {
+        if (!alive) return;
+        const msg = e?.message ?? e?.details ?? String(e);
+        setState({ loading: false, ok: false, err: msg });
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [portfolioId]);
+
+  if (state.loading) return <div style={{ padding: 16 }}>Lädt…</div>;
+
+  if (!state.ok) {
+    return (
+      <div
+        style={{
+          padding: 16,
+          border: `1px solid ${THEME.border}`,
+          borderRadius: 14,
+          background: THEME.surface,
+          boxShadow: THEME.shadow,
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>Portfolio-Link ungültig</div>
+        <div style={{ fontSize: 13, color: THEME.muted, whiteSpace: "pre-wrap" }}>{state.err}</div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            onClick={() => navigate("/portfolio", { replace: true, state: location.state })}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: `1px solid ${THEME.border}`,
+              background: THEME.surface,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Zurück zum Portfolio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+/* =========================
    Protected Layout
 ========================= */
-function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: () => Promise<void> }) {
+function ProtectedLayout({ onLogout }: { onLogout: () => Promise<void> }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
 
+  const [session, setSession] = useState<Session | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!alive) return;
+      setSession(data.session ?? null);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+      if (!alive) return;
+      setSession(s ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
   const navItems = useMemo(
     () => [
       { to: "/portfolio", label: "Portfolio" },
+      { to: "/exports", label: "Exports" },
       { to: "/darlehensuebersicht", label: "Darlehensübersicht" },
       { to: "/uebersicht", label: "Übersicht" },
       { to: "/auswertung", label: "Auswertung" },
       { to: "/monate", label: "Monate" },
       { to: "/neu", label: "+ Buchung" },
-      { to: "/categories", label: "Kategorien" }
+      { to: "/categories", label: "Kategorien" },
     ],
     []
   );
@@ -214,7 +420,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
       color: isActive ? THEME.activeText : THEME.text,
       boxShadow: isActive ? `0 10px 24px ${THEME.focusRing}` : "none",
       transition: "all 120ms ease",
-      whiteSpace: "nowrap"
+      whiteSpace: "nowrap",
     } as const;
   }
 
@@ -231,9 +437,13 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
           top: 0,
           zIndex: 50,
           background: THEME.surface,
-          borderBottom: `1px solid ${THEME.border}`
+          borderBottom: `1px solid ${THEME.border}`,
         }}
       >
+        <div style={{ padding: 10, background: "crimson", color: "white", fontWeight: 900 }}>
+          BUILD MARKER: DEV-LOCAL-5173 — {location.pathname}
+        </div>
+
         <div
           style={{
             maxWidth: 1200,
@@ -241,7 +451,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
             padding: "14px 16px",
             display: "flex",
             alignItems: "center",
-            gap: 16
+            gap: 16,
           }}
         >
           <div
@@ -252,14 +462,10 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
               gap: 12,
               cursor: "pointer",
               userSelect: "none",
-              minWidth: 240
+              minWidth: 240,
             }}
           >
-            <img
-              src="/logo/koenen.png"
-              alt="Könen Immobilien"
-              style={{ height: 40, width: "auto", display: "block", objectFit: "contain" }}
-            />
+            <img src="/logo/koenen.png" alt="Könen Immobilien" style={{ height: 40, width: "auto", display: "block" }} />
             <div style={{ lineHeight: 1.1 }}>
               <div style={{ fontWeight: 900, letterSpacing: "-0.02em" }}>Könen Immobilien</div>
               <div style={{ fontSize: 12, color: THEME.muted }}>Admin Dashboard</div>
@@ -286,7 +492,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                   border: `1px solid ${THEME.border}`,
                   background: THEME.surface,
                   fontWeight: 900,
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 {mobileOpen ? "✕" : "☰"}
@@ -304,7 +510,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                   borderRadius: 14,
                   border: `1px solid ${THEME.border}`,
                   background: THEME.surface,
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 <div
@@ -316,10 +522,10 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                     placeItems: "center",
                     fontWeight: 900,
                     background: THEME.surfaceMuted,
-                    border: `1px solid ${THEME.border}`
+                    border: `1px solid ${THEME.border}`,
                   }}
                 >
-                  {(session.user.email ?? "U").slice(0, 1).toUpperCase()}
+                  {(session?.user.email ?? "U").slice(0, 1).toUpperCase()}
                 </div>
                 <span style={{ fontSize: 12 }}>▾</span>
               </button>
@@ -335,7 +541,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                     border: `1px solid ${THEME.border}`,
                     borderRadius: 14,
                     boxShadow: THEME.shadow,
-                    overflow: "hidden"
+                    overflow: "hidden",
                   }}
                 >
                   <div
@@ -344,10 +550,10 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                       borderBottom: `1px solid ${THEME.border}`,
                       fontSize: 12,
                       color: THEME.muted,
-                      wordBreak: "break-word"
+                      wordBreak: "break-word",
                     }}
                   >
-                    {session.user.email}
+                    {session?.user.email ?? "—"}
                   </div>
 
                   <button
@@ -359,7 +565,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
                       background: "white",
                       fontWeight: 900,
                       cursor: "pointer",
-                      textAlign: "left"
+                      textAlign: "left",
                     }}
                   >
                     Logout
@@ -377,7 +583,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
               borderTop: `1px solid ${THEME.border}`,
               background: THEME.surface,
               display: "grid",
-              gap: 10
+              gap: 10,
             }}
           >
             {navItems.map((n) => (
@@ -405,7 +611,7 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
           background: THEME.surface,
           fontSize: 12,
           color: THEME.muted,
-          textAlign: "center"
+          textAlign: "center",
         }}
       >
         © {new Date().getFullYear()} Könen Immobilien
@@ -418,33 +624,68 @@ function ProtectedLayout({ session, onLogout }: { session: Session; onLogout: ()
    App Root
 ========================= */
 export default function App() {
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        console.log("[AUTH DEBUG] session:", data.session);
+        console.log("[AUTH DEBUG] user:", data.session?.user ?? null);
+      } catch (e) {
+        console.error("[AUTH DEBUG] failed:", e);
+      }
+    })();
+  }, []);
+
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
 
   const wrap = useCallback(
-    (name: string, el: React.ReactElement) => (
-      <RouteErrorBoundary name={name}>{el}</RouteErrorBoundary>
-    ),
+    (name: string, el: React.ReactElement) => <RouteErrorBoundary name={name}>{el}</RouteErrorBoundary>,
     []
   );
 
   return (
     <Suspense fallback={<PageFallback />}>
       <Routes>
-        <Route path="/login" element={wrap("Login", <Login />)} />
+        {/* Public routes */}
+        <Route path="/test-rent" element={wrap("TestRentChart", <TestRentChart />)} />
 
+        <Route path="/login" element={wrap("Login", <Login />)} />
+        <Route path="/mfa" element={wrap("MFA", <MFA />)} />
+        <Route path="/unauthorized" element={wrap("Unauthorized", <Unauthorized />)} />
+
+        {/* Protected routes */}
         <Route
           element={
-            <RequireAuth>
-              {(session) => <ProtectedLayout session={session} onLogout={logout} />}
-            </RequireAuth>
+            <RequireAuthMFA>
+              <ProtectedLayout onLogout={logout} />
+            </RequireAuthMFA>
           }
         >
           <Route path="/" element={<Navigate to="/portfolio" replace />} />
 
           <Route path="/portfolio" element={wrap("Portfolio", <Portfolio />)} />
-          <Route path="/portfolio/:id" element={wrap("Portfolio Layout", <PortfolioPropertyLayout />)}>
+
+          <Route
+            path="/exports"
+            element={wrap(
+              "Exports",
+              <RequireRole minRole="admin">
+                <Exports />
+              </RequireRole>
+            )}
+          />
+
+          <Route
+            path="/portfolio/:portfolioId"
+            element={wrap(
+              "Portfolio Layout",
+              <RequirePortfolioProperty>
+                <PortfolioPropertyLayout />
+              </RequirePortfolioProperty>
+            )}
+          >
             <Route index element={<Navigate to="address" replace />} />
             <Route path="address" element={wrap("Portfolio Address", <PortfolioAddress />)} />
             <Route path="details" element={wrap("Portfolio Details", <PortfolioDetails />)} />
@@ -453,39 +694,50 @@ export default function App() {
             <Route path="renting" element={wrap("Portfolio Renting", <PortfolioRenting />)} />
           </Route>
 
+          {/* Legacy portfolio routes */}
+          <Route path="/portfolio/:id/address" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/details" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/finance" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/energy" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id/renting" element={<LegacyPortfolioRedirect />} />
+          <Route path="/portfolio/:id" element={<LegacyPortfolioRedirect />} />
+
+          {/* Other */}
           <Route path="/uebersicht" element={wrap("Übersicht", <Uebersicht />)} />
           <Route path="/auswertung" element={wrap("Auswertung", <Auswertung />)} />
           <Route path="/monate" element={wrap("Monate", <Monate />)} />
           <Route path="/neu" element={wrap("Neue Buchung", <EntryAdd />)} />
-          <Route path="/categories" element={wrap("Kategorien", <CategoryAdminPage />)} />
 
-          <Route path="/darlehensuebersicht" element={wrap("Darlehensübersicht", <Objekte />)} />
-          <Route path="/darlehensuebersicht/:id" element={wrap("Objekt Detail", <ObjektDetail />)} />
+          {/* Admin */}
           <Route
-            path="/darlehensuebersicht/:id/loan/new"
-            element={wrap("Loan Entry", <LoanEntryAdd />)}
+            path="/categories"
+            element={wrap(
+              "Kategorien",
+              <RequireRole minRole="admin">
+                <CategoryAdminPage />
+              </RequireRole>
+            )}
           />
 
-          {/* Legacy redirects */}
+          {/* Loans */}
+          <Route path="/darlehensuebersicht" element={wrap("Darlehensübersicht", <PropertyLoanOverview />)} />
+          <Route path="/darlehensuebersicht/:id" element={wrap("Objekt Detail", <ObjektDetail />)} />
+          <Route path="/darlehensuebersicht/:id/loan/new" element={wrap("Loan Entry", <LoanEntryAdd />)} />
+
+          {/* Legacy Objekte routes */}
           <Route path="/objekte" element={<Navigate to="/darlehensuebersicht" replace />} />
           <Route
             path="/objekte/:id"
-            element={
-              <LegacyObjekteRedirect target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}`} />
-            }
+            element={<LegacyObjekteRedirect target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}`} />}
           />
           <Route
             path="/objekte/:id/loan/new"
-            element={
-              <LegacyObjekteRedirect
-                target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}/loan/new`}
-              />
-            }
+            element={<LegacyObjekteRedirect target={(id) => `/darlehensuebersicht/${encodeURIComponent(id)}/loan/new`} />}
           />
 
           <Route path="/loan-import" element={wrap("Loan Import", <LoanImport />)} />
 
-          <Route path="*" element={<Navigate to="/portfolio" replace />} />
+          <Route path="*" element={wrap("NotFound", <NotFound />)} />
         </Route>
       </Routes>
     </Suspense>

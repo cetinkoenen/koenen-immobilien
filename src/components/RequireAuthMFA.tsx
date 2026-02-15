@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
@@ -51,7 +51,7 @@ export default function RequireAuthMFA({ children }: Props) {
       let aal: "aal1" | "aal2" | null = null;
       if (session) {
         const { data: aData, error: aErr } =
-          await supabase.auth.getAuthenticatorAssuranceLevel();
+          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
         if (aErr) throw aErr;
 
         const lvl = aData?.currentLevel;
