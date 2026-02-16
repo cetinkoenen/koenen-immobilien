@@ -1,7 +1,7 @@
 // src/pages/Portfolio.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabaseClient";
 
 type PropertyType = "HOUSE" | "APARTMENT" | "GARAGE";
 
@@ -11,7 +11,6 @@ type PortfolioProperty = {
   type: PropertyType;
   sort_index: number;
   created_at: string;
-  // ✅ neu
   is_test?: boolean | null;
 };
 
@@ -38,7 +37,7 @@ function typeLabel(t: PropertyType) {
   return "Garage";
 }
 
-function typeBadgeStyle(_t: PropertyType): React.CSSProperties {
+function typeBadgeStyle(): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -53,76 +52,116 @@ function typeBadgeStyle(_t: PropertyType): React.CSSProperties {
   };
 }
 
+function normalizeError(e: any): string {
+  return e?.message ?? e?.details ?? e?.error_description ?? String(e);
+}
+
 export default function Portfolio() {
+  // ✅ Hard proof: component is actually mounted
+  console.log("✅ PORTFOLIO COMPONENT MOUNTED");
+
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string>("");
 
-  const [rows, setRows] = useState<PortfolioProperty[]>([]);
-  const [finance, setFinance] = useState<Record<string, FinanceRow>>({});
+  const [rows, setRows] = React.useState<PortfolioProperty[]>([]);
+  const [finance, setFinance] = React.useState<Record<string, FinanceRow>>({});
 
   // UI state
-  const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<PropertyType | "ALL">("ALL");
+  const [query, setQuery] = React.useState("");
+  const [typeFilter, setTypeFilter] = React.useState<PropertyType | "ALL">("ALL");
 
-  async function load() {
+  // Guard against stale requests
+  const seqRef = React.useRef(0);
+
+  const load = React.useCallback(async () => {
+    const mySeq = ++seqRef.current;
+    const isStale = () => mySeq !== seqRef.current;
+
     setLoading(true);
     setError("");
 
     try {
-      // 1) Properties
-      // ✅ IMPORTANT:
-      // - try to fetch is_test from the view
-      // - then filter it out in DB query
-      const { data: pData, error: pErr } = await supabase
-  .from("portfolio_properties")
-  .select("id,name,type,sort_index,created_at")
-  .eq("is_test", false)
-  .order("sort_index", { ascending: true })
-  .order("created_at", { ascending: true });
+      // 0) Session debug (RLS/auth sanity)
+      const { data: sData, error: sErr } = await supabase.auth.getSession();
+      console.log("[Portfolio] session", {
+        hasSession: !!sData?.session,
+        userId: sData?.session?.user?.id ?? null,
+        sessionError: sErr ?? null,
+      });
 
+      // 1) Properties
+      // ✅ IMPORTANT: is_test might be NULL for normal rows
+      // => "NOT test" means: is_test IS NULL OR is_test = false
+      const { data: pData, error: pErr } = await supabase
+        .from("portfolio_properties")
+        .select("id,name,type,sort_index,created_at,is_test")
+        .or("is_test.is.null,is_test.eq.false")
+        .order("sort_index", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      console.log("[Portfolio] properties query result", {
+        count: pData?.length ?? 0,
+        sample: pData?.[0] ?? null,
+        pErr: pErr ?? null,
+      });
 
       if (pErr) throw pErr;
+      if (isStale()) return;
 
       const props = (pData ?? []) as PortfolioProperty[];
       setRows(props);
 
-      // 2) Finance (Kaufpreis)
-      if (props.length > 0) {
-        const ids = props.map((p) => p.id);
-
-        const { data: fData, error: fErr } = await supabase
-          .from("portfolio_property_finance")
-          .select("property_id,purchase_price")
-          .in("property_id", ids);
-
-        if (fErr) throw fErr;
-
-        const map: Record<string, FinanceRow> = {};
-        for (const r of (fData ?? []) as FinanceRow[]) {
-          map[r.property_id] = r;
-        }
-        setFinance(map);
-      } else {
+      // 2) Finance
+      if (props.length === 0) {
         setFinance({});
+        setLoading(false);
+        return;
       }
-    } catch (e: any) {
-      console.error("Portfolio load failed:", e);
-      setError(e?.message ?? "Unbekannter Fehler beim Laden.");
+
+      const ids = props.map((p) => p.id);
+
+      const { data: fData, error: fErr } = await supabase
+        .from("portfolio_property_finance")
+        .select("property_id,purchase_price")
+        .in("property_id", ids);
+
+      console.log("[Portfolio] finance query result", {
+        count: fData?.length ?? 0,
+        sample: fData?.[0] ?? null,
+        fErr: fErr ?? null,
+      });
+
+      if (fErr) throw fErr;
+      if (isStale()) return;
+
+      const map: Record<string, FinanceRow> = {};
+      for (const r of (fData ?? []) as FinanceRow[]) {
+        map[r.property_id] = r;
+      }
+      setFinance(map);
+      setLoading(false);
+    } catch (e) {
+      console.error("[Portfolio] load failed:", e);
+      if (isStale()) return;
+
+      setError(normalizeError(e));
       setRows([]);
       setFinance({});
-    } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredRows = useMemo(() => {
+  React.useEffect(() => {
+    void load();
+    return () => {
+      // invalidate pending requests
+      seqRef.current += 1;
+    };
+  }, [load]);
+
+  const filteredRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
 
     return rows.filter((p) => {
@@ -134,7 +173,7 @@ export default function Portfolio() {
     });
   }, [rows, query, typeFilter]);
 
-  const stats = useMemo(() => {
+  const stats = React.useMemo(() => {
     let houses = 0;
     let apartments = 0;
     let garages = 0;
@@ -152,25 +191,25 @@ export default function Portfolio() {
     return { houses, apartments, garages, totalValue };
   }, [filteredRows, finance]);
 
-  function goToProperty(p: PortfolioProperty) {
-    navigate(`/portfolio/${encodeURIComponent(p.id)}`);
-  }
+  const goToProperty = React.useCallback(
+    (p: PortfolioProperty) => {
+      // Your router will redirect index -> address automatically
+      navigate(`/portfolio/${encodeURIComponent(p.id)}`);
+    },
+    [navigate]
+  );
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
+      {/* Visible mount marker (helps when "it doesn't load") */}
+      <div style={{ padding: 10, borderRadius: 12, background: "gold", fontWeight: 900 }}>
+        PORTFOLIO MOUNTED ✅
+      </div>
+
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 280px" }}>
-          <h1 style={{ margin: 0, fontSize: 28, letterSpacing: "-0.02em" }}>
-            Portfolio
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 28, letterSpacing: "-0.02em" }}>Portfolio</h1>
           <div style={{ marginTop: 6, opacity: 0.7 }}>
             Übersicht über alle Objekte (Haus / Wohnungen / Garagen) inkl. Kennzahlen.
           </div>
@@ -250,14 +289,10 @@ export default function Portfolio() {
 
       {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-        <KpiCard
-          title="Gesamtwert Portfolio"
-          value={fmtEUR(stats.totalValue)}
-          hint="Summe Kaufpreise (Finanzdaten) – gefilterte Ansicht"
-        />
-        <KpiCard title="Häuser" value={`${stats.houses}`} hint="Anzahl Haus – gefilterte Ansicht" />
-        <KpiCard title="Wohnungen" value={`${stats.apartments}`} hint="Anzahl Wohnung – gefilterte Ansicht" />
-        <KpiCard title="Garagen" value={`${stats.garages}`} hint="Anzahl Garage – gefilterte Ansicht" />
+        <KpiCard title="Gesamtwert Portfolio" value={fmtEUR(stats.totalValue)} hint="Summe Kaufpreise (Finance)" />
+        <KpiCard title="Häuser" value={`${stats.houses}`} hint="Gefilterte Ansicht" />
+        <KpiCard title="Wohnungen" value={`${stats.apartments}`} hint="Gefilterte Ansicht" />
+        <KpiCard title="Garagen" value={`${stats.garages}`} hint="Gefilterte Ansicht" />
       </div>
 
       {/* List */}
@@ -280,7 +315,12 @@ export default function Portfolio() {
         {loading ? (
           <div style={{ padding: 14, opacity: 0.7 }}>Lädt Objekte…</div>
         ) : filteredRows.length === 0 ? (
-          <div style={{ padding: 14, opacity: 0.7 }}>Keine Objekte in dieser Filter-/Suchauswahl.</div>
+          <div style={{ padding: 14, opacity: 0.7 }}>
+            Keine Objekte gefunden.  
+            <div style={{ marginTop: 6, fontSize: 12 }}>
+              Öffne die Console und suche nach: <b>[Portfolio] properties query result</b>
+            </div>
+          </div>
         ) : (
           <div style={{ display: "grid", gap: 10, padding: 14 }}>
             {filteredRows.map((p) => {
@@ -306,16 +346,14 @@ export default function Portfolio() {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 950, fontSize: 16 }}>{p.name}</div>
-                    <span style={typeBadgeStyle(p.type)}>{typeLabel(p.type)}</span>
+                    <span style={typeBadgeStyle()}>{typeLabel(p.type)}</span>
 
                     <div style={{ marginLeft: "auto", fontWeight: 950 }}>{priceLabel}</div>
                   </div>
 
                   <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>
                     ID:{" "}
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {p.id}
-                    </span>
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{p.id}</span>
                   </div>
                 </button>
               );

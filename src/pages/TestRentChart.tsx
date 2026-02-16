@@ -1,13 +1,17 @@
-import RentDevelopmentChart from "../components/RentDevelopmentChart";
+import RentHistoryChart from "@/components/RentHistoryChart";
 
 export default function TestRentChart() {
   return (
     <div style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>
-        Test: Mietkosten Entwicklung
-      </h1>
+      <h1 style={{ fontSize: 18, marginBottom: 12 }}>Test RentHistoryChart</h1>
 
-      <RentDevelopmentChart portfolioUnitId="3449c045-ed63-4b73-8268-0865d784d77e" />
+      {/* Wichtig: Block-Container mit echter Breite */}
+      <div style={{ width: "100%", maxWidth: 1000 }}>
+        {/* Wichtig: minWidth:0 hilft bei Flex/Overflow-Kontexten */}
+        <div style={{ width: "100%", minWidth: 0 }}>
+          <RentHistoryChart scopeType="user" />
+        </div>
+      </div>
     </div>
   );
 }
