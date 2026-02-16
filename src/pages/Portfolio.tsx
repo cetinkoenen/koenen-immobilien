@@ -1,23 +1,8 @@
 // src/pages/Portfolio.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
-
-type PropertyType = "HOUSE" | "APARTMENT" | "GARAGE";
-
-type PortfolioProperty = {
-  id: string;
-  name: string;
-  type: PropertyType;
-  sort_index: number;
-  created_at: string;
-  is_test?: boolean | null;
-};
-
-type FinanceRow = {
-  property_id: string;
-  purchase_price: number | null;
-};
+import { usePortfolioData, type PortfolioProperty, type PropertyType } from "../hooks/usePortfolioData";
+import { devCount, devLog } from "../lib/devLog";
 
 function fmtEUR(v: number) {
   try {
@@ -52,114 +37,25 @@ function typeBadgeStyle(): React.CSSProperties {
   };
 }
 
-function normalizeError(e: any): string {
-  return e?.message ?? e?.details ?? e?.error_description ?? String(e);
-}
-
 export default function Portfolio() {
-  // ✅ Hard proof: component is actually mounted
-  console.log("✅ PORTFOLIO COMPONENT MOUNTED");
-
   const navigate = useNavigate();
 
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string>("");
+  // Only show debug markers if explicitly enabled (and DEV)
+  const showDebug = import.meta.env.DEV && import.meta.env.VITE_DEBUG_UI === "1";
 
-  const [rows, setRows] = React.useState<PortfolioProperty[]>([]);
-  const [finance, setFinance] = React.useState<Record<string, FinanceRow>>({});
+  if (showDebug) {
+    devCount("[Portfolio] render");
+    devLog("[Portfolio] mounted");
+  }
+
+  const { combined, loading, error, reload, properties } = usePortfolioData();
 
   // UI state
   const [query, setQuery] = React.useState("");
   const [typeFilter, setTypeFilter] = React.useState<PropertyType | "ALL">("ALL");
 
-  // Guard against stale requests
-  const seqRef = React.useRef(0);
-
-  const load = React.useCallback(async () => {
-    const mySeq = ++seqRef.current;
-    const isStale = () => mySeq !== seqRef.current;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      // 0) Session debug (RLS/auth sanity)
-      const { data: sData, error: sErr } = await supabase.auth.getSession();
-      console.log("[Portfolio] session", {
-        hasSession: !!sData?.session,
-        userId: sData?.session?.user?.id ?? null,
-        sessionError: sErr ?? null,
-      });
-
-      // 1) Properties
-      // ✅ IMPORTANT: is_test might be NULL for normal rows
-      // => "NOT test" means: is_test IS NULL OR is_test = false
-      const { data: pData, error: pErr } = await supabase
-        .from("portfolio_properties")
-        .select("id,name,type,sort_index,created_at,is_test")
-        .or("is_test.is.null,is_test.eq.false")
-        .order("sort_index", { ascending: true })
-        .order("created_at", { ascending: true });
-
-      console.log("[Portfolio] properties query result", {
-        count: pData?.length ?? 0,
-        sample: pData?.[0] ?? null,
-        pErr: pErr ?? null,
-      });
-
-      if (pErr) throw pErr;
-      if (isStale()) return;
-
-      const props = (pData ?? []) as PortfolioProperty[];
-      setRows(props);
-
-      // 2) Finance
-      if (props.length === 0) {
-        setFinance({});
-        setLoading(false);
-        return;
-      }
-
-      const ids = props.map((p) => p.id);
-
-      const { data: fData, error: fErr } = await supabase
-        .from("portfolio_property_finance")
-        .select("property_id,purchase_price")
-        .in("property_id", ids);
-
-      console.log("[Portfolio] finance query result", {
-        count: fData?.length ?? 0,
-        sample: fData?.[0] ?? null,
-        fErr: fErr ?? null,
-      });
-
-      if (fErr) throw fErr;
-      if (isStale()) return;
-
-      const map: Record<string, FinanceRow> = {};
-      for (const r of (fData ?? []) as FinanceRow[]) {
-        map[r.property_id] = r;
-      }
-      setFinance(map);
-      setLoading(false);
-    } catch (e) {
-      console.error("[Portfolio] load failed:", e);
-      if (isStale()) return;
-
-      setError(normalizeError(e));
-      setRows([]);
-      setFinance({});
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void load();
-    return () => {
-      // invalidate pending requests
-      seqRef.current += 1;
-    };
-  }, [load]);
+  const rows = combined.rows;
+  const finance = combined.financeByPropertyId;
 
   const filteredRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -193,7 +89,6 @@ export default function Portfolio() {
 
   const goToProperty = React.useCallback(
     (p: PortfolioProperty) => {
-      // Your router will redirect index -> address automatically
       navigate(`/portfolio/${encodeURIComponent(p.id)}`);
     },
     [navigate]
@@ -201,10 +96,12 @@ export default function Portfolio() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* Visible mount marker (helps when "it doesn't load") */}
-      <div style={{ padding: 10, borderRadius: 12, background: "gold", fontWeight: 900 }}>
-        PORTFOLIO MOUNTED ✅
-      </div>
+      {/* Optional debug marker */}
+      {showDebug && (
+        <div style={{ padding: 10, borderRadius: 12, background: "gold", fontWeight: 900 }}>
+          PORTFOLIO DEBUG ENABLED ✅
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
@@ -216,7 +113,7 @@ export default function Portfolio() {
         </div>
 
         <button
-          onClick={() => void load()}
+          onClick={reload}
           disabled={loading}
           style={{
             padding: "10px 12px",
@@ -316,10 +213,12 @@ export default function Portfolio() {
           <div style={{ padding: 14, opacity: 0.7 }}>Lädt Objekte…</div>
         ) : filteredRows.length === 0 ? (
           <div style={{ padding: 14, opacity: 0.7 }}>
-            Keine Objekte gefunden.  
-            <div style={{ marginTop: 6, fontSize: 12 }}>
-              Öffne die Console und suche nach: <b>[Portfolio] properties query result</b>
-            </div>
+            Keine Objekte gefunden.
+            {showDebug && (
+              <div style={{ marginTop: 6, fontSize: 12 }}>
+                Debug ist aktiv. Properties loaded: <b>{properties.data.length}</b>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: "grid", gap: 10, padding: 14 }}>
