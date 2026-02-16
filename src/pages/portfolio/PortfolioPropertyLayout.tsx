@@ -1,266 +1,88 @@
-// src/pages/portfolio/PortfolioPropertyLayout.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
-import { normalizeUuid } from "../../lib/ids";
-
-const TABS = [
-  { to: "address", label: "Adresse" },
-  { to: "details", label: "Details" },
-  { to: "finance", label: "Finanzen" },
-  { to: "energy", label: "Energie" },
-  { to: "renting", label: "Vermietung" },
-];
-
-type PortfolioPropertyCoreMap = {
-  id: string;
-  core_property_id: string | null;
-};
+import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
 
 export type PortfolioOutletContext = {
-  portfolioId: string; // portfolio_properties.id (normalized UUID or "")
-  corePropertyId: string; // properties.id (normalized UUID or "")
+  /** raw param from URL (uuid expected) */
+  propertyId: string;
+  /** legacy name used by existing tab pages */
+  corePropertyId: string;
+  /** legacy mapping flags used by existing tab pages */
   mapLoading: boolean;
   mapErr: string | null;
 };
 
-export default function PortfolioPropertyLayout() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
 
-  const rawPortfolioId = (id ?? "").trim();
-  const safePortfolioId = useMemo(() => normalizeUuid(rawPortfolioId), [rawPortfolioId]);
-
-  const [corePropertyId, setCorePropertyId] = useState<string>("");
-  const [mapErr, setMapErr] = useState<string | null>(null);
-  const [mapLoading, setMapLoading] = useState(false);
-
-  // Prevent late responses from overwriting state
-  const reqSeq = useRef(0);
-
-  useEffect(() => {
-    const seq = ++reqSeq.current;
-
-    // reset for this id
-    setMapErr(null);
-    setCorePropertyId("");
-    setMapLoading(false);
-
-    if (!safePortfolioId) {
-      setMapErr("Ungültige Portfolio-Objekt-ID in URL (keine UUID).");
-      return;
-    }
-
-    setMapLoading(true);
-
-    (async () => {
-      const { data, error } = await supabase
-        .from("portfolio_properties")
-        .select("id, core_property_id")
-        .eq("id", safePortfolioId)
-        .maybeSingle();
-
-      // ignore outdated responses
-      if (seq !== reqSeq.current) return;
-
-      if (error) {
-        console.error("PortfolioPropertyLayout map load failed:", error);
-        setMapErr(error.message);
-        setMapLoading(false);
-        return;
-      }
-
-      const row = (data as PortfolioPropertyCoreMap | null) ?? null;
-
-      // If row doesn't exist, that's a different problem than "core_property_id null"
-      if (!row) {
-        setMapErr("Portfolio-Objekt nicht gefunden (portfolio_properties.id existiert nicht).");
-        setMapLoading(false);
-        return;
-      }
-
-      const safeCore = normalizeUuid(row.core_property_id ?? "");
-      setCorePropertyId(safeCore);
-      setMapLoading(false);
-    })();
-  }, [safePortfolioId]);
-
-  const loanDisabled = mapLoading || !corePropertyId;
-
-  const outletCtx: PortfolioOutletContext = useMemo(
-    () => ({
-      portfolioId: safePortfolioId, // "" if invalid
-      corePropertyId,               // "" if missing
-      mapLoading,
-      mapErr,
-    }),
-    [safePortfolioId, corePropertyId, mapLoading, mapErr]
-  );
-
+function TabLink({ to, label }: { to: string; label: string }) {
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      {/* Top actions */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          onClick={() => navigate("/portfolio")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          ← Zurück zum Portfolio
-        </button>
+    <NavLink
+      to={to}
+      end={false}
+      style={({ isActive }) => ({
+        padding: "10px 14px",
+        borderRadius: 999,
+        border: "1px solid #e5e7eb",
+        textDecoration: "none",
+        fontWeight: 900,
+        background: isActive ? "#111827" : "white",
+        color: isActive ? "white" : "#111827",
+      })}
+    >
+      {label}
+    </NavLink>
+  );
+}
 
-        <button
-          onClick={() => {
-            if (!loanDisabled) navigate(`/darlehensuebersicht/${corePropertyId}`);
-          }}
-          disabled={loanDisabled}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: loanDisabled ? "not-allowed" : "pointer",
-            opacity: loanDisabled ? 0.6 : 1,
-          }}
-          title={
-            loanDisabled
-              ? "Dieses Portfolio-Objekt ist keiner Immobilien-ID (properties.id) zugeordnet."
-              : "Zur Darlehensübersicht dieses Objekts"
-          }
-        >
-          Darlehen anzeigen
-        </button>
+export default function PortfolioPropertyLayout() {
+  const { propertyId } = useParams<{ propertyId: string }>();
 
-        <button
-          onClick={() => {
-            if (!loanDisabled) navigate(`/darlehensuebersicht/${corePropertyId}/loan/new`);
-          }}
-          disabled={loanDisabled}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            fontWeight: 900,
-            cursor: loanDisabled ? "not-allowed" : "pointer",
-            opacity: loanDisabled ? 0.6 : 1,
-          }}
-          title={
-            loanDisabled
-              ? "Dieses Portfolio-Objekt ist keiner Immobilien-ID (properties.id) zugeordnet."
-              : "Neue Darlehenszeile hinzufügen"
-          }
-        >
-          + Darlehenszeile hinzufügen
-        </button>
+  if (!propertyId) return <Navigate to="/portfolio" replace />;
 
-        <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.65 }}>
-          Portfolio-ID:{" "}
-          <span
-            style={{
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            }}
-          >
-            {safePortfolioId || "—"}
-          </span>
-          {" · "}
-          Core-ID:{" "}
-          <span
-            style={{
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            }}
-          >
-            {corePropertyId || "—"}
-          </span>
-        </div>
-      </div>
-
-      {mapErr && (
+  // Minimal business-safe validation: route param must be UUID
+  if (!isUuid(propertyId)) {
+    return (
+      <div style={{ padding: 16 }}>
         <div
           style={{
+            padding: 12,
+            borderRadius: 14,
             border: "1px solid #fecaca",
             background: "#fff1f2",
-            color: "#7f1d1d",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
+            color: "#991b1b",
+            fontWeight: 900,
           }}
         >
-          {mapErr}
+          Ungültige Portfolio-Objekt-ID in URL (keine UUID).
         </div>
-      )}
-
-      {!mapErr && safePortfolioId && mapLoading && (
-        <div style={{ fontSize: 12, opacity: 0.7 }}>Lade Verknüpfung (core_property_id)…</div>
-      )}
-
-      {!mapErr && safePortfolioId && !mapLoading && !corePropertyId && (
-        <div
-          style={{
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            color: "#7c2d12",
-            padding: 12,
-            borderRadius: 12,
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            fontWeight: 800,
-          }}
-        >
-          Dieses Portfolio-Objekt hat keine Verknüpfung zu <b>properties</b> (core_property_id ist leer).
-          <br />
-          Fix: Beim Erstellen des properties-Datensatzes die <b>properties.id</b> hier eintragen:
-          <br />
-          <code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-            portfolio_properties.core_property_id
-          </code>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={t.to}
-            style={({ isActive }) => ({
-              padding: "8px 12px",
-              borderRadius: 12,
-              textDecoration: "none",
-              fontWeight: 900,
-              border: "1px solid #e5e7eb",
-              background: isActive ? "#111827" : "white",
-              color: isActive ? "white" : "#111827",
-              opacity: mapLoading ? 0.75 : 1,
-            })}
-          >
-            {t.label}
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Tab Content */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          background: "white",
-        }}
-      >
-        <Outlet context={outletCtx} />
       </div>
+    );
+  }
+
+  /**
+   * Compatibility layer:
+   * Existing pages expect `corePropertyId`, `mapLoading`, `mapErr`.
+   * Right now, `propertyId` IS the core id (UUID). If later you have slug->uuid mapping,
+   * reintroduce it here and keep the same context shape.
+   */
+  const ctx: PortfolioOutletContext = {
+    propertyId,
+    corePropertyId: propertyId,
+    mapLoading: false,
+    mapErr: null,
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <TabLink to="address" label="Adresse" />
+        <TabLink to="details" label="Details" />
+        <TabLink to="finanzen" label="Finanzen" />
+        <TabLink to="energie" label="Energie" />
+        <TabLink to="vermietung" label="Vermietung" />
+      </div>
+
+      <Outlet context={ctx} />
     </div>
   );
 }

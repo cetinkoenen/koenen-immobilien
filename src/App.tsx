@@ -10,6 +10,13 @@ const Login = React.lazy(() => import("./pages/Login"));
 const MFA = React.lazy(() => import("./pages/MFA"));
 const Portfolio = React.lazy(() => import("./pages/Portfolio"));
 
+const PortfolioPropertyLayout = React.lazy(() => import("./pages/portfolio/PortfolioPropertyLayout"));
+const PortfolioAddress = React.lazy(() => import("./pages/portfolio/PortfolioAddress"));
+const PortfolioDetails = React.lazy(() => import("./pages/portfolio/PortfolioDetails"));
+const PortfolioFinance = React.lazy(() => import("./pages/portfolio/PortfolioFinance"));
+const PortfolioEnergy = React.lazy(() => import("./pages/portfolio/PortfolioEnergy"));
+const PortfolioRenting = React.lazy(() => import("./pages/portfolio/PortfolioRenting"));
+
 /* =========================
    Fallback
 ========================= */
@@ -70,6 +77,14 @@ export default function App() {
           }
         >
           <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
+            <Route index element={<Navigate to="address" replace />} />
+            <Route path="address" element={<PortfolioAddress />} />
+            <Route path="details" element={<PortfolioDetails />} />
+            <Route path="finanzen" element={<PortfolioFinance />} />
+            <Route path="energie" element={<PortfolioEnergy />} />
+            <Route path="vermietung" element={<PortfolioRenting />} />
+          </Route>
         </Route>
 
         {/* Default + Catch-all */}
