@@ -26,7 +26,7 @@ import Auswertung from "./pages/Auswertung";
 import CategoryAdminPage from "./pages/CategoryAdminPage";
 import TestRentChart from "./pages/TestRentChart";
 
-// Nested portfolio layout/pages
+// Portfolio nested pages
 import PortfolioPropertyLayout from "./pages/portfolio/PortfolioPropertyLayout";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
@@ -36,8 +36,7 @@ import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
 
 /**
  * Debug marker:
- * - Only show in DEV and only if explicitly enabled via VITE_DEBUG_UI=1
- * - Never use import.meta.env.MODE to decide dev/prod.
+ * Show only in DEV and only if explicitly enabled via VITE_DEBUG_UI=1
  */
 function DevBuildMarker() {
   const loc = useLocation();
@@ -77,7 +76,6 @@ function PublicLayout() {
 }
 
 function ProtectedLayout() {
-  // ✅ Navbar wieder rein, nur im eingeloggten Bereich
   return (
     <div>
       <Navbar />
@@ -133,7 +131,7 @@ export default function App() {
             </RequireAuthMFA>
           }
         >
-          {/* Default entry: dein Login navigiert zu /monate */}
+          {/* Default entry */}
           <Route index element={<Navigate to="/monate" replace />} />
 
           {/* Core */}
@@ -144,42 +142,37 @@ export default function App() {
           <Route path="/portfolio" element={<Portfolio />} />
 
           {/* Portfolio object detail + tabs */}
-          <Route
-            path="/portfolio/:propertyId"
-            element={<PortfolioPropertyLayout />}
-          >
-            {/* Standard-Tab */}
+          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
+            {/* Standard tab */}
             <Route index element={<Navigate to="details" replace />} />
 
             {/* Details */}
             <Route path="details" element={<PortfolioDetails />} />
             <Route path="detail" element={<Navigate to="../details" replace />} />
 
-            {/* Adresse: deutsch + englisch */}
+            {/* Address (DE/EN) */}
             <Route path="adresse" element={<PortfolioAddress />} />
             <Route path="address" element={<PortfolioAddress />} />
 
-            {/* Energie: deutsch + englisch */}
+            {/* Energy (DE/EN) */}
             <Route path="energie" element={<PortfolioEnergy />} />
             <Route path="energy" element={<PortfolioEnergy />} />
 
-            {/* Vermietung: deutsch + englisch */}
+            {/* Renting (DE/EN) */}
             <Route path="vermietung" element={<PortfolioRenting />} />
             <Route path="renting" element={<PortfolioRenting />} />
+            <Route path="miete" element={<Navigate to="../vermietung" replace />} />
 
-            {/* Finanzen: deutsch + englisch */}
+            {/* Finance (DE/EN) */}
             <Route path="finanzen" element={<PortfolioFinance />} />
             <Route path="finance" element={<PortfolioFinance />} />
-
-            {/* Optional: falls irgendwo "finanz" oder "miete" benutzt wird */}
-            <Route path="miete" element={<Navigate to="../vermietung" replace />} />
             <Route path="finanz" element={<Navigate to="../finanzen" replace />} />
 
-            {/* Catch-all innerhalb des Portfolio-Details */}
+            {/* Catch-all inside portfolio details */}
             <Route path="*" element={<Navigate to="details" replace />} />
           </Route>
 
-          {/* Weitere Pages */}
+          {/* Other pages */}
           <Route path="/uebersicht" element={<Uebersicht />} />
           <Route path="/objekte" element={<Objekte />} />
           <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
@@ -196,9 +189,7 @@ export default function App() {
           <Route path="/test-rent-chart" element={<TestRentChart />} />
         </Route>
 
-        {/* =======================
-            GLOBAL CATCH-ALL
-           ======================= */}
+        {/* GLOBAL CATCH-ALL */}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
