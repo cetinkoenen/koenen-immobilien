@@ -1,27 +1,57 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import logo from "../../assets/koenen.png";
+
+function PillLink({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      style={({ isActive }) => ({
+        display: "inline-flex",
+        alignItems: "center",
+        height: 38,
+        padding: "0 14px",
+        borderRadius: 999,
+        textDecoration: "none",
+        border: "1px solid #e5e7eb",
+        background: isActive ? "#111827" : "#ffffff",
+        color: isActive ? "#ffffff" : "#111827",
+        fontWeight: 800,
+        fontSize: 14,
+        whiteSpace: "nowrap",
+      })}
+    >
+      {label}
+    </NavLink>
+  );
+}
 
 export default function Navbar() {
   const navigate = useNavigate();
   const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
+    async function loadUser() {
+      const { data } = await supabase.auth.getUser();
+      if (!isMounted) return;
       setEmail(data.user?.email ?? "");
-    });
+    }
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setEmail(session?.user?.email ?? "");
-    });
+    loadUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!isMounted) return;
+        setEmail(session?.user?.email ?? "");
+      }
+    );
 
     return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
+      isMounted = false;
+      listener.subscription.unsubscribe();
     };
   }, []);
 
@@ -31,30 +61,99 @@ export default function Navbar() {
   }
 
   return (
-    <div
+    <header
       style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid #e5e5e5",
-        marginBottom: 16,
-        display: "flex",
-        gap: 12,
-        alignItems: "center",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb",
       }}
     >
-      <strong style={{ marginRight: 8 }}>Koenen</strong>
+      <div
+        style={{
+          padding: "12px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+        }}
+      >
+        {/* Brand */}
+        <Link
+          to="/portfolio"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            textDecoration: "none",
+            color: "#111827",
+          }}
+        >
+          <img
+            src={logo}
+            alt="KÖNEN"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              objectFit: "cover",
+              border: "1px solid #e5e7eb",
+            }}
+          />
+          <div style={{ display: "grid", lineHeight: 1.1 }}>
+            <strong style={{ fontSize: 16 }}>Könen Immobilien</strong>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>
+              Admin Dashboard
+            </span>
+          </div>
+        </Link>
 
-      <Link to="/monate">Monate</Link>
-      <Link to="/auswertung">Auswertung</Link>
-      <Link to="/admin">Kategorien</Link>
+        {/* Navigation */}
+        <nav
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            marginLeft: 18,
+          }}
+        >
+          <PillLink to="/portfolio" label="Portfolio" />
+          <PillLink to="/exports" label="Exports" />
+          <PillLink to="/uebersicht" label="Übersicht" />
+          <PillLink to="/auswertung" label="Auswertung" />
+          <PillLink to="/monate" label="Monate" />
+          <PillLink to="/entry-add" label="+ Buchung" />
+          <PillLink to="/admin/categories" label="Kategorien" />
+        </nav>
 
-      <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
-        {email ? (
-          <span style={{ fontSize: 12, opacity: 0.8 }}>{email}</span>
-        ) : (
-          <span style={{ fontSize: 12, opacity: 0.6 }}>—</span>
-        )}
-        <button onClick={logout}>Logout</button>
+        {/* Right */}
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            {email || "—"}
+          </span>
+          <button
+            onClick={logout}
+            style={{
+              height: 36,
+              padding: "0 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "#f9fafb",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            Logout
+          </button>
+        </div>
       </div>
-    </div>
+    </header>
   );
 }

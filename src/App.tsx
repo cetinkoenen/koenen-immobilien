@@ -34,10 +34,6 @@ import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
 import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
 import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
 
-/**
- * Debug marker:
- * Show only in DEV and only if explicitly enabled via VITE_DEBUG_UI=1
- */
 function DevBuildMarker() {
   const loc = useLocation();
   const show = import.meta.env.DEV && import.meta.env.VITE_DEBUG_UI === "1";
@@ -99,9 +95,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        {/* =======================
-            PUBLIC ROUTES
-           ======================= */}
+        {/* PUBLIC */}
         <Route element={<PublicLayout />}>
           <Route
             path="/login"
@@ -121,9 +115,7 @@ export default function App() {
           />
         </Route>
 
-        {/* =======================
-            PROTECTED ROUTES
-           ======================= */}
+        {/* PROTECTED */}
         <Route
           element={
             <RequireAuthMFA>
@@ -131,48 +123,33 @@ export default function App() {
             </RequireAuthMFA>
           }
         >
-          {/* Default entry */}
           <Route index element={<Navigate to="/monate" replace />} />
 
-          {/* Core */}
           <Route path="/monate" element={<Monate />} />
           <Route path="/monates" element={<MonatesPage />} />
 
-          {/* Portfolio overview */}
           <Route path="/portfolio" element={<Portfolio />} />
 
-          {/* Portfolio object detail + tabs */}
           <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
-            {/* Standard tab */}
             <Route index element={<Navigate to="details" replace />} />
 
-            {/* Details */}
             <Route path="details" element={<PortfolioDetails />} />
-            <Route path="detail" element={<Navigate to="../details" replace />} />
 
-            {/* Address (DE/EN) */}
             <Route path="adresse" element={<PortfolioAddress />} />
             <Route path="address" element={<PortfolioAddress />} />
 
-            {/* Energy (DE/EN) */}
             <Route path="energie" element={<PortfolioEnergy />} />
             <Route path="energy" element={<PortfolioEnergy />} />
 
-            {/* Renting (DE/EN) */}
             <Route path="vermietung" element={<PortfolioRenting />} />
             <Route path="renting" element={<PortfolioRenting />} />
-            <Route path="miete" element={<Navigate to="../vermietung" replace />} />
 
-            {/* Finance (DE/EN) */}
             <Route path="finanzen" element={<PortfolioFinance />} />
             <Route path="finance" element={<PortfolioFinance />} />
-            <Route path="finanz" element={<Navigate to="../finanzen" replace />} />
 
-            {/* Catch-all inside portfolio details */}
             <Route path="*" element={<Navigate to="details" replace />} />
           </Route>
 
-          {/* Other pages */}
           <Route path="/uebersicht" element={<Uebersicht />} />
           <Route path="/objekte" element={<Objekte />} />
           <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
@@ -189,7 +166,6 @@ export default function App() {
           <Route path="/test-rent-chart" element={<TestRentChart />} />
         </Route>
 
-        {/* GLOBAL CATCH-ALL */}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
