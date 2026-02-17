@@ -1,6 +1,7 @@
 // src/App.tsx
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import RequireAuthMFA from "./components/RequireAuthMFA";
+import Navbar from "./components/ui/Navbar";
 
 // Public pages
 import Login from "./pages/Login";
@@ -76,10 +77,13 @@ function PublicLayout() {
 }
 
 function ProtectedLayout() {
-  // Wenn du später global Navbar/Sidebar willst: hier rein.
+  // ✅ Navbar wieder rein, nur im eingeloggten Bereich
   return (
-    <div style={{ padding: 24 }}>
-      <Outlet />
+    <div>
+      <Navbar />
+      <div style={{ padding: 24 }}>
+        <Outlet />
+      </div>
     </div>
   );
 }
@@ -140,7 +144,10 @@ export default function App() {
           <Route path="/portfolio" element={<Portfolio />} />
 
           {/* Portfolio object detail + tabs */}
-          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
+          <Route
+            path="/portfolio/:propertyId"
+            element={<PortfolioPropertyLayout />}
+          >
             {/* Standard-Tab */}
             <Route index element={<Navigate to="details" replace />} />
 
