@@ -1,5 +1,4 @@
 // src/App.tsx
-import React from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import RequireAuthMFA from "./components/RequireAuthMFA";
 
