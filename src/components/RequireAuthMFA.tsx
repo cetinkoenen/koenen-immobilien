@@ -1,12 +1,10 @@
 // src/components/RequireAuthMFA.tsx
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 
 type Props = { children: ReactNode };
-
 type AAL = "aal1" | "aal2" | null;
 
 type GateState = {
@@ -17,16 +15,20 @@ type GateState = {
   lastSyncAt?: number;
 };
 
-function safeFrom(location: any): string {
-  // supports either state.from as string or location object
-  const raw = location?.state?.from;
-  if (typeof raw === "string" && raw.startsWith("/")) return raw;
-
-  const p = raw?.pathname;
-  if (typeof p === "string" && p.startsWith("/")) return p;
-
-  // fallback
-  return "/portfolio";
+function withTimeout<T>(p: Promise<T>, ms = 8000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(`Auth timeout after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(id);
+        reject(e);
+      }
+    );
+  });
 }
 
 function formatTime(ts?: number) {
@@ -38,11 +40,29 @@ function formatTime(ts?: number) {
   }
 }
 
+/**
+ * Determine "from" target:
+ * - we keep it as a string path (recommended)
+ * - fallback: "/portfolio"
+ */
+function getFrom(location: any): string {
+  const raw = location?.state?.from;
+
+  // if previous code set from as string
+  if (typeof raw === "string" && raw.startsWith("/")) return raw;
+
+  // if previous code set from as { pathname: ... }
+  const p = raw?.pathname;
+  if (typeof p === "string" && p.startsWith("/")) return p;
+
+  return "/portfolio";
+}
+
 export default function RequireAuthMFA({ children }: Props) {
   const location = useLocation() as any;
   const pathname = (location?.pathname ?? "/") as string;
 
-  // Toggle debug UI via .env.local: VITE_DEBUG_UI=1 (and only in DEV)
+  // Show debug UI only in DEV when explicitly enabled
   const showDebug = import.meta.env.DEV && import.meta.env.VITE_DEBUG_UI === "1";
 
   const [st, setSt] = useState<GateState>({
@@ -52,16 +72,6 @@ export default function RequireAuthMFA({ children }: Props) {
     err: undefined,
     lastSyncAt: undefined,
   });
-
-  /**
-   * Concurrency + staleness guards:
-   * - seq increases for each sync trigger
-   * - only latest seq is allowed to commit state
-   * - syncing prevents parallel storms from multiple triggers firing together
-   */
-  const seq = useRef(0);
-  const syncing = useRef(false);
-  const mountedRef = useRef(true);
 
   const debugText = useMemo(() => {
     const s = st.session ? "yes" : "no";
@@ -89,84 +99,86 @@ export default function RequireAuthMFA({ children }: Props) {
     </div>
   ) : null;
 
-  async function syncOnce() {
-    if (syncing.current) return;
-    syncing.current = true;
-
-    const mySeq = ++seq.current;
-    const isStale = () => mySeq !== seq.current || !mountedRef.current;
-
-    try {
-      // 1) session
-      const { data: sData, error: sErr } = await supabase.auth.getSession();
-      if (sErr) throw sErr;
-
-      const session = sData?.session ?? null;
-
-      // 2) aal (only if session exists)
-      let aal: AAL = null;
-      if (session) {
-        const { data: aData, error: aErr } =
-          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (aErr) throw aErr;
-
-        const lvl = aData?.currentLevel;
-        aal = lvl === "aal1" || lvl === "aal2" ? lvl : null;
-      }
-
-      if (isStale()) return;
-
-      setSt({
-        loading: false,
-        session,
-        aal,
-        err: undefined,
-        lastSyncAt: Date.now(),
-      });
-    } catch (e: any) {
-      if (isStale()) return;
-
-      const msg =
-        e?.message ??
-        e?.error_description ??
-        (typeof e === "string" ? e : JSON.stringify(e));
-
-      setSt((prev) => ({
-        ...prev,
-        loading: false,
-        err: msg,
-        lastSyncAt: Date.now(),
-      }));
-    } finally {
-      // release lock only if still latest
-      if (mySeq === seq.current) syncing.current = false;
-    }
-  }
-
   useEffect(() => {
-    mountedRef.current = true;
+    let cancelled = false;
+
+    async function syncAuth(reason: string) {
+      try {
+        // Always start sync in a controlled way
+        setSt((prev) => ({
+          ...prev,
+          loading: true,
+          err: undefined,
+        }));
+
+        // 1) session
+        const { data: sData, error: sErr } = await withTimeout(
+          supabase.auth.getSession(),
+          8000
+        );
+        if (sErr) throw sErr;
+
+        const session = sData?.session ?? null;
+
+        // 2) AAL (only if session exists)
+        let aal: AAL = null;
+        if (session) {
+          const { data: aData, error: aErr } = await withTimeout(
+            supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+            8000
+          );
+          if (aErr) throw aErr;
+
+          const lvl = aData?.currentLevel;
+          aal = lvl === "aal1" || lvl === "aal2" ? lvl : null;
+        }
+
+        if (cancelled) return;
+
+        setSt({
+          loading: false,
+          session,
+          aal,
+          err: undefined,
+          lastSyncAt: Date.now(),
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+
+        const msg =
+          e?.message ??
+          e?.error_description ??
+          (typeof e === "string" ? e : JSON.stringify(e));
+
+        // IMPORTANT: stop loading even on errors
+        setSt((prev) => ({
+          ...prev,
+          loading: false,
+          err: msg,
+          lastSyncAt: Date.now(),
+        }));
+
+        // Optional: log to console for production debugging
+        // eslint-disable-next-line no-console
+        console.error("RequireAuthMFA sync error:", reason, msg, e);
+      }
+    }
 
     // initial sync
-    void syncOnce();
+    void syncAuth("initial");
 
     // subscribe to auth changes
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      void syncOnce();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event) => {
+      void syncAuth("onAuthStateChange");
     });
 
     return () => {
-      mountedRef.current = false;
+      cancelled = true;
       sub.subscription.unsubscribe();
-
-      // invalidate pending async commits
-      seq.current += 1;
-      // unlock to avoid deadlock on remount
-      syncing.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Friendly loading screen (with optional debug bar)
+  // Friendly loading screen
   if (st.loading) {
     return (
       <div>
@@ -176,7 +188,7 @@ export default function RequireAuthMFA({ children }: Props) {
     );
   }
 
-  const from = safeFrom(location);
+  const from = getFrom(location);
 
   /**
    * Routing rules:
@@ -184,6 +196,14 @@ export default function RequireAuthMFA({ children }: Props) {
    * - /mfa:   if no session => redirect /login. if aal2 => redirect to from. else show children (mfa page)
    * - protected: if no session => redirect /login. if not aal2 => redirect /mfa. else show children
    */
+
+  // If there is an auth error, still allow navigation to login
+  // (Most apps prefer not to hard-block the user on auth sync errors)
+  if (st.err && pathname !== "/login") {
+    // You can change this behavior if you want:
+    // e.g. show an error page instead of redirecting
+    // For now: let protected logic below decide (will route to /login if no session)
+  }
 
   // /login behavior
   if (pathname === "/login") {
@@ -242,7 +262,7 @@ export default function RequireAuthMFA({ children }: Props) {
     return (
       <div>
         {DebugBar}
-        <Navigate to="/login" replace state={{ from: location }} />
+        <Navigate to="/login" replace state={{ from: pathname }} />
       </div>
     );
   }
@@ -251,7 +271,7 @@ export default function RequireAuthMFA({ children }: Props) {
     return (
       <div>
         {DebugBar}
-        <Navigate to="/mfa" replace state={{ from: location }} />
+        <Navigate to="/mfa" replace state={{ from: pathname }} />
       </div>
     );
   }
