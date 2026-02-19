@@ -4,16 +4,16 @@ import { useOutletContext } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { normalizeUuid } from "../../lib/ids";
 
+import RentHistoryChart from "@/components/RentHistoryChart";
+
 type PortfolioOutletContext = {
-  corePropertyId?: string | null;
+  // this should be properties.id (core table), NOT portfolio_properties.id
+  propertyId?: string | null;
 };
 
+// Optional fallback if this page is ever rendered outside the outlet
 type Props = {
-  /**
-   * Optional: wenn PortfolioRenting direkt gerendert wird (z.B. in Tabs),
-   * kann propertyId übergeben werden.
-   * Wenn nicht gesetzt, wird corePropertyId aus dem OutletContext genutzt.
-   */
+    /** If provided, must be properties.id (core). */
   propertyId?: string;
 };
 
@@ -99,14 +99,29 @@ function CoreLinkMissingBox() {
   );
 }
 
-export default function PortfolioRenting({ propertyId }: Props) {
-  const { corePropertyId } = useOutletContext<PortfolioOutletContext>();
+export default function PortfolioRenting(props: Props) {
+  const outlet = useOutletContext<PortfolioOutletContext>();
+  const coreIdFromOutlet = outlet?.propertyId ?? null;
 
-  const resolvedId = propertyId ?? corePropertyId ?? "";
+  // Priority: explicit prop core id > outlet core id
+  const resolvedCoreId = props.propertyId ?? coreIdFromOutlet ?? "";
 
+
+  const DEBUG_CHARTS = import.meta.env.VITE_DEBUG_CHARTS === "1";
+  if (DEBUG_CHARTS) {
+    console.log("[PortfolioRenting] ids", {
+      propsPropertyId: (props as any)?.propertyId,
+      outlet: outlet ?? null,
+      coreIdFromOutlet,
+      resolvedCoreId,
+    });
+  }
+  // This is the ONLY id that must be used for:
+  // - CRUD table portfolio_property_rentals.property_id
+  // - Chart scope_id for scope_type="property" (view expects properties.id)
   const safeCorePropertyId = useMemo(() => {
-    return normalizeUuid(String(resolvedId ?? "").trim());
-  }, [resolvedId]);
+    return normalizeUuid(String(resolvedCoreId ?? "").trim());
+  }, [resolvedCoreId]);
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -131,7 +146,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
   );
 
   async function loadRenting() {
-    // ✅ Guard: never query if missing/invalid
     if (!safeCorePropertyId) return;
 
     const seq = ++requestSeq.current;
@@ -141,7 +155,7 @@ export default function PortfolioRenting({ propertyId }: Props) {
     const { data, error } = await supabase
       .from("portfolio_property_rentals")
       .select("*")
-      .eq("property_id", safeCorePropertyId) // ✅ always resolved property id
+      .eq("property_id", safeCorePropertyId)
       .order("start_date", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
@@ -167,9 +181,7 @@ export default function PortfolioRenting({ propertyId }: Props) {
     setIsFormOpen(false);
     setForm({ rent_type: "", rent_monthly: "", start_date: "", end_date: "" });
 
-    // ✅ Guard
     if (!safeCorePropertyId) return;
-
     void loadRenting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeCorePropertyId]);
@@ -242,7 +254,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
       return;
     }
 
-    // ✅ hard guard
     if (!safeCorePropertyId) return;
 
     setBusy(true);
@@ -284,7 +295,6 @@ export default function PortfolioRenting({ propertyId }: Props) {
   }
 
   async function onDelete(rowId: string) {
-    // ✅ Guard
     if (!safeCorePropertyId) return;
 
     const ok = window.confirm("Diesen Vermietungszeitraum wirklich löschen?");
@@ -309,37 +319,41 @@ export default function PortfolioRenting({ propertyId }: Props) {
     await loadRenting();
   }
 
-  // ✅ If missing corePropertyId => stop UI + no queries
-  if (!safeCorePropertyId) {
-    return (
-      <div style={{ display: "grid", gap: 16 }}>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>Vermietung</div>
-        {error ? (
-          <div
-            style={{
-              border: "1px solid #fecaca",
-              background: "#fff1f2",
-              color: "#7f1d1d",
-              padding: 12,
-              borderRadius: 12,
-              whiteSpace: "pre-wrap",
-              fontSize: 13,
-              fontWeight: 800,
-            }}
-          >
-            {error}
-          </div>
-        ) : (
-          <CoreLinkMissingBox />
-        )}
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ fontSize: 22, fontWeight: 900 }}>Vermietung</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>BUILD_MARKER: renting-chart-v1</div>
 
+
+      {/* ✅ CHART ALWAYS VISIBLE */}
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          padding: 16,
+          background: "white",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontWeight: 800 }}>Mietentwicklung</div>
+
+        {safeCorePropertyId ? (
+
+          <RentHistoryChart scopeType="property" propertyId={safeCorePropertyId} height={340} />
+        ) : (
+          <>
+            <CoreLinkMissingBox />
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Fallback: Gesamtsicht (User)</div>
+
+              <RentHistoryChart scopeType="user" height={340} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* MAIN CARD */}
       <div
         style={{
           border: "1px solid #e5e7eb",
