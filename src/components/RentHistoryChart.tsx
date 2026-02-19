@@ -155,37 +155,35 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
     return <div className="text-sm text-gray-500">Keine Mietdaten gefunden.</div>;
   }
 
-  return (
+    return (
     <div
       ref={ref}
       style={{
         width: "100%",
         height: 320,
         minWidth: 0,
-        minHeight: 0,
+        minHeight: 320,
       }}
     >
-      {size.width > 0 && size.height > 0 && (
-        <LineChart
-          width={size.width}
-          height={size.height}
-          data={chartData}
-          margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis
-            dataKey="month"
-            tickFormatter={(v) => formatMonthTick(String(v))}
-            interval="preserveStartEnd"
-          />
-          <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
-          <Tooltip
-            labelFormatter={(label) => formatMonthTick(String(label))}
-            formatter={(value) => formatEur(value)}
-          />
-          <Line type="monotone" dataKey="rent" dot={false} />
-        </LineChart>
-      )}
+      <LineChart
+        width={Math.max(1, size.width || 1)}
+        height={320}
+        data={chartData}
+        margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis
+          dataKey="month"
+          tickFormatter={(v) => formatMonthTick(String(v))}
+          interval="preserveStartEnd"
+        />
+        <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
+        <Tooltip
+          labelFormatter={(label) => formatMonthTick(String(label))}
+          formatter={(value) => formatEur(value)}
+        />
+        <Line type="monotone" dataKey="rent" dot={false} />
+      </LineChart>
     </div>
   );
 }
