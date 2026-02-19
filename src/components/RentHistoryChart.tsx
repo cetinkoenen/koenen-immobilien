@@ -94,9 +94,9 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
 
   const data = hookResult?.data ?? [];
   const error = hookResult?.error ?? null;
+  const requiresAuth = Boolean(hookResult?.requiresAuth ?? false);
   const loading = Boolean(hookResult?.loading ?? hookResult?.isLoading ?? false);
-
-  const chartData: ChartPoint[] = useMemo(() => {
+const chartData: ChartPoint[] = useMemo(() => {
     const rows = Array.isArray(data) ? data : [];
     if (scopeType === "property" && !propertyId) return [];
 
@@ -147,7 +147,12 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
     );
   }
 
-  if (scopeType === "property" && !propertyId) {
+  
+
+  if (requiresAuth) {
+    return <div className="text-sm text-gray-500">Bitte einloggen, um den Mietverlauf zu sehen.</div>;
+  }
+if (scopeType === "property" && !propertyId) {
     return <div className="text-sm text-gray-500">propertyId fehlt (Scope: property).</div>;
   }
 
@@ -155,7 +160,19 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
     return <div className="text-sm text-gray-500">Keine Mietdaten gefunden.</div>;
   }
 
-    return (
+  {DEBUG && (
+    <div className="mb-2 rounded border border-gray-300 p-2 text-xs text-gray-700">
+      <div><b>RentHistoryChart debug</b></div>
+      <div>scopeType: {scopeType}</div>
+      <div>propertyId: {propertyId ?? "null"}</div>
+      <div>loading: {String(loading)} | requiresAuth: {String(requiresAuth)}</div>
+      <div>rows(data): {Array.isArray(data) ? data.length : 0} | chartData: {chartData.length}</div>
+      <div>size: {size.width} x {size.height}</div>
+      <div>sample month/rent: {chartData[0] ? `${chartData[0].month} / ${chartData[0].rent}` : "none"}</div>
+    </div>
+  )}
+
+  return (
     <div
       ref={ref}
       style={{
