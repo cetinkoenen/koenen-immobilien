@@ -9,11 +9,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-
-type ScopeType = "user" | "property";
-
 interface RentHistoryChartProps {
-  scopeType: ScopeType;
+  scopeType: "user" | "property";
   propertyId?: string;
 }
 

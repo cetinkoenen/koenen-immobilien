@@ -340,14 +340,14 @@ export default function PortfolioRenting(props: Props) {
 
         {safeCorePropertyId ? (
 
-          <RentHistoryChart scopeType="property" propertyId={safeCorePropertyId} height={340} />
+          <RentHistoryChart scopeType="property" propertyId={safeCorePropertyId} />
         ) : (
           <>
             <CoreLinkMissingBox />
             <div style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Fallback: Gesamtsicht (User)</div>
 
-              <RentHistoryChart scopeType="user" height={340} />
+              <RentHistoryChart scopeType="user" />
             </div>
           </>
         )}
