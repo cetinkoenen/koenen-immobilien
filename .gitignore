@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 .env
 tmp.tsx
+
+# local debug
+.tmp_access_token
+property_scope.json
+.vercel/
+scripts/get_access_token.mjs
