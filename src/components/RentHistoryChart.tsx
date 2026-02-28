@@ -1,4 +1,3 @@
-import * as React from "react";
 import { useMemo } from "react";
 import { useRentHistory24m } from "@/hooks/useRentHistory24m";
 import {
@@ -8,7 +7,9 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  ResponsiveContainer,
 } from "recharts";
+
 interface RentHistoryChartProps {
   scopeType: "user" | "property";
   propertyId?: string;
@@ -16,7 +17,7 @@ interface RentHistoryChartProps {
 
 type ChartPoint = {
   month: string; // YYYY-MM
-  rent: number;  // numeric
+  rent: number; // numeric (EUR)
 };
 
 function monthLabel(v: unknown): string {
@@ -54,41 +55,8 @@ function formatMonthTick(yyyyMm: string): string {
   return d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
 }
 
-function useElementSize<T extends HTMLElement>() {
-  const ref = React.useRef<T | null>(null);
-  const [size, setSize] = React.useState({ width: 0, height: 0 });
-
-  React.useLayoutEffect(() => {
-    if (!ref.current) return;
-
-    const el = ref.current;
-
-    const initial = el.getBoundingClientRect();
-    setSize({
-      width: Math.floor(initial.width),
-      height: Math.floor(initial.height),
-    });
-
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setSize({
-        width: Math.floor(width),
-        height: Math.floor(height),
-      });
-    });
-
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  return { ref, size };
-}
-
 export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryChartProps) {
   const DEBUG = import.meta.env.VITE_DEBUG_CHARTS === "1";
-
-  // ✅ MUST be unconditional (before any early returns)
-  const { ref, size } = useElementSize<HTMLDivElement>();
 
   const hookResult: any = useRentHistory24m({ scopeType, propertyId });
 
@@ -96,7 +64,8 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
   const error = hookResult?.error ?? null;
   const requiresAuth = Boolean(hookResult?.requiresAuth ?? false);
   const loading = Boolean(hookResult?.loading ?? hookResult?.isLoading ?? false);
-const chartData: ChartPoint[] = useMemo(() => {
+
+  const chartData: ChartPoint[] = useMemo(() => {
     const rows = Array.isArray(data) ? data : [];
     if (scopeType === "property" && !propertyId) return [];
 
@@ -133,7 +102,6 @@ const chartData: ChartPoint[] = useMemo(() => {
       error,
       sample: Array.isArray(data) ? data[0] : null,
       chartSample: chartData[0],
-      size,
     });
   }
 
@@ -147,12 +115,15 @@ const chartData: ChartPoint[] = useMemo(() => {
     );
   }
 
-  
-
   if (requiresAuth) {
-    return <div className="text-sm text-gray-500">Bitte einloggen, um den Mietverlauf zu sehen.</div>;
+    return (
+      <div className="text-sm text-gray-500">
+        Bitte einloggen, um den Mietverlauf zu sehen.
+      </div>
+    );
   }
-if (scopeType === "property" && !propertyId) {
+
+  if (scopeType === "property" && !propertyId) {
     return <div className="text-sm text-gray-500">propertyId fehlt (Scope: property).</div>;
   }
 
@@ -160,47 +131,49 @@ if (scopeType === "property" && !propertyId) {
     return <div className="text-sm text-gray-500">Keine Mietdaten gefunden.</div>;
   }
 
-  {DEBUG && (
-    <div className="mb-2 rounded border border-gray-300 p-2 text-xs text-gray-700">
-      <div><b>RentHistoryChart debug</b></div>
-      <div>scopeType: {scopeType}</div>
-      <div>propertyId: {propertyId ?? "null"}</div>
-      <div>loading: {String(loading)} | requiresAuth: {String(requiresAuth)}</div>
-      <div>rows(data): {Array.isArray(data) ? data.length : 0} | chartData: {chartData.length}</div>
-      <div>size: {size.width} x {size.height}</div>
-      <div>sample month/rent: {chartData[0] ? `${chartData[0].month} / ${chartData[0].rent}` : "none"}</div>
-    </div>
-  )}
-
   return (
-    <div
-      ref={ref}
-      style={{
-        width: "100%",
-        height: 320,
-        minWidth: 0,
-        minHeight: 320,
-      }}
-    >
-      <LineChart
-        width={Math.max(1, size.width || 1)}
-        height={320}
-        data={chartData}
-        margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-      >
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis
-          dataKey="month"
-          tickFormatter={(v) => formatMonthTick(String(v))}
-          interval="preserveStartEnd"
-        />
-        <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
-        <Tooltip
-          labelFormatter={(label) => formatMonthTick(String(label))}
-          formatter={(value) => formatEur(value)}
-        />
-        <Line type="monotone" dataKey="rent" dot={false} />
-      </LineChart>
-    </div>
+    <>
+      <div style={{ padding: 10,marginBottom: 10, fontFamily: "monospace" }}>
+      </div>
+
+      {DEBUG && (
+        <div className="mb-2 rounded border border-gray-300 p-2 text-xs text-gray-700">
+          <div>
+            <b>RentHistoryChart debug</b>
+          </div>
+          <div>scopeType: {scopeType}</div>
+          <div>propertyId: {propertyId ?? "null"}</div>
+          <div>
+            loading: {String(loading)} | requiresAuth: {String(requiresAuth)}
+          </div>
+          <div>
+            rows(data): {Array.isArray(data) ? data.length : 0} | chartData: {chartData.length}
+          </div>
+          <div>
+            sample month/rent:{" "}
+            {chartData[0] ? `${chartData[0].month} / ${chartData[0].rent}` : "none"}
+          </div>
+        </div>
+      )}
+
+      <div style={{ width: "100%", height: 320, minWidth: 0 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis
+              dataKey="month"
+              tickFormatter={(v) => formatMonthTick(String(v))}
+              interval="preserveStartEnd"
+            />
+            <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
+            <Tooltip
+              labelFormatter={(label) => formatMonthTick(String(label))}
+              formatter={(value) => formatEur(value)}
+            />
+            <Line type="monotone" dataKey="rent" dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </>
   );
 }
