@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 // src/pages/Objekte.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -257,7 +258,7 @@ export default function Objekte() {
       unique.sort((a, b) => (a.property_name ?? "").localeCompare(b.property_name ?? "", "de"));
       setRowsUnique(unique);
 
-      console.log("Objekte loaded — raw:", incoming.length, "cleaned:", cleaned.length, "shown:", unique.length);
+      devLog("Objekte loaded — raw:", incoming.length, "cleaned:", cleaned.length, "shown:", unique.length);
     } catch (e: any) {
       console.error(e);
       setError(e?.message ?? "Unbekannter Fehler beim Laden.");

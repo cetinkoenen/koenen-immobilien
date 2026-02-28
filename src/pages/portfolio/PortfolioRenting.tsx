@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 // src/pages/portfolio/PortfolioRenting.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useOutletContext } from "react-router-dom";
@@ -109,7 +110,7 @@ export default function PortfolioRenting(props: Props) {
 
   const DEBUG_CHARTS = import.meta.env.VITE_DEBUG_CHARTS === "1";
   if (DEBUG_CHARTS) {
-    console.log("[PortfolioRenting] ids", {
+    devLog("[PortfolioRenting] ids", {
       propsPropertyId: (props as any)?.propertyId,
       outlet: outlet ?? null,
       coreIdFromOutlet,

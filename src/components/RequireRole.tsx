@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 // src/components/RequireRole.tsx
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
@@ -75,7 +76,7 @@ export default function RequireRole({ minRole, children, loadingFallback }: Prop
 
   if (DEBUG) {
     // eslint-disable-next-line no-console
-    console.log("[RequireRole]", {
+    devLog("[RequireRole]", {
       path: location.pathname,
       minRole,
       authLoading,

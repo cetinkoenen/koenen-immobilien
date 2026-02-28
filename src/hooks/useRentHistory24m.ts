@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import type { RentHistory24mRow } from "@/types/rentHistory";
@@ -164,10 +165,10 @@ export function useRentHistory24m({ scopeType, propertyId }: UseRentHistoryParam
         const session = sessionData?.session ?? null;
 
         if (DEBUG) {
-          console.log("[useRentHistory24m] session", {
+          devLog("[useRentHistory24m] session", {
             hasSession: !!session,
             userId: session?.user?.id ?? null,
-            tokenPrefix: session?.access_token?.slice(0, 12) ?? null,
+            hasToken: !!session?.access_token,
             scopeType,
             propertyId: propertyId ?? null,
             key,
@@ -199,7 +200,7 @@ export function useRentHistory24m({ scopeType, propertyId }: UseRentHistoryParam
           setLoading(false);
 
           if (DEBUG) {
-            console.log("[useRentHistory24m] result(user)", {
+            devLog("[useRentHistory24m] result(user)", {
               rows: safeRows.length,
               sample: safeRows[0],
             });
@@ -219,7 +220,7 @@ export function useRentHistory24m({ scopeType, propertyId }: UseRentHistoryParam
         const rentalRows = (rentals ?? []) as RentalRow[];
 
         if (DEBUG) {
-          console.log("[useRentHistory24m] result(rentals:property)", {
+          devLog("[useRentHistory24m] result(rentals:property)", {
             propertyId,
             rows: rentalRows.length,
             sample: rentalRows[0],
@@ -232,7 +233,7 @@ export function useRentHistory24m({ scopeType, propertyId }: UseRentHistoryParam
         setLoading(false);
 
         if (DEBUG) {
-          console.log("[useRentHistory24m] result(property:computed)", {
+          devLog("[useRentHistory24m] result(property:computed)", {
             rows: computed.length,
             sample: computed[0],
             last: computed[computed.length - 1],

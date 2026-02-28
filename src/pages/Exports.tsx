@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 import { supabase } from "@/lib/supabaseClient";
 // src/pages/Exports.tsx
 import { useMemo, useState } from "react";
@@ -139,7 +140,7 @@ export default function Exports() {
         .limit(10);
 
       // eslint-disable-next-line no-console
-      console.log("[Exports] Ping account_members:", {
+      devLog("[Exports] Ping account_members:", {
         data,
         error,
         accountId,

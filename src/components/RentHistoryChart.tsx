@@ -1,3 +1,4 @@
+import { devLog } from "@/lib/devLog";
 import { useMemo } from "react";
 import { useRentHistory24m } from "@/hooks/useRentHistory24m";
 import {
@@ -94,7 +95,7 @@ export default function RentHistoryChart({ scopeType, propertyId }: RentHistoryC
   }, [chartData]);
 
   if (DEBUG) {
-    console.log("RentHistoryChart", {
+    devLog("RentHistoryChart", {
       scopeType,
       propertyId,
       loading,
