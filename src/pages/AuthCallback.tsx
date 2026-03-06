@@ -1,64 +1,74 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { createClient } from "@supabase/supabase-js";
-
-// Supabase Client (Vite env!)
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from "../lib/supabaseClient";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const [message, setMessage] = useState("Signing you in...");
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const handleAuth = async () => {
+    let isActive = true;
+
+    async function handleAuthCallback() {
       try {
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
+        const { error } = await supabase.auth.getSession();
 
-        // PKCE Flow (Recommended)
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-          if (error) {
-            setError(error.message);
-            setMessage("Authentication failed.");
-            return;
-          }
-        }
-
-        // Fallback: Check if session exists
-        const { data } = await supabase.auth.getSession();
-
-        if (!data.session) {
-          setError("No active session found.");
-          setMessage("Login failed.");
+        if (error) {
+          console.error("[AuthCallback] getSession error", error);
+          navigate("/login", {
+            replace: true,
+            state: {
+              error: "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
+            },
+          });
           return;
         }
 
-        // Success → Redirect to home
+        if (!isActive) return;
+
         navigate("/", { replace: true });
+      } catch (error) {
+        console.error("[AuthCallback] unexpected error", error);
 
-      } catch (err: any) {
-        setError(err.message || "Unknown error");
-        setMessage("Something went wrong.");
+        if (!isActive) return;
+
+        navigate("/login", {
+          replace: true,
+          state: {
+            error: "Beim Auth-Callback ist ein Fehler aufgetreten.",
+          },
+        });
       }
-    };
+    }
 
-    handleAuth();
+    void handleAuthCallback();
+
+    return () => {
+      isActive = false;
+    };
   }, [navigate]);
 
   return (
-    <div style={{ padding: "2rem", textAlign: "center" }}>
-      <h2>{message}</h2>
-      {error && (
-        <p style={{ color: "red", marginTop: "1rem" }}>
-          {error}
-        </p>
-      )}
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "#f9fafb",
+      }}
+    >
+      <div
+        style={{
+          padding: 24,
+          borderRadius: 16,
+          border: "1px solid #e5e7eb",
+          background: "#ffffff",
+          fontWeight: 700,
+          color: "#111827",
+        }}
+      >
+        Anmeldung wird abgeschlossen...
+      </div>
     </div>
   );
 }
