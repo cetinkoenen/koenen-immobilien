@@ -10,6 +10,7 @@ export type PortfolioProperty = {
   sort_index: number;
   created_at: string;
   is_test?: boolean | null;
+  expose_path?: string | null;
 };
 
 export type FinanceRow = {
@@ -21,69 +22,100 @@ type AsyncState<T> = {
   loading: boolean;
   data: T;
   error: string | null;
-  lastUpdatedAt?: number;
+  lastUpdatedAt: number | null;
 };
 
-function toErrMsg(e: unknown): string {
-  if (!e) return "Unknown error";
-  if (typeof e === "string") return e;
-  const anyE = e as any;
-  return anyE?.message ?? anyE?.details ?? anyE?.error_description ?? JSON.stringify(anyE);
+function getErrorMessage(error: unknown): string {
+  if (!error) return "Unknown error";
+  if (typeof error === "string") return error;
+
+  const maybeError = error as {
+    message?: string;
+    details?: string;
+    error_description?: string;
+  };
+
+  return (
+    maybeError.message ??
+    maybeError.details ??
+    maybeError.error_description ??
+    JSON.stringify(error)
+  );
 }
 
+const initialPropertiesState: AsyncState<PortfolioProperty[]> = {
+  loading: true,
+  data: [],
+  error: null,
+  lastUpdatedAt: null,
+};
+
+const initialFinanceState: AsyncState<FinanceRow[]> = {
+  loading: true,
+  data: [],
+  error: null,
+  lastUpdatedAt: null,
+};
+
 export function usePortfolioData() {
-  const [properties, setProperties] = useState<AsyncState<PortfolioProperty[]>>({
-    loading: true,
-    data: [],
-    error: null,
-  });
+  const [properties, setProperties] =
+    useState<AsyncState<PortfolioProperty[]>>(initialPropertiesState);
 
-  const [financeRows, setFinanceRows] = useState<AsyncState<FinanceRow[]>>({
-    loading: true,
-    data: [],
-    error: null,
-  });
+  const [financeRows, setFinanceRows] =
+    useState<AsyncState<FinanceRow[]>>(initialFinanceState);
 
-  // Used to re-trigger loading on demand
-  const [tick, setTick] = useState(0);
+  const requestIdRef = useRef(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Guard against stale requests
-  const seqRef = useRef(0);
-
-  const reload = useCallback(() => setTick((t) => t + 1), []);
+  const reload = useCallback(() => {
+    setReloadKey((current) => current + 1);
+  }, []);
 
   useEffect(() => {
-    const mySeq = ++seqRef.current;
-    const isStale = () => mySeq !== seqRef.current;
+    let isMounted = true;
+    const requestId = ++requestIdRef.current;
 
-    let alive = true;
+    const isOutdated = () => {
+      return !isMounted || requestId !== requestIdRef.current;
+    };
 
-    (async () => {
+    async function loadPortfolioData() {
       try {
-        setProperties((p) => ({ ...p, loading: true, error: null }));
-        setFinanceRows((f) => ({ ...f, loading: true, error: null }));
+        setProperties((prev) => ({
+          ...prev,
+          loading: true,
+          error: null,
+        }));
 
-        // 1) Properties
-        const { data: pData, error: pErr } = await supabase
+        setFinanceRows((prev) => ({
+          ...prev,
+          loading: true,
+          error: null,
+        }));
+
+        const { data: propertyData, error: propertyError } = await supabase
           .from("portfolio_properties")
-          .select("id,name,type,sort_index,created_at,is_test")
+          .select("id, name, type, sort_index, created_at, is_test, expose_path")
           .or("is_test.is.null,is_test.eq.false")
           .order("sort_index", { ascending: true })
           .order("created_at", { ascending: true });
 
-        if (!alive || isStale()) return;
-        if (pErr) throw pErr;
+        if (isOutdated()) return;
 
-        const props = (pData ?? []) as PortfolioProperty[];
+        if (propertyError) {
+          throw propertyError;
+        }
+
+        const safeProperties = (propertyData ?? []) as PortfolioProperty[];
+
         setProperties({
           loading: false,
-          data: props,
+          data: safeProperties,
           error: null,
           lastUpdatedAt: Date.now(),
         });
 
-        // 2) Finance (only if we have properties)
-        if (props.length === 0) {
+        if (safeProperties.length === 0) {
           setFinanceRows({
             loading: false,
             data: [],
@@ -93,41 +125,62 @@ export function usePortfolioData() {
           return;
         }
 
-        const ids = props.map((p) => p.id);
+        const propertyIds = safeProperties.map((property) => property.id);
 
-        const { data: fData, error: fErr } = await supabase
+        const { data: financeData, error: financeError } = await supabase
           .from("portfolio_property_finance")
-          .select("property_id,purchase_price")
-          .in("property_id", ids);
+          .select("property_id, purchase_price")
+          .in("property_id", propertyIds);
 
-        if (!alive || isStale()) return;
-        if (fErr) throw fErr;
+        if (isOutdated()) return;
+
+        if (financeError) {
+          throw financeError;
+        }
 
         setFinanceRows({
           loading: false,
-          data: (fData ?? []) as FinanceRow[],
+          data: (financeData ?? []) as FinanceRow[],
           error: null,
           lastUpdatedAt: Date.now(),
         });
-      } catch (e) {
-        if (!alive || isStale()) return;
-        const msg = toErrMsg(e);
-        setProperties({ loading: false, data: [], error: msg, lastUpdatedAt: Date.now() });
-        setFinanceRows({ loading: false, data: [], error: msg, lastUpdatedAt: Date.now() });
+      } catch (error) {
+        if (isOutdated()) return;
+
+        const message = getErrorMessage(error);
+
+        setProperties({
+          loading: false,
+          data: [],
+          error: message,
+          lastUpdatedAt: Date.now(),
+        });
+
+        setFinanceRows({
+          loading: false,
+          data: [],
+          error: message,
+          lastUpdatedAt: Date.now(),
+        });
+
+        console.error("[usePortfolioData] load error", error);
       }
-    })();
+    }
+
+    void loadPortfolioData();
 
     return () => {
-      alive = false;
-      // invalidate pending async commits
-      seqRef.current += 1;
+      isMounted = false;
     };
-  }, [tick]);
+  }, [reloadKey]);
 
-  // Map finance rows by property_id (memoized)
   const financeByPropertyId = useMemo(() => {
     const map: Record<string, FinanceRow> = {};
-    for (const r of financeRows.data) map[r.property_id] = r;
+
+    for (const row of financeRows.data) {
+      map[row.property_id] = row;
+    }
+
     return map;
   }, [financeRows.data]);
 
@@ -141,5 +194,13 @@ export function usePortfolioData() {
     };
   }, [properties.data, financeByPropertyId]);
 
-  return { properties, financeRows, financeByPropertyId, combined, loading, error, reload };
+  return {
+    properties,
+    financeRows,
+    financeByPropertyId,
+    combined,
+    loading,
+    error,
+    reload,
+  };
 }

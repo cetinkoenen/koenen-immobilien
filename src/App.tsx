@@ -33,6 +33,7 @@ import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
 import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
 import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
+import AuthCallback from "./pages/AuthCallback";
 
 function DevBuildMarker() {
   const loc = useLocation();
@@ -94,7 +95,8 @@ function NotFound() {
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+              <Route path="/auth/callback" element={<AuthCallback />} />
+<Route element={<AppShell />}>
         {/* PUBLIC */}
         <Route element={<PublicLayout />}>
           <Route
