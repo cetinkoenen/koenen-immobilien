@@ -329,7 +329,7 @@ function ExpenseCategoryBarSection({
                 <LabelList
                   dataKey="value"
                   position="right"
-                  formatter={(value: number) => formatEUR(Number(value))}
+                  formatter={(value) => formatEUR(Number(value ?? 0))}
                 />
               </Bar>
             </BarChart>

@@ -3,22 +3,6 @@ import { Link, useParams } from "react-router-dom";
 import LoanChart from "../components/LoanChart";
 import { supabase } from "../lib/supabase";
 
-type SummaryRowRaw = {
-  property_id: string;
-  property_name: string | null;
-  first_year: number | string | null;
-  last_year: number | string | null;
-  last_balance_year: number | string | null;
-  last_balance: number | string | null;
-  interest_total: number | string | null;
-  principal_total: number | string | null;
-  repaid_percent: number | string | null;
-  repaid_percent_display: string | null;
-  repayment_status: string | null;
-  repayment_label: string | null;
-  refreshed_at: string | null;
-};
-
 type SummaryRow = {
   property_id: string;
   property_name: string;
@@ -308,7 +292,6 @@ export default function ObjektDetail() {
         refreshed_at: summaryData.refreshed_at ?? null,
       };
 
-      if (cancelled) return;
       setSummary(mappedSummary);
 
       const { data: ledgerData, error: ledgerError } = await supabase
@@ -366,8 +349,12 @@ export default function ObjektDetail() {
       }));
   }, [ledger]);
 
-  const statusLabel = summary?.repayment_label ?? summary?.repayment_status ?? "—";
-  const statusTone = getStatusTone(summary?.repayment_status ?? summary?.repayment_label ?? null);
+  const statusLabel =
+    summary?.repayment_label ?? summary?.repayment_status ?? "—";
+
+  const statusTone = getStatusTone(
+    summary?.repayment_status ?? summary?.repayment_label ?? null
+  );
 
   const hasLoanData =
     summary?.last_balance != null ||
@@ -481,11 +468,16 @@ export default function ObjektDetail() {
                 lineHeight: 1.5,
               }}
             >
-              Zeitraum: {formatYearRange(summary?.first_year ?? null, summary?.last_year ?? null)}
+              Zeitraum:{" "}
+              {formatYearRange(
+                summary?.first_year ?? null,
+                summary?.last_year ?? null
+              )}
               {" · "}
               Stand Restschuld: {summary?.last_balance_year ?? "—"}
               {" · "}
-              Letzte Aktualisierung: {formatDateTime(summary?.refreshed_at ?? null)}
+              Letzte Aktualisierung:{" "}
+              {formatDateTime(summary?.refreshed_at ?? null)}
             </div>
           </div>
 
@@ -569,8 +561,8 @@ export default function ObjektDetail() {
               Keine Darlehensdaten vorhanden
             </div>
             <div style={{ marginTop: 8, fontSize: 14, color: "#b45309" }}>
-              Für diese Immobilie wurden aktuell weder zusammengefasste Kennzahlen noch
-              Ledger-Daten gefunden.
+              Für diese Immobilie wurden aktuell weder zusammengefasste
+              Kennzahlen noch Ledger-Daten gefunden.
             </div>
           </div>
         ) : (
@@ -619,19 +611,44 @@ export default function ObjektDetail() {
                         letterSpacing: "0.04em",
                       }}
                     >
-                      <th style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "14px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
                         Jahr
                       </th>
-                      <th style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "14px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
                         Zinsen
                       </th>
-                      <th style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "14px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
                         Tilgung
                       </th>
-                      <th style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "14px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
                         Restschuld
                       </th>
-                      <th style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "14px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
                         Quelle
                       </th>
                     </tr>

@@ -492,7 +492,7 @@ export default function Portfolio() {
                     tick={{ fontSize: 12 }}
                   />
                   <Tooltip
-                    formatter={(value: number | string) => formatEUR(toNumber(value))}
+                    formatter={(value: number | string | undefined) => formatEUR(toNumber(value ?? 0))}
                   />
                   <Bar dataKey="debt" radius={[4, 4, 4, 4]} />
                 </BarChart>
