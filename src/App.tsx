@@ -1,175 +1,166 @@
-// src/App.tsx
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import RequireAuthMFA from "./components/RequireAuthMFA";
-import Navbar from "./components/ui/Navbar";
-
-// Public pages
-import Login from "./pages/Login";
-import MFA from "./pages/MFA";
-
-// Protected pages
-import Monate from "./pages/monate";
-import MonatesPage from "./pages/MonatesPage";
-
-import Portfolio from "./pages/Portfolio";
-import Uebersicht from "./pages/Uebersicht";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import Objekte from "./pages/Objekte";
 import ObjektDetail from "./pages/ObjektDetail";
-
-import PropertyDashboard from "./pages/PropertyDashboard";
-import LoanImport from "./pages/LoanImport";
-import LoanEntryAdd from "./pages/LoanEntryAdd";
-
-import EntryAdd from "./pages/EntryAdd";
-import Exports from "./pages/Exports";
+import Portfolio from "./pages/Portfolio";
+import Monate from "./pages/Monate";
 import Auswertung from "./pages/Auswertung";
-import CategoryAdminPage from "./pages/CategoryAdminPage";
-import TestRentChart from "./pages/TestRentChart";
+import EntryAdd from "./pages/EntryAdd";
 
-// Portfolio nested pages
-import PortfolioPropertyLayout from "./pages/portfolio/PortfolioPropertyLayout";
-import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
-import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
-import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
-import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
-import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
-import AuthCallback from "./pages/AuthCallback";
-
-function DevBuildMarker() {
-  const loc = useLocation();
-  const show = import.meta.env.DEV && import.meta.env.VITE_DEBUG_UI === "1";
-  if (!show) return null;
-
+function NotFound() {
   return (
     <div
       style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 9999,
-        padding: "8px 10px",
-        background: "crimson",
-        color: "white",
-        fontWeight: 900,
-        fontSize: 12,
-        letterSpacing: "0.01em",
+        minHeight: "100vh",
+        padding: 24,
+        background: "#f8fafc",
+        fontFamily: "system-ui, sans-serif",
       }}
     >
-      BUILD MARKER: DEV — {loc.pathname}
-    </div>
-  );
-}
+      <div
+        style={{
+          maxWidth: 1100,
+          margin: "0 auto",
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 20,
+          padding: 24,
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 28,
+            fontWeight: 800,
+            color: "#111827",
+          }}
+        >
+          Seite nicht gefunden
+        </h1>
 
-function AppShell() {
-  return (
-    <div>
-      <DevBuildMarker />
-      <Outlet />
-    </div>
-  );
-}
-
-function PublicLayout() {
-  return <Outlet />;
-}
-
-function ProtectedLayout() {
-  return (
-    <div>
-      <Navbar />
-      <div style={{ padding: 24 }}>
-        <Outlet />
+        <p
+          style={{
+            marginTop: 12,
+            marginBottom: 0,
+            color: "#6b7280",
+            fontSize: 16,
+            lineHeight: 1.5,
+          }}
+        >
+          Die angeforderte Route existiert nicht.
+        </p>
       </div>
     </div>
   );
 }
 
-function NotFound() {
+function navLinkStyle(isActive: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 14px",
+    borderRadius: 12,
+    textDecoration: "none",
+    fontWeight: 800,
+    fontSize: 14,
+    transition: "all 120ms ease",
+    border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
+    background: isActive ? "#eef2ff" : "#ffffff",
+    color: isActive ? "#3730a3" : "#111827",
+    whiteSpace: "nowrap",
+  };
+}
+
+function AppNavigation() {
   return (
-    <div style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1 style={{ margin: 0, fontSize: 18 }}>Seite nicht gefunden</h1>
-      <p style={{ opacity: 0.75 }}>Die Route existiert nicht.</p>
-    </div>
+    <header
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 20,
+        background: "rgba(248,250,252,0.92)",
+        backdropFilter: "blur(10px)",
+        borderBottom: "1px solid #e5e7eb",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "16px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: 18,
+            letterSpacing: "-0.02em",
+            color: "#111827",
+            marginRight: 8,
+          }}
+        >
+          Immobilien-Dashboard
+        </div>
+
+        <nav
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <NavLink to="/objekte" style={({ isActive }) => navLinkStyle(isActive)}>
+            Objekte
+          </NavLink>
+
+          <NavLink to="/portfolio" style={({ isActive }) => navLinkStyle(isActive)}>
+            Portfolio
+          </NavLink>
+
+          <NavLink to="/monate" style={({ isActive }) => navLinkStyle(isActive)}>
+            Monate
+          </NavLink>
+
+          <NavLink to="/auswertung" style={({ isActive }) => navLinkStyle(isActive)}>
+            Auswertung
+          </NavLink>
+
+          <NavLink to="/entry-add" style={({ isActive }) => navLinkStyle(isActive)}>
+            Buchung
+          </NavLink>
+        </nav>
+      </div>
+    </header>
   );
 }
 
 export default function App() {
   return (
-    <Routes>
-              <Route path="/auth/callback" element={<AuthCallback />} />
-<Route element={<AppShell />}>
-        {/* PUBLIC */}
-        <Route element={<PublicLayout />}>
-          <Route
-            path="/login"
-            element={
-              <RequireAuthMFA>
-                <Login />
-              </RequireAuthMFA>
-            }
-          />
-          <Route
-            path="/mfa"
-            element={
-              <RequireAuthMFA>
-                <MFA />
-              </RequireAuthMFA>
-            }
-          />
-        </Route>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fafc",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <AppNavigation />
 
-        {/* PROTECTED */}
-        <Route
-          element={
-            <RequireAuthMFA>
-              <ProtectedLayout />
-            </RequireAuthMFA>
-          }
-        >
-          <Route index element={<Navigate to="/monate" replace />} />
-
-          <Route path="/monate" element={<Monate />} />
-          <Route path="/monates" element={<MonatesPage />} />
-
-          <Route path="/portfolio" element={<Portfolio />} />
-
-          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
-            <Route index element={<Navigate to="details" replace />} />
-
-            <Route path="details" element={<PortfolioDetails />} />
-
-            <Route path="adresse" element={<PortfolioAddress />} />
-            <Route path="address" element={<PortfolioAddress />} />
-
-            <Route path="energie" element={<PortfolioEnergy />} />
-            <Route path="energy" element={<PortfolioEnergy />} />
-
-            <Route path="vermietung" element={<PortfolioRenting />} />
-            <Route path="renting" element={<PortfolioRenting />} />
-
-            <Route path="finanzen" element={<PortfolioFinance />} />
-            <Route path="finance" element={<PortfolioFinance />} />
-
-            <Route path="*" element={<Navigate to="details" replace />} />
-          </Route>
-
-          <Route path="/uebersicht" element={<Uebersicht />} />
+      <main>
+        <Routes>
+          <Route path="/" element={<Navigate to="/objekte" replace />} />
           <Route path="/objekte" element={<Objekte />} />
           <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
-
-          <Route path="/property-dashboard" element={<PropertyDashboard />} />
-          <Route path="/loan-import" element={<LoanImport />} />
-          <Route path="/loan-entry-add" element={<LoanEntryAdd />} />
-          <Route path="/entry-add" element={<EntryAdd />} />
-
-          <Route path="/exports" element={<Exports />} />
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/monate" element={<Monate />} />
           <Route path="/auswertung" element={<Auswertung />} />
-          <Route path="/admin/categories" element={<CategoryAdminPage />} />
-
-          <Route path="/test-rent-chart" element={<TestRentChart />} />
-        </Route>
-
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+          <Route path="/entry-add" element={<EntryAdd />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
+    </div>
   );
 }

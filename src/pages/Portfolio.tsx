@@ -1,15 +1,32 @@
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ExposeButton from "@/components/ExposeButton";
-import ExposeUploadButton from "@/components/ExposeUploadButton";
-import {
-  usePortfolioData,
-  type PortfolioProperty,
-  type PropertyType,
-} from "../hooks/usePortfolioData";
-import { devCount, devLog } from "../lib/devLog";
+import { supabase } from "../lib/supabase";
+import { Bar, BarChart, Tooltip, XAxis, YAxis } from "recharts";
 
-function formatEUR(value: number) {
+type PortfolioRow = {
+  property_id: string;
+  property_name: string | null;
+  last_balance: number | string | null;
+  principal_total: number | string | null;
+  interest_total: number | string | null;
+  repaid_percent: number | string | null;
+  repayment_status: string | null;
+  repayment_label: string | null;
+};
+
+type SupabaseLikeError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
+function toNumber(value: number | string | null | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatEUR(value: number): string {
   try {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
@@ -21,227 +38,359 @@ function formatEUR(value: number) {
   }
 }
 
-function getTypeLabel(type: PropertyType) {
-  if (type === "HOUSE") return "Haus";
-  if (type === "APARTMENT") return "Wohnung";
-  return "Garage";
+function formatPercentFromRatio(value: number): string {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  try {
+    return `${new Intl.NumberFormat("de-DE", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(safeValue * 100)} %`;
+  } catch {
+    return `${(safeValue * 100).toFixed(1)} %`;
+  }
 }
 
-function typeBadgeStyle(): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "5px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 800,
-    border: "1px solid #e5e7eb",
-    background: "#f9fafb",
-    color: "#111827",
-    whiteSpace: "nowrap",
-  };
+function formatErrorMessage(error: unknown): string {
+  if (!error) return "Unbekannter Fehler";
+  if (typeof error === "string") return error;
+
+  const err = error as SupabaseLikeError;
+  const parts = [err.message, err.details, err.hint, err.code].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" | ") : "Unbekannter Fehler";
 }
 
 function cardStyle(): React.CSSProperties {
   return {
-    width: "100%",
-    borderRadius: 16,
-    border: "1px solid #e5e7eb",
     background: "#ffffff",
-    padding: 14,
-    cursor: "pointer",
-    transition: "all 120ms ease",
-    textAlign: "left",
+    border: "1px solid #e5e7eb",
+    borderRadius: 18,
+    boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
   };
 }
 
-function panelStyle(): React.CSSProperties {
-  return {
+function badgeStyle(label: string): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "5px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
     border: "1px solid #e5e7eb",
-    borderRadius: 16,
+  };
+
+  if (label === "Läuft") {
+    return {
+      ...base,
+      background: "#ecfdf3",
+      color: "#166534",
+      border: "1px solid #bbf7d0",
+    };
+  }
+
+  if (label === "Neu") {
+    return {
+      ...base,
+      background: "#eef2ff",
+      color: "#3730a3",
+      border: "1px solid #c7d2fe",
+    };
+  }
+
+  if (label === "Abbezahlt") {
+    return {
+      ...base,
+      background: "#f3f4f6",
+      color: "#111827",
+      border: "1px solid #d1d5db",
+    };
+  }
+
+  return {
+    ...base,
+    background: "#f9fafb",
+    color: "#111827",
+  };
+}
+
+function primaryButtonStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 42,
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #111827",
+    background: "#111827",
+    color: "#ffffff",
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+    textDecoration: "none",
+  };
+}
+
+function secondaryButtonStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 42,
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
     background: "#ffffff",
-    overflow: "hidden",
+    color: "#111827",
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+    textDecoration: "none",
+  };
+}
+
+function subtleButtonStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 42,
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #dbeafe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+    textDecoration: "none",
   };
 }
 
 export default function Portfolio() {
   const navigate = useNavigate();
 
-  const showDebug =
-    import.meta.env.DEV && import.meta.env.VITE_DEBUG_UI === "1";
+  const [rows, setRows] = useState<PortfolioRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
-  if (showDebug) {
-    devCount("[Portfolio] render");
-    devLog("[Portfolio] mounted");
-  }
+  const mountedRef = useRef(true);
 
-  const { combined, loading, error, reload, properties } = usePortfolioData();
+  useEffect(() => {
+    mountedRef.current = true;
 
-  const [query, setQuery] = React.useState("");
-  const [typeFilter, setTypeFilter] =
-    React.useState<PropertyType | "ALL">("ALL");
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-  const rows = combined.rows;
-  const financeByPropertyId = combined.financeByPropertyId;
-
-  const filteredRows = React.useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return rows.filter((property) => {
-      if (typeFilter !== "ALL" && property.type !== typeFilter) {
-        return false;
-      }
-
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const searchText =
-        `${property.name} ${getTypeLabel(property.type)} ${property.id}`.toLowerCase();
-
-      return searchText.includes(normalizedQuery);
-    });
-  }, [rows, query, typeFilter]);
-
-  const stats = React.useMemo(() => {
-    let houses = 0;
-    let apartments = 0;
-    let garages = 0;
-    let totalValue = 0;
-
-    for (const property of filteredRows) {
-      if (property.type === "HOUSE") houses += 1;
-      else if (property.type === "APARTMENT") apartments += 1;
-      else garages += 1;
-
-      const purchasePrice = Number(
-        financeByPropertyId[property.id]?.purchase_price ?? 0
-      );
-
-      if (!Number.isNaN(purchasePrice)) {
-        totalValue += purchasePrice;
-      }
+  const loadPortfolio = useCallback(async () => {
+    if (mountedRef.current) {
+      setLoading(true);
+      setError(null);
     }
 
+    try {
+      const { data, error } = await supabase
+        .from("vw_property_loan_dashboard_portfolio")
+        .select(`
+          property_id,
+          property_name,
+          last_balance,
+          principal_total,
+          interest_total,
+          repaid_percent,
+          repayment_status,
+          repayment_label
+        `)
+        .order("last_balance", { ascending: false });
+
+      if (error) {
+        if (mountedRef.current) {
+          setRows([]);
+          setError(formatErrorMessage(error));
+        }
+        return;
+      }
+
+      if (mountedRef.current) {
+        setRows(Array.isArray(data) ? (data as PortfolioRow[]) : []);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setRows([]);
+        setError(formatErrorMessage(err));
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPortfolio();
+  }, [loadPortfolio]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((row) => {
+      const text = [
+        row.property_name ?? "",
+        row.repayment_label ?? "",
+        row.repayment_status ?? "",
+        row.property_id ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(q);
+    });
+  }, [rows, search]);
+
+  const stats = useMemo(() => {
+    let debt = 0;
+    let principal = 0;
+    let interest = 0;
+    let inProgress = 0;
+    let isNew = 0;
+    let repaid = 0;
+
+    for (const row of filteredRows) {
+      debt += toNumber(row.last_balance);
+      principal += toNumber(row.principal_total);
+      interest += toNumber(row.interest_total);
+
+      if (row.repayment_status === "in_progress") inProgress += 1;
+      else if (row.repayment_status === "new") isNew += 1;
+      else if (row.repayment_status === "repaid") repaid += 1;
+    }
+
+    const repaidRatio = principal + debt > 0 ? principal / (principal + debt) : 0;
+
     return {
-      houses,
-      apartments,
-      garages,
-      totalValue,
+      count: filteredRows.length,
+      debt,
+      principal,
+      interest,
+      repaidRatio,
+      inProgress,
+      isNew,
+      repaid,
     };
-  }, [filteredRows, financeByPropertyId]);
+  }, [filteredRows]);
 
-  const handleReload = React.useCallback(async () => {
-    await reload();
-  }, [reload]);
+  const chartData = useMemo(() => {
+    return [...filteredRows]
+      .sort((a, b) => toNumber(b.last_balance) - toNumber(a.last_balance))
+      .map((row) => ({
+        name: row.property_name ?? "Unbenanntes Objekt",
+        debt: toNumber(row.last_balance),
+      }))
+      .filter((row) => Number.isFinite(row.debt) && row.debt >= 0);
+  }, [filteredRows]);
 
-  const goToProperty = React.useCallback(
-    (property: PortfolioProperty) => {
-      navigate(`/portfolio/${encodeURIComponent(property.id)}`);
+  const chartHeight = Math.max(320, chartData.length * 56);
+
+  const openProperty = useCallback(
+    (propertyId: string) => {
+      navigate(`/objekte/${encodeURIComponent(propertyId)}`);
+    },
+    [navigate]
+  );
+
+  const openExpose = useCallback(
+    (propertyId: string) => {
+      navigate(`/objekte/${encodeURIComponent(propertyId)}/expose`);
+    },
+    [navigate]
+  );
+
+  const uploadExpose = useCallback(
+    (propertyId: string) => {
+      navigate(`/objekte/${encodeURIComponent(propertyId)}/expose/upload`);
     },
     [navigate]
   );
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      {showDebug && (
-        <div
-          style={{
-            padding: 10,
-            borderRadius: 12,
-            background: "gold",
-            fontWeight: 900,
-          }}
-        >
-          PORTFOLIO DEBUG ENABLED ✅
-        </div>
-      )}
-
-      <div
+    <div style={{ display: "grid", gap: 18, padding: 24, maxWidth: 1440, margin: "0 auto" }}>
+      <header
         style={{
           display: "flex",
+          justifyContent: "space-between",
           alignItems: "flex-end",
           gap: 12,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ flex: "1 1 280px" }}>
+        <div>
           <h1
             style={{
               margin: 0,
-              fontSize: 28,
-              letterSpacing: "-0.02em",
+              fontSize: 30,
+              fontWeight: 950,
+              letterSpacing: "-0.03em",
+              color: "#111827",
             }}
           >
             Portfolio
           </h1>
-
-          <div style={{ marginTop: 6, opacity: 0.7 }}>
-            Übersicht über alle Objekte inklusive Kennzahlen und Exposés.
+          <div style={{ marginTop: 8, opacity: 0.7, fontSize: 15 }}>
+            Finanzübersicht, Status und Dokumenten-Aktionen für alle produktiven Immobilien
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => void handleReload()}
+          onClick={() => void loadPortfolio()}
           disabled={loading}
           style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "#ffffff",
-            fontWeight: 900,
-            cursor: loading ? "not-allowed" : "pointer",
+            ...secondaryButtonStyle(),
             opacity: loading ? 0.7 : 1,
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Lädt…" : "Aktualisieren"}
         </button>
-      </div>
+      </header>
 
       <div
         style={{
           display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
           alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
         <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Suchen (Name / Typ / ID)"
+          type="text"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Suchen (Name / Status / ID)"
           style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            fontWeight: 800,
-            width: 320,
+            width: 360,
             maxWidth: "100%",
+            padding: "11px 14px",
+            borderRadius: 14,
+            border: "1px solid #e5e7eb",
+            fontWeight: 700,
+            fontSize: 14,
+            background: "#ffffff",
           }}
         />
 
-        <select
-          value={typeFilter}
-          onChange={(event) =>
-            setTypeFilter(event.target.value as PropertyType | "ALL")
-          }
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            fontWeight: 800,
-            background: "#ffffff",
-          }}
-        >
-          <option value="ALL">Alle Typen</option>
-          <option value="HOUSE">Haus</option>
-          <option value="APARTMENT">Wohnung</option>
-          <option value="GARAGE">Garage</option>
-        </select>
-
-        <div style={{ fontSize: 12, opacity: 0.65, marginLeft: "auto" }}>
+        <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.65, fontWeight: 700 }}>
           {loading ? "…" : `${filteredRows.length} von ${rows.length} Objekten`}
         </div>
       </div>
@@ -249,7 +398,7 @@ export default function Portfolio() {
       {error && (
         <div
           style={{
-            padding: 12,
+            padding: 14,
             borderRadius: 14,
             border: "1px solid #fecaca",
             background: "#fff1f2",
@@ -262,177 +411,323 @@ export default function Portfolio() {
         </div>
       )}
 
-      <div
+      <section
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 12,
         }}
       >
+        <KpiCard title="Immobilien" value={String(stats.count)} hint="Produktive Objekte" />
         <KpiCard
-          title="Gesamtwert Portfolio"
-          value={formatEUR(stats.totalValue)}
-          hint="Summe der Kaufpreise"
+          title="Gesamtrestschuld"
+          value={formatEUR(stats.debt)}
+          hint="Aktuelle offene Darlehen"
         />
         <KpiCard
-          title="Häuser"
-          value={`${stats.houses}`}
-          hint="Gefilterte Ansicht"
+          title="Gesamttilgung"
+          value={formatEUR(stats.principal)}
+          hint="Bisher zurückgezahlt"
         />
         <KpiCard
-          title="Wohnungen"
-          value={`${stats.apartments}`}
-          hint="Gefilterte Ansicht"
+          title="Gesamtzinsen"
+          value={formatEUR(stats.interest)}
+          hint="Kumulierte Zinslast"
         />
         <KpiCard
-          title="Garagen"
-          value={`${stats.garages}`}
-          hint="Gefilterte Ansicht"
+          title="Rückzahlungsgrad"
+          value={formatPercentFromRatio(stats.repaidRatio)}
+          hint="Tilgung im Verhältnis zu Tilgung + Restschuld"
         />
-      </div>
+      </section>
 
-      <div style={panelStyle()}>
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 2fr) minmax(320px, 1fr)",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
+        <div style={{ ...cardStyle(), overflow: "hidden" }}>
+          <div
+            style={{
+              padding: 16,
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontWeight: 900 }}>Restschuld-Verteilung</div>
+            <div style={{ fontSize: 12, opacity: 0.65 }}>
+              Sortiert nach aktueller Restschuld
+            </div>
+          </div>
+
+          <div style={{ padding: 14 }}>
+            {loading ? (
+              <div style={{ opacity: 0.7 }}>Chart lädt…</div>
+            ) : chartData.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>Keine Chart-Daten vorhanden.</div>
+            ) : (
+              <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+                <BarChart
+                  width={820}
+                  height={chartHeight}
+                  data={chartData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 20, left: 20, bottom: 8 }}
+                >
+                  <XAxis
+                    type="number"
+                    tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={200}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Tooltip
+                    formatter={(value: number | string) => formatEUR(toNumber(value))}
+                  />
+                  <Bar dataKey="debt" radius={[4, 4, 4, 4]} />
+                </BarChart>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ ...cardStyle(), overflow: "hidden" }}>
+          <div
+            style={{
+              padding: 16,
+              borderBottom: "1px solid #e5e7eb",
+              fontWeight: 900,
+            }}
+          >
+            Statusverteilung
+          </div>
+
+          <div style={{ display: "grid", gap: 10, padding: 14 }}>
+            <MiniStat label="Läuft" value={String(stats.inProgress)} />
+            <MiniStat label="Neu" value={String(stats.isNew)} />
+            <MiniStat label="Abbezahlt" value={String(stats.repaid)} />
+          </div>
+        </div>
+      </section>
+
+      <section style={{ ...cardStyle(), overflow: "hidden" }}>
         <div
           style={{
-            padding: 14,
+            padding: 16,
             borderBottom: "1px solid #e5e7eb",
             display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
+            alignItems: "center",
             gap: 12,
             flexWrap: "wrap",
           }}
         >
           <div style={{ fontWeight: 900 }}>Objekte</div>
           <div style={{ fontSize: 12, opacity: 0.65 }}>
-            Klick auf ein Objekt öffnet die Detailseite
+            Öffnen, Exposé ansehen oder Exposé hochladen
           </div>
         </div>
 
         {loading ? (
           <div style={{ padding: 14, opacity: 0.7 }}>Lädt Objekte…</div>
         ) : filteredRows.length === 0 ? (
-          <div style={{ padding: 14, opacity: 0.7 }}>
-            Keine Objekte gefunden.
-            {showDebug && (
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                Debug ist aktiv. Geladene Properties:{" "}
-                <b>{properties.data.length}</b>
-              </div>
-            )}
-          </div>
+          <div style={{ padding: 14, opacity: 0.7 }}>Keine Objekte gefunden.</div>
         ) : (
-          <div style={{ display: "grid", gap: 10, padding: 14 }}>
-            {filteredRows.map((property) => {
-              const purchasePrice = Number(
-                financeByPropertyId[property.id]?.purchase_price ?? 0
-              );
-
-              const priceLabel =
-                purchasePrice > 0 ? formatEUR(purchasePrice) : "—";
-
-              return (
-                <PortfolioRow
-                  key={property.id}
-                  property={property}
-                  priceLabel={priceLabel}
-                  onOpen={() => goToProperty(property)}
-                  onUploadSuccess={handleReload}
-                />
-              );
-            })}
+          <div style={{ display: "grid", gap: 12, padding: 14 }}>
+            {filteredRows.map((row) => (
+              <PortfolioPropertyCard
+                key={row.property_id}
+                row={row}
+                onOpen={() => openProperty(row.property_id)}
+                onOpenExpose={() => openExpose(row.property_id)}
+                onUploadExpose={() => uploadExpose(row.property_id)}
+              />
+            ))}
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+function PortfolioPropertyCard({
+  row,
+  onOpen,
+  onOpenExpose,
+  onUploadExpose,
+}: {
+  row: PortfolioRow;
+  onOpen: () => void;
+  onOpenExpose: () => void;
+  onUploadExpose: () => void;
+}) {
+  const debt = toNumber(row.last_balance);
+  const principal = toNumber(row.principal_total);
+  const interest = toNumber(row.interest_total);
+  const repaidPercent = toNumber(row.repaid_percent);
+  const statusLabel = row.repayment_label ?? "Unbekannt";
+
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 18,
+        background: "#ffffff",
+        overflow: "hidden",
+        boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
+      }}
+    >
+      <div style={{ padding: 16, display: "grid", gap: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+            <div
+              style={{
+                fontWeight: 950,
+                fontSize: 17,
+                color: "#111827",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={row.property_name ?? ""}
+            >
+              {row.property_name ?? "Unbenanntes Objekt"}
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                opacity: 0.65,
+                wordBreak: "break-all",
+              }}
+            >
+              ID:{" "}
+              <span
+                style={{
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                }}
+              >
+                {row.property_id}
+              </span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              justifyItems: "end",
+              alignItems: "start",
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 15 }}>
+              {formatPercentFromRatio(repaidPercent)}
+            </div>
+            <span style={badgeStyle(statusLabel)}>{statusLabel}</span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 10,
+          }}
+        >
+          <MetricCard label="Restschuld" value={formatEUR(debt)} />
+          <MetricCard label="Tilgung" value={formatEUR(principal)} />
+          <MetricCard label="Zinsen" value={formatEUR(interest)} />
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderTop: "1px solid #f1f5f9",
+          background: "#fbfdff",
+          padding: 14,
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <button type="button" onClick={onOpen} style={primaryButtonStyle()}>
+          Objekt öffnen
+        </button>
+
+        <button type="button" onClick={onOpenExpose} style={secondaryButtonStyle()}>
+          Exposé
+        </button>
+
+        <button type="button" onClick={onUploadExpose} style={subtleButtonStyle()}>
+          Exposé hochladen
+        </button>
       </div>
     </div>
   );
 }
 
-function PortfolioRow({
-  property,
-  priceLabel,
-  onOpen,
-  onUploadSuccess,
+function MetricCard({
+  label,
+  value,
 }: {
-  property: PortfolioProperty;
-  priceLabel: string;
-  onOpen: () => void;
-  onUploadSuccess: () => void | Promise<void>;
+  label: string;
+  value: string;
 }) {
-  const exposePath = property.expose_path ?? null;
-
   return (
     <div
-      onClick={onOpen}
-      style={cardStyle()}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.boxShadow =
-          "0 10px 24px rgba(17,24,39,0.08)";
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.boxShadow = "none";
+      style={{
+        border: "1px solid #eef2f7",
+        borderRadius: 14,
+        background: "#f9fafb",
+        padding: 12,
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) auto auto auto",
-          gap: 12,
-          alignItems: "center",
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: 16 }}>{property.name}</div>
+      <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 700 }}>{label}</div>
+      <div style={{ marginTop: 6, fontWeight: 900, color: "#111827" }}>{value}</div>
+    </div>
+  );
+}
 
-            <span style={typeBadgeStyle()}>{getTypeLabel(property.type)}</span>
-          </div>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              opacity: 0.65,
-            }}
-          >
-            ID:{" "}
-            <span
-              style={{
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              }}
-            >
-              {property.id}
-            </span>
-          </div>
-        </div>
-
-        <div onClick={(event) => event.stopPropagation()}>
-          <ExposeUploadButton
-            propertyId={property.id}
-            onUploadSuccess={onUploadSuccess}
-          />
-        </div>
-
-        <div onClick={(event) => event.stopPropagation()}>
-          <ExposeButton exposePath={exposePath} />
-        </div>
-
-        <div
-          style={{
-            fontWeight: 950,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {priceLabel}
-        </div>
-      </div>
+function MiniStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "12px 14px",
+        borderRadius: 12,
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <span style={{ fontWeight: 700 }}>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -450,26 +745,24 @@ function KpiCard({
     <div
       style={{
         border: "1px solid #e5e7eb",
-        borderRadius: 16,
+        borderRadius: 18,
         background: "#ffffff",
-        padding: 14,
+        padding: 16,
+        boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
       }}
     >
-      <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
-        {title}
-      </div>
-
+      <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>{title}</div>
       <div
         style={{
           marginTop: 8,
-          fontSize: 22,
+          fontSize: 24,
           fontWeight: 950,
           letterSpacing: "-0.02em",
+          color: "#111827",
         }}
       >
         {value}
       </div>
-
       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>{hint}</div>
     </div>
   );

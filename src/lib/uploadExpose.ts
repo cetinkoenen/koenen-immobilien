@@ -1,15 +1,21 @@
 import { supabase } from "./supabaseClient";
 
+const EXPOSE_BUCKET = "exposes";
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 type UploadExposeResult = {
   filePath: string;
   publicUrl: string;
 };
 
-export async function uploadExpose(
-  propertyId: string,
-  file: File
-): Promise<UploadExposeResult> {
-  if (!propertyId || typeof propertyId !== "string") {
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function validateExposeUpload(propertyId: string, file: File | null | undefined) {
+  if (!propertyId || typeof propertyId !== "string" || !propertyId.trim()) {
     throw new Error("Ungültige propertyId.");
   }
 
@@ -21,19 +27,39 @@ export async function uploadExpose(
     throw new Error("Nur PDF-Dateien sind erlaubt.");
   }
 
-  const filePath = `${propertyId}/expose.pdf`;
+  if (file.size <= 0) {
+    throw new Error("Die ausgewählte Datei ist leer.");
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(
+      `Die PDF ist zu groß. Erlaubt sind maximal ${formatBytes(
+        MAX_FILE_SIZE_BYTES
+      )}. Ausgewählt: ${formatBytes(file.size)}.`
+    );
+  }
+}
+
+export async function uploadExpose(
+  propertyId: string,
+  file: File
+): Promise<UploadExposeResult> {
+  validateExposeUpload(propertyId, file);
+
+  const normalizedPropertyId = propertyId.trim();
+  const filePath = `${normalizedPropertyId}/expose.pdf`;
 
   console.log("[uploadExpose] start", {
-    propertyId,
+    propertyId: normalizedPropertyId,
     fileName: file.name,
     fileType: file.type,
     fileSize: file.size,
     filePath,
   });
 
-  // 1. Upload in Supabase Storage
+  // 1. Datei in Supabase Storage hochladen
   const { error: uploadError } = await supabase.storage
-    .from("exposes")
+    .from(EXPOSE_BUCKET)
     .upload(filePath, file, {
       upsert: true,
       contentType: "application/pdf",
@@ -46,11 +72,11 @@ export async function uploadExpose(
 
   console.log("[uploadExpose] storage upload success", { filePath });
 
-  // 2. DB-Update: expose_path speichern
+  // 2. DB aktualisieren
   const { data: updatedRows, error: updateError } = await supabase
     .from("portfolio_properties")
     .update({ expose_path: filePath })
-    .eq("id", propertyId)
+    .eq("id", normalizedPropertyId)
     .select("id, name, expose_path");
 
   if (updateError) {
@@ -61,7 +87,10 @@ export async function uploadExpose(
   }
 
   if (!updatedRows || updatedRows.length === 0) {
-    console.error("[uploadExpose] no rows updated", { propertyId, filePath });
+    console.error("[uploadExpose] no rows updated", {
+      propertyId: normalizedPropertyId,
+      filePath,
+    });
     throw new Error(
       "DB-Update fehlgeschlagen: Es wurde keine Immobilie aktualisiert."
     );
@@ -72,7 +101,7 @@ export async function uploadExpose(
   // 3. Public URL erzeugen
   const {
     data: { publicUrl },
-  } = supabase.storage.from("exposes").getPublicUrl(filePath);
+  } = supabase.storage.from(EXPOSE_BUCKET).getPublicUrl(filePath);
 
   if (!publicUrl) {
     console.error("[uploadExpose] public url generation failed", { filePath });
@@ -80,7 +109,7 @@ export async function uploadExpose(
   }
 
   console.log("[uploadExpose] done", {
-    propertyId,
+    propertyId: normalizedPropertyId,
     filePath,
     publicUrl,
   });
