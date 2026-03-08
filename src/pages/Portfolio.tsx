@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -49,7 +49,7 @@ function formatPercent(value: number): string {
     style: "percent",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(value / 100);
 }
 
 function getBadgeStyle(status: string | null): CSSProperties {
@@ -81,33 +81,180 @@ function getBadgeStyle(status: string | null): CSSProperties {
   }
 }
 
-function cardStyle(): CSSProperties {
-  return {
+const styles = {
+  page: {
+    maxWidth: 1280,
+    margin: "0 auto",
+    padding: 24,
+  } satisfies CSSProperties,
+
+  hero: {
+    marginBottom: 24,
+  } satisfies CSSProperties,
+
+  heroTitle: {
+    margin: 0,
+    fontSize: 48,
+    fontWeight: 900,
+    color: "#111827",
+    lineHeight: 1.05,
+  } satisfies CSSProperties,
+
+  heroText: {
+    marginTop: 14,
+    marginBottom: 0,
+    fontSize: 18,
+    color: "#374151",
+    lineHeight: 1.6,
+  } satisfies CSSProperties,
+
+  card: {
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     borderRadius: 20,
     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-  };
-}
+  } satisfies CSSProperties,
 
-function metricCardStyle(): CSSProperties {
-  return {
-    ...cardStyle(),
+  metricGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
+    marginBottom: 28,
+  } satisfies CSSProperties,
+
+  metricCard: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 20,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
     padding: 20,
-  };
-}
+  } satisfies CSSProperties,
 
-function infoTileStyle(): CSSProperties {
-  return {
+  metricLabel: {
+    fontSize: 13,
+    color: "#6b7280",
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  metricValue: {
+    marginTop: 10,
+    fontSize: 34,
+    fontWeight: 900,
+    color: "#111827",
+  } satisfies CSSProperties,
+
+  sectionHeader: {
+    padding: "20px 24px",
+    borderBottom: "1px solid #e5e7eb",
+  } satisfies CSSProperties,
+
+  sectionTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 900,
+    color: "#111827",
+  } satisfies CSSProperties,
+
+  emptyState: {
+    padding: 24,
+    color: "#6b7280",
+    fontSize: 15,
+  } satisfies CSSProperties,
+
+  loadingBox: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 20,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+    padding: 24,
+    fontSize: 16,
+    color: "#374151",
+  } satisfies CSSProperties,
+
+  errorBox: {
+    background: "#fff1f2",
+    border: "1px solid #fecaca",
+    borderRadius: 20,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+    padding: 24,
+    color: "#991b1b",
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  row: {
+    padding: 24,
+  } satisfies CSSProperties,
+
+  rowTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 20,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+
+  rowLeft: {
+    flex: "1 1 680px",
+    minWidth: 280,
+  } satisfies CSSProperties,
+
+  rowTitleWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 18,
+  } satisfies CSSProperties,
+
+  rowTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 900,
+    color: "#111827",
+  } satisfies CSSProperties,
+
+  badge: {
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 800,
+  } satisfies CSSProperties,
+
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+  } satisfies CSSProperties,
+
+  infoTile: {
     background: "#f8fafc",
     border: "1px solid #e2e8f0",
     borderRadius: 14,
     padding: 14,
-  };
-}
+  } satisfies CSSProperties,
 
-function actionButtonStyle(): CSSProperties {
-  return {
+  infoLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: 700,
+  } satisfies CSSProperties,
+
+  infoValue: {
+    marginTop: 8,
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#111827",
+  } satisfies CSSProperties,
+
+  actionArea: {
+    flex: "0 0 320px",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "flex-end",
+  } satisfies CSSProperties,
+
+  button: {
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
@@ -116,24 +263,31 @@ function actionButtonStyle(): CSSProperties {
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
-  };
-}
+  } satisfies CSSProperties,
+
+  footerMeta: {
+    marginTop: 14,
+    fontSize: 13,
+    color: "#6b7280",
+    wordBreak: "break-word",
+  } satisfies CSSProperties,
+};
 
 export default function Portfolio() {
   const navigate = useNavigate();
 
   const [rows, setRows] = useState<PortfolioRowNormalized[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
 
     async function loadPortfolio() {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error: queryError } = await supabase
         .from("vw_property_loan_dashboard_portfolio_v2")
         .select(`
           property_id,
@@ -148,29 +302,27 @@ export default function Portfolio() {
         `)
         .order("property_name", { ascending: true });
 
-      if (!isMounted) return;
+      if (!active) return;
 
-      if (error) {
-        console.error("Failed to load portfolio:", error);
-        setError(error.message ?? "Portfolio konnte nicht geladen werden.");
+      if (queryError) {
+        console.error("Failed to load portfolio:", queryError);
         setRows([]);
+        setError(queryError.message || "Portfolio konnte nicht geladen werden.");
         setLoading(false);
         return;
       }
 
-      const normalized: PortfolioRowNormalized[] = ((data ?? []) as PortfolioRow[]).map(
-        (row) => ({
-          property_id: row.property_id,
-          portfolio_property_id: row.portfolio_property_id,
-          property_name: row.property_name?.trim() || "Unbenanntes Objekt",
-          last_balance: toNumber(row.last_balance),
-          principal_total: toNumber(row.principal_total),
-          interest_total: toNumber(row.interest_total),
-          repaid_percent: toNumber(row.repaid_percent),
-          repayment_status: row.repayment_status,
-          repayment_label: row.repayment_label,
-        })
-      );
+      const normalized: PortfolioRowNormalized[] = ((data ?? []) as PortfolioRow[]).map((row) => ({
+        property_id: row.property_id,
+        portfolio_property_id: row.portfolio_property_id,
+        property_name: row.property_name?.trim() || "Unbenanntes Objekt",
+        last_balance: toNumber(row.last_balance),
+        principal_total: toNumber(row.principal_total),
+        interest_total: toNumber(row.interest_total),
+        repaid_percent: toNumber(row.repaid_percent),
+        repayment_status: row.repayment_status,
+        repayment_label: row.repayment_label,
+      }));
 
       setRows(normalized);
       setLoading(false);
@@ -179,7 +331,7 @@ export default function Portfolio() {
     void loadPortfolio();
 
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, []);
 
@@ -201,342 +353,194 @@ export default function Portfolio() {
 
   const averageRepaidPercent = useMemo(() => {
     if (rows.length === 0) return 0;
-    const total = rows.reduce((sum, row) => sum + row.repaid_percent, 0);
-    return total / rows.length;
+    const sum = rows.reduce((acc, row) => acc + row.repaid_percent, 0);
+    return sum / rows.length;
   }, [rows]);
 
   function openSection(row: PortfolioRowNormalized, section: string) {
     if (!row.portfolio_property_id) {
       console.error("Missing portfolio_property_id for row:", row);
-      alert(`Für "${row.property_name}" fehlt die portfolio_property_id.`);
+      window.alert(`Für "${row.property_name}" fehlt die portfolio_property_id.`);
       return;
     }
 
     navigate(`/portfolio/${encodeURIComponent(row.portfolio_property_id)}/${section}`);
   }
 
-  return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 48,
-            fontWeight: 900,
-            color: "#111827",
-            lineHeight: 1.05,
-          }}
-        >
-          Portfolio
-        </h1>
+  if (loading) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.hero}>
+          <h1 style={styles.heroTitle}>Portfolio</h1>
+          <p style={styles.heroText}>
+            Übersicht über Darlehen, Tilgung, Zinsen und Objektzugriffe.
+          </p>
+        </div>
 
-        <p
-          style={{
-            marginTop: 14,
-            marginBottom: 0,
-            fontSize: 18,
-            color: "#374151",
-            lineHeight: 1.6,
-          }}
-        >
+        <div style={styles.loadingBox}>Portfolio wird geladen…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.hero}>
+          <h1 style={styles.heroTitle}>Portfolio</h1>
+          <p style={styles.heroText}>
+            Übersicht über Darlehen, Tilgung, Zinsen und Objektzugriffe.
+          </p>
+        </div>
+
+        <div style={styles.errorBox}>Fehler beim Laden des Portfolios: {error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.hero}>
+        <h1 style={styles.heroTitle}>Portfolio</h1>
+        <p style={styles.heroText}>
           Übersicht über Darlehen, Tilgung, Zinsen und Objektzugriffe.
         </p>
       </div>
 
-      {loading ? (
-        <div
-          style={{
-            ...cardStyle(),
-            padding: 24,
-            fontSize: 16,
-            color: "#374151",
-          }}
-        >
-          Portfolio wird geladen…
+      <div style={styles.metricGrid}>
+        <div style={styles.metricCard}>
+          <div style={styles.metricLabel}>Objekte</div>
+          <div style={styles.metricValue}>{rows.length}</div>
         </div>
-      ) : error ? (
-        <div
-          style={{
-            ...cardStyle(),
-            padding: 24,
-            background: "#fff1f2",
-            border: "1px solid #fecaca",
-            color: "#991b1b",
-            fontWeight: 700,
-          }}
-        >
-          Fehler beim Laden des Portfolios: {error}
+
+        <div style={styles.metricCard}>
+          <div style={styles.metricLabel}>Restschuld gesamt</div>
+          <div style={styles.metricValue}>{formatCurrency(totals.lastBalance)}</div>
         </div>
-      ) : (
-        <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginBottom: 28,
-            }}
-          >
-            <div style={metricCardStyle()}>
-              <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>Objekte</div>
-              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, color: "#111827" }}>
-                {rows.length}
-              </div>
-            </div>
 
-            <div style={metricCardStyle()}>
-              <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
-                Restschuld gesamt
-              </div>
-              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, color: "#111827" }}>
-                {formatCurrency(totals.lastBalance)}
-              </div>
-            </div>
+        <div style={styles.metricCard}>
+          <div style={styles.metricLabel}>Tilgung gesamt</div>
+          <div style={styles.metricValue}>{formatCurrency(totals.principalTotal)}</div>
+        </div>
 
-            <div style={metricCardStyle()}>
-              <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
-                Tilgung gesamt
-              </div>
-              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, color: "#111827" }}>
-                {formatCurrency(totals.principalTotal)}
-              </div>
-            </div>
+        <div style={styles.metricCard}>
+          <div style={styles.metricLabel}>Zinsen gesamt</div>
+          <div style={styles.metricValue}>{formatCurrency(totals.interestTotal)}</div>
+        </div>
 
-            <div style={metricCardStyle()}>
-              <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
-                Ø Rückzahlungsstand
-              </div>
-              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, color: "#111827" }}>
-                {formatPercent(averageRepaidPercent)}
-              </div>
-            </div>
-          </div>
+        <div style={styles.metricCard}>
+          <div style={styles.metricLabel}>Ø Rückzahlungsstand</div>
+          <div style={styles.metricValue}>{formatPercent(averageRepaidPercent)}</div>
+        </div>
+      </div>
 
-          <div style={cardStyle()}>
-            <div
-              style={{
-                padding: "20px 24px",
-                borderBottom: "1px solid #e5e7eb",
-              }}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: 24,
-                  fontWeight: 900,
-                  color: "#111827",
-                }}
-              >
-                Objektübersicht
-              </h2>
-            </div>
+      <div style={styles.card}>
+        <div style={styles.sectionHeader}>
+          <h2 style={styles.sectionTitle}>Objektübersicht</h2>
+        </div>
 
-            {rows.length === 0 ? (
+        {rows.length === 0 ? (
+          <div style={styles.emptyState}>Keine Portfolio-Objekte gefunden.</div>
+        ) : (
+          <div>
+            {rows.map((row, index) => (
               <div
+                key={row.property_id}
                 style={{
-                  padding: 24,
-                  color: "#6b7280",
-                  fontSize: 15,
+                  ...styles.row,
+                  borderTop: index === 0 ? "none" : "1px solid #e5e7eb",
                 }}
               >
-                Keine Portfolio-Objekte gefunden.
-              </div>
-            ) : (
-              <div>
-                {rows.map((row, index) => (
-                  <div
-                    key={row.property_id}
-                    style={{
-                      padding: 24,
-                      borderTop: index === 0 ? "none" : "1px solid #e5e7eb",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: 20,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ flex: "1 1 680px", minWidth: 280 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            flexWrap: "wrap",
-                            marginBottom: 18,
-                          }}
-                        >
-                          <h3
-                            style={{
-                              margin: 0,
-                              fontSize: 22,
-                              fontWeight: 900,
-                              color: "#111827",
-                            }}
-                          >
-                            {row.property_name}
-                          </h3>
+                <div style={styles.rowTop}>
+                  <div style={styles.rowLeft}>
+                    <div style={styles.rowTitleWrap}>
+                      <h3 style={styles.rowTitle}>{row.property_name}</h3>
 
-                          <span
-                            style={{
-                              ...getBadgeStyle(row.repayment_status),
-                              borderRadius: 999,
-                              padding: "6px 10px",
-                              fontSize: 12,
-                              fontWeight: 800,
-                            }}
-                          >
-                            {row.repayment_label ?? "Unbekannt"}
-                          </span>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                            gap: 12,
-                          }}
-                        >
-                          <div style={infoTileStyle()}>
-                            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>
-                              Restschuld
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 8,
-                                fontSize: 20,
-                                fontWeight: 800,
-                                color: "#111827",
-                              }}
-                            >
-                              {formatCurrency(row.last_balance)}
-                            </div>
-                          </div>
-
-                          <div style={infoTileStyle()}>
-                            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>
-                              Tilgung gesamt
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 8,
-                                fontSize: 20,
-                                fontWeight: 800,
-                                color: "#111827",
-                              }}
-                            >
-                              {formatCurrency(row.principal_total)}
-                            </div>
-                          </div>
-
-                          <div style={infoTileStyle()}>
-                            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>
-                              Zinsen gesamt
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 8,
-                                fontSize: 20,
-                                fontWeight: 800,
-                                color: "#111827",
-                              }}
-                            >
-                              {formatCurrency(row.interest_total)}
-                            </div>
-                          </div>
-
-                          <div style={infoTileStyle()}>
-                            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>
-                              Rückzahlungsstand
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 8,
-                                fontSize: 20,
-                                fontWeight: 800,
-                                color: "#111827",
-                              }}
-                            >
-                              {formatPercent(row.repaid_percent)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
+                      <span
                         style={{
-                          flex: "0 0 320px",
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 10,
-                          justifyContent: "flex-end",
+                          ...styles.badge,
+                          ...getBadgeStyle(row.repayment_status),
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => openSection(row, "address")}
-                          style={actionButtonStyle()}
-                        >
-                          Adresse
-                        </button>
+                        {row.repayment_label ?? "Unbekannt"}
+                      </span>
+                    </div>
 
-                        <button
-                          type="button"
-                          onClick={() => openSection(row, "details")}
-                          style={actionButtonStyle()}
-                        >
-                          Details
-                        </button>
+                    <div style={styles.infoGrid}>
+                      <div style={styles.infoTile}>
+                        <div style={styles.infoLabel}>Restschuld</div>
+                        <div style={styles.infoValue}>{formatCurrency(row.last_balance)}</div>
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() => openSection(row, "finanzen")}
-                          style={actionButtonStyle()}
-                        >
-                          Finanzen
-                        </button>
+                      <div style={styles.infoTile}>
+                        <div style={styles.infoLabel}>Tilgung gesamt</div>
+                        <div style={styles.infoValue}>{formatCurrency(row.principal_total)}</div>
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() => openSection(row, "energie")}
-                          style={actionButtonStyle()}
-                        >
-                          Energie
-                        </button>
+                      <div style={styles.infoTile}>
+                        <div style={styles.infoLabel}>Zinsen gesamt</div>
+                        <div style={styles.infoValue}>{formatCurrency(row.interest_total)}</div>
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() => openSection(row, "vermietung")}
-                          style={actionButtonStyle()}
-                        >
-                          Vermietung
-                        </button>
+                      <div style={styles.infoTile}>
+                        <div style={styles.infoLabel}>Rückzahlungsstand</div>
+                        <div style={styles.infoValue}>{formatPercent(row.repaid_percent)}</div>
                       </div>
                     </div>
-
-                    <div
-                      style={{
-                        marginTop: 14,
-                        fontSize: 13,
-                        color: "#6b7280",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      core_property_id: {row.property_id}
-                      {" • "}
-                      portfolio_property_id: {row.portfolio_property_id ?? "—"}
-                    </div>
                   </div>
-                ))}
+
+                  <div style={styles.actionArea}>
+                    <button
+                      type="button"
+                      onClick={() => openSection(row, "address")}
+                      style={styles.button}
+                    >
+                      Adresse
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openSection(row, "details")}
+                      style={styles.button}
+                    >
+                      Details
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openSection(row, "finanzen")}
+                      style={styles.button}
+                    >
+                      Finanzen
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openSection(row, "energie")}
+                      style={styles.button}
+                    >
+                      Energie
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openSection(row, "vermietung")}
+                      style={styles.button}
+                    >
+                      Vermietung
+                    </button>
+                  </div>
+                </div>
+
+                <div style={styles.footerMeta}>
+                  core_property_id: {row.property_id}
+                  {" • "}
+                  portfolio_property_id: {row.portfolio_property_id ?? "—"}
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }
