@@ -268,7 +268,7 @@ function KpiCard({ title, value, hint }: { title: string; value: string; hint: s
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 16, background: "white", padding: 14 }}>
       <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>{title}</div>
-      <div style={{ marginTop: 8, fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em" }}>{value}</div>
+      <div style={{ marginTop: 8, fontSize: 17, fontWeight: 950, letterSpacing: "-0.02em" }}>{value}</div>
       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>{hint}</div>
     </div>
   );

@@ -385,7 +385,7 @@ export default function PortfolioPropertyLayout() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 32,
+                fontSize: 28,
                 fontWeight: 900,
                 color: "#111827",
                 lineHeight: 1.1,

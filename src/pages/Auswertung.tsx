@@ -149,7 +149,7 @@ function StatCard({
       }}
     >
       <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{title}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>
+      <div style={{ fontSize: 17, fontWeight: 900, marginTop: 6 }}>
         {loading ? "…" : formatEUR(value)}
       </div>
     </div>
@@ -912,7 +912,7 @@ export default function Auswertung() {
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>Auswertung</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>Auswertung</div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>
             Zeitraum-Auswertung mit KPIs, Kreisdiagramm, Zeitreihe, Kostenstruktur, Objektvergleich und Top-Transaktionen.
           </div>

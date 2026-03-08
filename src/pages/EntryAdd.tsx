@@ -183,7 +183,7 @@ export default function EntryAdd() {
         <h1
           style={{
             margin: 0,
-            fontSize: 30,
+            fontSize: 28,
             fontWeight: 950,
             letterSpacing: "-0.03em",
             color: "#111827",

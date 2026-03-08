@@ -189,7 +189,7 @@ function StatBox(props: {
 
       <div
         style={{
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: 700,
           color: "#111827",
           lineHeight: 1.2,
@@ -403,7 +403,7 @@ export default function ObjektDetail() {
             padding: 24,
           }}
         >
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#b91c1c" }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#b91c1c" }}>
             Fehler beim Laden der Objektseite
           </div>
           <div style={{ marginTop: 8, color: "#dc2626" }}>{error}</div>
@@ -450,7 +450,7 @@ export default function ObjektDetail() {
             <h1
               style={{
                 margin: 0,
-                fontSize: 36,
+                fontSize: 28,
                 fontWeight: 800,
                 color: "#111827",
                 lineHeight: 1.1,
@@ -557,7 +557,7 @@ export default function ObjektDetail() {
               color: "#92400e",
             }}
           >
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>
               Keine Darlehensdaten vorhanden
             </div>
             <div style={{ marginTop: 8, fontSize: 14, color: "#b45309" }}>
@@ -584,7 +584,7 @@ export default function ObjektDetail() {
                 style={{
                   padding: 18,
                   borderBottom: "1px solid #e5e7eb",
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: 800,
                   color: "#111827",
                 }}

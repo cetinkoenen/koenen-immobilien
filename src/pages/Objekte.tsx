@@ -171,7 +171,7 @@ function StatBox(props: { label: string; value: string; subvalue?: string }) {
 
       <div
         style={{
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: 700,
           color: "#111827",
           lineHeight: 1.2,
@@ -319,7 +319,7 @@ export default function Objekte() {
   if (loading) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 36, fontWeight: 800, color: "#111827" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>
           Objekte
         </h1>
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>
@@ -347,7 +347,7 @@ export default function Objekte() {
   if (error) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 36, fontWeight: 800, color: "#111827" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>
           Objekte
         </h1>
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>
@@ -363,7 +363,7 @@ export default function Objekte() {
             padding: 24,
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#b91c1c" }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#b91c1c" }}>
             Fehler beim Laden der Objekte
           </div>
           <div style={{ marginTop: 8, color: "#dc2626" }}>{error}</div>
@@ -375,7 +375,7 @@ export default function Objekte() {
   if (properties.length === 0) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 36, fontWeight: 800, color: "#111827" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>
           Objekte
         </h1>
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>
@@ -391,7 +391,7 @@ export default function Objekte() {
             padding: 24,
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#92400e" }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#92400e" }}>
             Keine Immobilien gefunden
           </div>
           <div style={{ marginTop: 8, color: "#b45309" }}>
@@ -405,7 +405,7 @@ export default function Objekte() {
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 40, fontWeight: 800, color: "#111827" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>
           Objekte
         </h1>
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>{subtitle}</p>
@@ -459,7 +459,7 @@ export default function Objekte() {
               <h2
                 style={{
                   margin: 0,
-                  fontSize: 32,
+                  fontSize: 28,
                   fontWeight: 800,
                   color: "#111827",
                   lineHeight: 1.15,

@@ -188,7 +188,7 @@ export default function LoanEntryAdd() {
       </div>
 
       <div style={{ padding: 16, border: "1px solid #e5e7eb", borderRadius: 14, background: "white" }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>Darlehenszeile hinzufügen</div>
+        <div style={{ fontWeight: 900, fontSize: 17 }}>Darlehenszeile hinzufügen</div>
 
         <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
           Objekt: <span style={{ fontWeight: 900 }}>{prop ? prop.name : loadingProp ? "Lädt…" : "—"}</span>

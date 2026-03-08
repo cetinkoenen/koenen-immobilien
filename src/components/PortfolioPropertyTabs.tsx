@@ -223,7 +223,7 @@ export default function PortfolioPropertyTabs() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 24, fontWeight: 900 }}>
+          <div style={{ fontSize: 17, fontWeight: 900 }}>
             {selectedProperty ? selectedProperty.name : "Portfolio"}
           </div>
           <div style={{ opacity: 0.75 }}>

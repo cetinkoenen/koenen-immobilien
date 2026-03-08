@@ -106,7 +106,7 @@ function AppNavigation() {
         <div
           style={{
             fontWeight: 900,
-            fontSize: 18,
+            fontSize: 17,
             letterSpacing: "-0.02em",
             color: "#111827",
             marginRight: 8,

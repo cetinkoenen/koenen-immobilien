@@ -915,7 +915,7 @@ export default function PortfolioRenting(props: Props) {
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#111827" }}>
+        <div style={{ fontSize: 17, fontWeight: 900, color: "#111827" }}>
           Vermietung
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "#6b7280" }}>

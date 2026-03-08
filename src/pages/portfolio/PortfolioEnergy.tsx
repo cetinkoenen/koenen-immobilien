@@ -306,7 +306,7 @@ export default function PortfolioEnergy(props: Props) {
         }}
       >
         <div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#111827" }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: "#111827" }}>
             Energie
           </div>
           <div style={{ marginTop: 6, fontSize: 13, color: "#6b7280" }}>

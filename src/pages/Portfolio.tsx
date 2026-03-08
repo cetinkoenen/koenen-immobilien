@@ -94,7 +94,7 @@ const styles = {
 
   heroTitle: {
     margin: 0,
-    fontSize: 48,
+    fontSize: 28,
     fontWeight: 900,
     color: "#111827",
     lineHeight: 1.05,
@@ -103,7 +103,7 @@ const styles = {
   heroText: {
     marginTop: 14,
     marginBottom: 0,
-    fontSize: 18,
+    fontSize: 17,
     color: "#374151",
     lineHeight: 1.6,
   } satisfies CSSProperties,
@@ -138,7 +138,7 @@ const styles = {
 
   metricValue: {
     marginTop: 10,
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: 900,
     color: "#111827",
   } satisfies CSSProperties,
@@ -150,7 +150,7 @@ const styles = {
 
   sectionTitle: {
     margin: 0,
-    fontSize: 24,
+    fontSize: 17,
     fontWeight: 900,
     color: "#111827",
   } satisfies CSSProperties,
@@ -208,7 +208,7 @@ const styles = {
 
   rowTitle: {
     margin: 0,
-    fontSize: 22,
+    fontSize: 17,
     fontWeight: 900,
     color: "#111827",
   } satisfies CSSProperties,
@@ -241,7 +241,7 @@ const styles = {
 
   infoValue: {
     marginTop: 8,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: 800,
     color: "#111827",
   } satisfies CSSProperties,

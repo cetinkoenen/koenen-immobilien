@@ -286,7 +286,7 @@ export default function LoanImport() {
       </div>
 
       <div style={{ padding: 16, border: "1px solid #e5e7eb", borderRadius: 14, background: "white" }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>CSV Import → Darlehens-Ledger</div>
+        <div style={{ fontWeight: 900, fontSize: 17 }}>CSV Import → Darlehens-Ledger</div>
         <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
           Erwarteter Header: <b>property_name, year, interest, principal, balance, source</b>
         </div>

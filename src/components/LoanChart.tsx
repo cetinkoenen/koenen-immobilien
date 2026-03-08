@@ -98,7 +98,7 @@ function SectionTitle(props: { title: string; subtitle?: string }) {
     <div style={{ marginBottom: props.subtitle ? 10 : 18 }}>
       <div
         style={{
-          fontSize: 22,
+          fontSize: 17,
           fontWeight: 800,
           color: "#111827",
         }}
@@ -147,7 +147,7 @@ function SummaryBox(props: { label: string; value: string }) {
 
       <div
         style={{
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: 700,
           color: "#111827",
           lineHeight: 1.2,
@@ -261,7 +261,7 @@ export default function LoanChart({ data }: LoanChartProps) {
     return (
       <CardShell background="#fffbeb" borderColor="#fde68a">
         <SectionTitle title="Darlehensverlauf" />
-        <div style={{ fontSize: 18, fontWeight: 800, color: "#92400e" }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "#92400e" }}>
           Keine Verlaufsdaten vorhanden
         </div>
         <div style={{ marginTop: 8, color: "#b45309" }}>

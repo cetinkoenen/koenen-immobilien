@@ -250,7 +250,7 @@ export default function PortfolioDetails() {
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 4 }}>Objektdetails</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 4 }}>Objektdetails</div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>
             Core-ID: <b>{safeCorePropertyId || "—"}</b>
           </div>

@@ -199,7 +199,7 @@ export default function Uebersicht() {
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>Übersicht</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>Übersicht</div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>KPIs + 2 Kreisdiagramme.</div>
         </div>
 
@@ -311,15 +311,15 @@ export default function Uebersicht() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>Einnahmen</div>
-          <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.income)}</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.income)}</div>
         </div>
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>Ausgaben</div>
-          <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.expense)}</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.expense)}</div>
         </div>
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>Netto</div>
-          <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.net)}</div>
+          <div style={{ fontSize: 17, fontWeight: 900, marginTop: 6 }}>{loading ? "…" : formatEUR(totals.net)}</div>
         </div>
       </div>
 

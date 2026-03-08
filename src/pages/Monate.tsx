@@ -157,7 +157,7 @@ function StatCard({
       <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{title}</div>
       <div
         style={{
-          fontSize: 22,
+          fontSize: 17,
           fontWeight: 900,
           marginTop: 6,
           color: title === "Netto" ? (isNegative ? "#991b1b" : "#166534") : undefined,
@@ -208,7 +208,7 @@ function Modal({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>{title}</div>
+          <div style={{ fontWeight: 900, fontSize: 17 }}>{title}</div>
           <button
             onClick={onClose}
             style={{
@@ -769,7 +769,7 @@ export default function Monate() {
         }}
       >
         <div>
-          <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>
+          <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>
             Monate
           </div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>

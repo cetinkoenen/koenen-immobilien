@@ -138,7 +138,7 @@ export default function CategoryAdminPage() {
 
   return (
     <div style={{ padding: 18, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto" }}>
-      <h1 style={{ fontSize: 46, margin: "0 0 12px" }}>Category Admin</h1>
+      <h1 style={{ fontSize: 28, margin: "0 0 12px" }}>Category Admin</h1>
 
       <div style={card}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>ENV</div>
