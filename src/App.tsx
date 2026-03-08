@@ -1,10 +1,19 @@
+import type { CSSProperties } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import Objekte from "./pages/Objekte";
-import ObjektDetail from "./pages/ObjektDetail";
-import Portfolio from "./pages/Portfolio";
-import Monate from "./pages/Monate";
+
 import Auswertung from "./pages/Auswertung";
 import EntryAdd from "./pages/EntryAdd";
+import Monate from "./pages/Monate";
+import ObjektDetail from "./pages/ObjektDetail";
+import Objekte from "./pages/Objekte";
+import Portfolio from "./pages/Portfolio";
+
+import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
+import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
+import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
+import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
+import PortfolioPropertyLayout from "./pages/portfolio/PortfolioPropertyLayout";
+import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
 
 function NotFound() {
   return (
@@ -53,7 +62,7 @@ function NotFound() {
   );
 }
 
-function navLinkStyle(isActive: boolean): React.CSSProperties {
+function navLinkStyle(isActive: boolean): CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -152,12 +161,24 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<Navigate to="/objekte" replace />} />
+
           <Route path="/objekte" element={<Objekte />} />
           <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
+
           <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
+            <Route index element={<Navigate to="address" replace />} />
+            <Route path="address" element={<PortfolioAddress />} />
+            <Route path="details" element={<PortfolioDetails />} />
+            <Route path="finanzen" element={<PortfolioFinance />} />
+            <Route path="energie" element={<PortfolioEnergy />} />
+            <Route path="vermietung" element={<PortfolioRenting />} />
+          </Route>
+
           <Route path="/monate" element={<Monate />} />
           <Route path="/auswertung" element={<Auswertung />} />
           <Route path="/entry-add" element={<EntryAdd />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

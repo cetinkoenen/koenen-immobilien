@@ -1,90 +1,124 @@
-// src/pages/portfolio/PortfolioEnergy.tsx
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../lib/supabase";
 import { normalizeUuid } from "../../lib/ids";
-
-type PortfolioOutletContext = {
-  corePropertyId?: string | null;
-};
+import type { PortfolioOutletContext } from "./PortfolioPropertyLayout";
 
 type Props = {
-  /**
-   * Optional: wenn PortfolioEnergy direkt gerendert wird (z.B. in Tabs),
-   * kann propertyId übergeben werden.
-   * Wenn nicht gesetzt, wird corePropertyId aus dem OutletContext genutzt.
-   */
   propertyId?: string;
 };
 
 type EnergyRow = {
   property_id: string;
-  efficiency_class: string | null; // A+, A, B, C, D, E, H
-  energy_consumption: number | null; // kWh/m2*a
-  updated_at: string; // timestamptz
+  efficiency_class: string | null;
+  energy_consumption: number | null;
+  updated_at?: string | null;
 };
 
 type EnergyFormState = {
   efficiency_class: string;
-  energy_consumption: string; // keep as string for input
+  energy_consumption: string;
 };
 
+type SupabaseLikeError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
+const ENERGY_TABLE = "portfolio_property_energy";
 const EFFICIENCY_OPTIONS = ["A+", "A", "B", "C", "D", "E", "H"] as const;
 
 function toNullableNumber(value: string): number | null {
-  const v = value.trim();
-  if (!v) return null;
-  const normalized = v.replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatNullableNumber(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "";
-  return String(n);
+function formatNullableNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  return String(value);
 }
 
-function formatTimestamp(ts: string): string {
-  return new Date(ts).toLocaleString();
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
-function CoreLinkMissingBox() {
+function formatErrorMessage(error: unknown): string {
+  if (!error) return "Unbekannter Fehler";
+  if (typeof error === "string") return error;
+
+  const err = error as SupabaseLikeError;
+  const parts = [err.message, err.details, err.hint, err.code].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" | ") : "Unbekannter Fehler";
+}
+
+function MissingCoreBox() {
   return (
     <div
       style={{
-        border: "1px solid #fecaca",
-        background: "#fff1f2",
-        color: "#7f1d1d",
-        padding: 12,
-        borderRadius: 12,
-        whiteSpace: "pre-wrap",
+        border: "1px solid #fde68a",
+        background: "#fffbeb",
+        color: "#92400e",
+        padding: 14,
+        borderRadius: 14,
         fontSize: 13,
-        fontWeight: 800,
-        maxWidth: 560,
+        fontWeight: 700,
+        lineHeight: 1.5,
       }}
     >
-      Dieses Portfolio-Objekt hat keine Verknüpfung zu properties (core_property_id ist leer).
-      {"\n"}
-      Lösung: In portfolio_properties eine Spalte core_property_id pflegen, die auf properties.id zeigt.
+      Dieses Portfolio-Objekt hat keine gültige Verknüpfung zu den Energiedaten.
+      <br />
+      Es konnte keine belastbare <b>corePropertyId</b> aufgelöst werden.
     </div>
   );
 }
 
-export default function PortfolioEnergy({ propertyId }: Props) {
-  // ✅ comes from PortfolioPropertyLayout <Outlet context={{ corePropertyId }} />
-  const { corePropertyId } = useOutletContext<PortfolioOutletContext>();
+function EmptyStateCard() {
+  return (
+    <div
+      style={{
+        border: "1px dashed #d1d5db",
+        background: "#f9fafb",
+        color: "#374151",
+        padding: 16,
+        borderRadius: 14,
+        fontSize: 14,
+        lineHeight: 1.5,
+      }}
+    >
+      Für diese Immobilie sind aktuell noch keine Energiedaten gepflegt.
+    </div>
+  );
+}
 
-  // Use explicit prop when provided, otherwise fallback to outlet context.
-  const resolvedId = propertyId ?? corePropertyId ?? "";
+export default function PortfolioEnergy(props: Props) {
+  const outlet = useOutletContext<PortfolioOutletContext>();
 
-  // Normalize/guard
-  const safeCorePropertyId = useMemo(() => {
-    return normalizeUuid(String(resolvedId ?? "").trim());
-  }, [resolvedId]);
+  const resolvedCoreId = useMemo(() => {
+    const candidate = props.propertyId ?? outlet.corePropertyId ?? "";
+    return normalizeUuid(String(candidate).trim());
+  }, [props.propertyId, outlet.corePropertyId]);
 
-  const [loading, setLoading] = useState(false);
+  const hasCore = Boolean(resolvedCoreId);
+  const isBlockedByMapping = Boolean(outlet.mapLoading || outlet.mapErr);
+  const requestSeq = useRef(0);
+
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
   const [dbRow, setDbRow] = useState<EnergyRow | null>(null);
 
@@ -93,286 +127,422 @@ export default function PortfolioEnergy({ propertyId }: Props) {
     energy_consumption: "",
   });
 
-  // Prevent late responses from overwriting state when corePropertyId changes quickly
-  const requestSeq = useRef(0);
+  const isDisabled = loading || saving || !hasCore || isBlockedByMapping;
 
   const isDirty = useMemo(() => {
-    const baselineClass = dbRow?.efficiency_class ?? "";
-    const baselineConsumption = formatNullableNumber(dbRow?.energy_consumption);
+    const baseClass = dbRow?.efficiency_class ?? "";
+    const baseConsumption = formatNullableNumber(dbRow?.energy_consumption);
+
     return (
-      form.efficiency_class !== baselineClass ||
-      form.energy_consumption !== baselineConsumption
+      form.efficiency_class !== baseClass ||
+      form.energy_consumption !== baseConsumption
     );
   }, [dbRow, form]);
 
   const canSave = useMemo(() => {
-    if (!safeCorePropertyId) return false;
-    if (saving || loading) return false;
+    if (!hasCore) return false;
+    if (isBlockedByMapping) return false;
+    if (loading || saving) return false;
     if (!isDirty) return false;
 
-    const hasConsumptionInput = form.energy_consumption.trim().length > 0;
-    if (hasConsumptionInput && toNullableNumber(form.energy_consumption) === null) return false;
-
     const cls = form.efficiency_class.trim();
-    if (cls && !EFFICIENCY_OPTIONS.includes(cls as any)) return false;
+    if (cls && !EFFICIENCY_OPTIONS.includes(cls as (typeof EFFICIENCY_OPTIONS)[number])) {
+      return false;
+    }
+
+    const rawConsumption = form.energy_consumption.trim();
+    if (rawConsumption && toNullableNumber(rawConsumption) === null) {
+      return false;
+    }
 
     return true;
-  }, [safeCorePropertyId, saving, loading, isDirty, form.energy_consumption, form.efficiency_class]);
+  }, [hasCore, isBlockedByMapping, loading, saving, isDirty, form]);
 
   async function loadEnergy() {
-    // ✅ Guard: never query Supabase if missing/invalid
-    if (!safeCorePropertyId) return;
-
     const seq = ++requestSeq.current;
-    setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase
-      .from("portfolio_property_energy")
-      .select("*")
-      .eq("property_id", safeCorePropertyId) // ✅ always resolved property id
-      .maybeSingle();
-
-    if (seq !== requestSeq.current) return;
-
-    if (error) {
-      setError(error.message);
+    if (!hasCore || isBlockedByMapping) {
       setDbRow(null);
-      setForm({ efficiency_class: "", energy_consumption: "" });
+      setForm({
+        efficiency_class: "",
+        energy_consumption: "",
+      });
       setLoading(false);
       return;
     }
 
-    const row = (data as EnergyRow) ?? null;
-    setDbRow(row);
-    setForm({
-      efficiency_class: row?.efficiency_class ?? "",
-      energy_consumption: formatNullableNumber(row?.energy_consumption),
-    });
+    setLoading(true);
 
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from(ENERGY_TABLE)
+        .select("property_id, efficiency_class, energy_consumption, updated_at")
+        .eq("property_id", resolvedCoreId)
+        .maybeSingle();
+
+      if (seq !== requestSeq.current) return;
+      if (error) throw error;
+
+      const row = (data as EnergyRow | null) ?? null;
+
+      setDbRow(row);
+      setForm({
+        efficiency_class: row?.efficiency_class ?? "",
+        energy_consumption: formatNullableNumber(row?.energy_consumption),
+      });
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      console.error("PortfolioEnergy load failed:", err);
+      setError(formatErrorMessage(err));
+      setDbRow(null);
+      setForm({
+        efficiency_class: "",
+        energy_consumption: "",
+      });
+    } finally {
+      if (seq === requestSeq.current) {
+        setLoading(false);
+      }
+    }
   }
 
   useEffect(() => {
-    // Reset between properties
     setDbRow(null);
-    setForm({ efficiency_class: "", energy_consumption: "" });
     setError(null);
-    setLoading(false);
     setSaving(false);
+    setForm({
+      efficiency_class: "",
+      energy_consumption: "",
+    });
 
-    // ✅ Guard
-    if (!safeCorePropertyId) return;
+    if (outlet.mapLoading) {
+      setLoading(true);
+      return;
+    }
 
     void loadEnergy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeCorePropertyId]);
+  }, [resolvedCoreId, outlet.mapLoading, outlet.mapErr]);
 
   function validate(): string | null {
-    if (!safeCorePropertyId) {
-      return "Dieses Portfolio-Objekt hat keine Verknüpfung zu properties (core_property_id ist leer).";
+    if (outlet.mapErr) return outlet.mapErr;
+
+    if (!hasCore) {
+      return "Dieses Portfolio-Objekt hat keine gültige corePropertyId.";
     }
 
     const cls = form.efficiency_class.trim();
-    if (cls && !EFFICIENCY_OPTIONS.includes(cls as any)) {
+    if (cls && !EFFICIENCY_OPTIONS.includes(cls as (typeof EFFICIENCY_OPTIONS)[number])) {
       return "Ungültige Energieeffizienzklasse.";
     }
 
-    const consumptionRaw = form.energy_consumption.trim();
-    if (consumptionRaw && toNullableNumber(consumptionRaw) === null) {
-      return "Energieverbrauch muss eine Zahl sein (z.B. 85 oder 85.5).";
+    const rawConsumption = form.energy_consumption.trim();
+    if (rawConsumption && toNullableNumber(rawConsumption) === null) {
+      return "Der Energieverbrauch muss eine gültige Zahl sein.";
     }
 
     return null;
   }
 
   async function onSave() {
-    const v = validate();
-    if (v) {
-      setError(v);
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       return;
     }
-
-    // ✅ additional hard guard
-    if (!safeCorePropertyId) return;
 
     setSaving(true);
     setError(null);
 
-    const payload = {
-      property_id: safeCorePropertyId,
-      efficiency_class: form.efficiency_class.trim() || null,
-      energy_consumption: toNullableNumber(form.energy_consumption),
-    };
+    try {
+      const payload = {
+        property_id: resolvedCoreId,
+        efficiency_class: form.efficiency_class.trim() || null,
+        energy_consumption: toNullableNumber(form.energy_consumption),
+      };
 
-    const { data, error } = await supabase
-      .from("portfolio_property_energy")
-      .upsert(payload, { onConflict: "property_id" })
-      .select("*")
-      .single();
+      const { data, error } = await supabase
+        .from(ENERGY_TABLE)
+        .upsert(payload, { onConflict: "property_id" })
+        .select("property_id, efficiency_class, energy_consumption, updated_at")
+        .single();
 
-    if (error) {
-      setError(error.message);
+      if (error) throw error;
+
+      const row = data as EnergyRow;
+
+      setDbRow(row);
+      setForm({
+        efficiency_class: row.efficiency_class ?? "",
+        energy_consumption: formatNullableNumber(row.energy_consumption),
+      });
+    } catch (err) {
+      console.error("PortfolioEnergy save failed:", err);
+      setError(formatErrorMessage(err));
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const row = data as EnergyRow;
-    setDbRow(row);
-    setForm({
-      efficiency_class: row.efficiency_class ?? "",
-      energy_consumption: formatNullableNumber(row.energy_consumption),
-    });
-
-    setSaving(false);
   }
 
-  // ✅ If missing corePropertyId => stop UI + no queries
-  if (!safeCorePropertyId) {
-    return (
-      <div style={{ display: "grid", gap: 16 }}>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>Energie</div>
-        {error ? (
-          <div
-            style={{
-              border: "1px solid #fecaca",
-              background: "#fff1f2",
-              color: "#7f1d1d",
-              padding: 12,
-              borderRadius: 12,
-              whiteSpace: "pre-wrap",
-              fontSize: 13,
-              fontWeight: 800,
-              maxWidth: 560,
-            }}
-          >
-            {error}
-          </div>
-        ) : (
-          <CoreLinkMissingBox />
-        )}
-      </div>
-    );
-  }
+  const isEmpty =
+    !loading &&
+    !error &&
+    !outlet.mapErr &&
+    hasCore &&
+    !dbRow &&
+    !form.efficiency_class &&
+    !form.energy_consumption;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ fontSize: 22, fontWeight: 900 }}>Energie</div>
-
       <div
         style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 16,
-          background: "white",
-          display: "grid",
-          gap: 14,
-          maxWidth: 560,
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
         }}
       >
-        <p style={{ margin: 0, opacity: 0.75 }}>
-          Energieeffizienzklasse (A+, A, B, C, D, E, H) &amp; Energieverbrauch (kWh/m²*a).
-        </p>
-
-        {error && (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid rgba(255,0,0,0.35)",
-              background: "rgba(255,0,0,0.06)",
-            }}
-          >
-            <strong>Fehler:</strong> {error}
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#111827" }}>
+            Energie
           </div>
-        )}
+          <div style={{ marginTop: 6, fontSize: 13, color: "#6b7280" }}>
+            Energieeffizienzklasse und Verbrauch für die ausgewählte Immobilie.
+          </div>
+        </div>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span>Energieeffizienzklasse</span>
-          <select
-            value={form.efficiency_class}
-            onChange={(e) => setForm((s) => ({ ...s, efficiency_class: e.target.value }))}
-            disabled={loading || saving}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "white",
-            }}
-          >
-            <option value="">Bitte wählen…</option>
-            {EFFICIENCY_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span>Energieverbrauch (kWh/m²*a)</span>
-          <input
-            value={form.energy_consumption}
-            onChange={(e) => setForm((s) => ({ ...s, energy_consumption: e.target.value }))}
-            inputMode="decimal"
-            placeholder="z.B. 85.5"
-            disabled={loading || saving}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-            }}
-          />
-          {form.energy_consumption.trim() && toNullableNumber(form.energy_consumption) === null && (
-            <small style={{ color: "rgba(220,38,38,0.9)" }}>
-              Bitte eine gültige Zahl eingeben (z.B. 85 oder 85.5).
-            </small>
-          )}
-        </label>
-
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={onSave}
-            disabled={!canSave}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "#111827",
-              color: "white",
-              fontWeight: 600,
-              cursor: !canSave ? "not-allowed" : "pointer",
-              opacity: !canSave ? 0.6 : 1,
-            }}
-          >
-            {saving ? "Speichere…" : "Speichern"}
-          </button>
-
-          <button
-            onClick={loadEnergy}
-            disabled={saving || loading}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "white",
-              fontWeight: 600,
-              cursor: saving || loading ? "not-allowed" : "pointer",
-              opacity: saving || loading ? 0.6 : 1,
-            }}
+            type="button"
+            onClick={() => void loadEnergy()}
+            disabled={isDisabled}
+            style={secondaryButtonStyle(isDisabled)}
           >
             Neu laden
           </button>
 
-          {loading && <span style={{ fontSize: 12, opacity: 0.65 }}>Lade…</span>}
-
-          {dbRow?.updated_at && (
-            <span style={{ fontSize: 12, opacity: 0.6 }}>
-              Zuletzt aktualisiert: {formatTimestamp(dbRow.updated_at)}
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => void onSave()}
+            disabled={!canSave}
+            style={primaryButtonStyle(!canSave)}
+          >
+            {saving ? "Speichert…" : "Speichern"}
+          </button>
         </div>
+      </div>
+
+      {outlet.mapErr ? (
+        <div
+          style={{
+            border: "1px solid #fecaca",
+            background: "#fff1f2",
+            color: "#991b1b",
+            padding: 14,
+            borderRadius: 14,
+            fontSize: 13,
+            fontWeight: 700,
+            lineHeight: 1.5,
+          }}
+        >
+          {outlet.mapErr}
+        </div>
+      ) : null}
+
+      {!outlet.mapErr && !outlet.mapLoading && !hasCore ? <MissingCoreBox /> : null}
+
+      {error ? (
+        <div
+          style={{
+            border: "1px solid #fecaca",
+            background: "#fff1f2",
+            color: "#991b1b",
+            padding: 14,
+            borderRadius: 14,
+            fontSize: 13,
+            fontWeight: 700,
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+
+      {isEmpty ? <EmptyStateCard /> : null}
+
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          background: "#ffffff",
+          padding: 18,
+          display: "grid",
+          gap: 16,
+          opacity: !hasCore || isBlockedByMapping ? 0.92 : 1,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <label style={labelStyle}>
+            Energieeffizienzklasse
+            <select
+              value={form.efficiency_class}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  efficiency_class: event.target.value,
+                }))
+              }
+              disabled={isDisabled}
+              style={inputStyle(isDisabled)}
+            >
+              <option value="">Bitte wählen…</option>
+              {EFFICIENCY_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Energieverbrauch (kWh/m²*a)
+            <input
+              value={form.energy_consumption}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  energy_consumption: event.target.value,
+                }))
+              }
+              disabled={isDisabled}
+              inputMode="decimal"
+              placeholder="z. B. 85,5"
+              style={inputStyle(isDisabled)}
+            />
+          </label>
+        </div>
+
+        {form.energy_consumption.trim() &&
+        toNullableNumber(form.energy_consumption) === null ? (
+          <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>
+            Bitte eine gültige Zahl für den Energieverbrauch eingeben.
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <InfoCard label="Effizienzklasse" value={dbRow?.efficiency_class || "—"} />
+          <InfoCard
+            label="Verbrauch"
+            value={
+              dbRow?.energy_consumption != null
+                ? `${dbRow.energy_consumption} kWh/m²*a`
+                : "—"
+            }
+          />
+          <InfoCard label="Zuletzt aktualisiert" value={formatDateTime(dbRow?.updated_at)} />
+        </div>
+
+        {(loading || outlet.mapLoading) && (
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Lädt…</div>
+        )}
       </div>
     </div>
   );
+}
+
+function InfoCard(props: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        background: "#f8fafc",
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: "#6b7280",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          marginBottom: 6,
+        }}
+      >
+        {props.label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 800,
+          color: "#111827",
+          wordBreak: "break-word",
+        }}
+      >
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+const labelStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#6b7280",
+  display: "grid",
+};
+
+function inputStyle(disabled: boolean): CSSProperties {
+  return {
+    marginTop: 6,
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: disabled ? "#f9fafb" : "#ffffff",
+    color: "#111827",
+    fontWeight: 700,
+  };
+}
+
+function secondaryButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function primaryButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #111827",
+    background: "#111827",
+    color: "#ffffff",
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
 }
