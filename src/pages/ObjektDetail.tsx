@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import EditableLoanLedgerTable from '../components/EditableLoanLedgerTable'
 import LoanChart from '../components/LoanChart'
-import { loadPropertyLoanLedger } from '../services/propertyLoanLedgerService'
+import {
+  getLoanLedgerAuthDebugInfo,
+  loadPropertyLoanLedger,
+} from '../services/propertyLoanLedgerService'
 import type { LoanLedgerRow } from '../types/loanLedger'
 import { supabase } from '../lib/supabase'
 
@@ -48,10 +51,10 @@ type QueryDebugResult = {
 
 type DebugInfo = {
   timestamp: string
+  propertyId: string | null
   origin: string | null
   hostname: string | null
   href: string | null
-  propertyId: string | null
   supabaseUrl: string | null
   hasSession: boolean
   accessTokenExists: boolean
@@ -168,16 +171,13 @@ function getStatusTone(status: string | null): {
   }
 }
 
-function getSupabaseErrorMessage(error: unknown, fallback: string): string {
+function getErrorMessage(error: unknown, fallback: string): string {
   if (!error) return fallback
+  if (error instanceof Error) return error.message || fallback
 
-  if (error instanceof Error) {
-    return error.message || fallback
-  }
-
-  if (typeof error === 'object' && error !== null) {
-    const maybeMessage = 'message' in error ? error.message : null
-    if (typeof maybeMessage === 'string' && maybeMessage.trim()) return maybeMessage
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) return message
   }
 
   return fallback
@@ -212,6 +212,11 @@ function normalizeQueryError(error: unknown): QueryDebugResult {
     details: null,
     hint: null,
   }
+}
+
+function buildUiErrorMessage(title: string, error: unknown): string {
+  const message = getErrorMessage(error, title)
+  return `${title}: ${message}`
 }
 
 function StatBox(props: { label: string; value: string; subvalue?: string }) {
@@ -293,6 +298,36 @@ function SectionCard(props: { title: string; children: React.ReactNode }) {
   )
 }
 
+function DebugPanel(props: { debugInfo: DebugInfo | null }) {
+  if (!props.debugInfo) return null
+
+  return (
+    <pre
+      style={{
+        position: 'fixed',
+        left: 8,
+        right: 8,
+        bottom: 8,
+        maxHeight: '40vh',
+        overflow: 'auto',
+        background: '#000000',
+        color: '#39ff14',
+        padding: 12,
+        borderRadius: 12,
+        fontSize: 11,
+        lineHeight: 1.4,
+        zIndex: 9999,
+        margin: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+      }}
+    >
+      {JSON.stringify(props.debugInfo, null, 2)}
+    </pre>
+  )
+}
+
 export default function ObjektDetail() {
   const { propertyId } = useParams<{ propertyId: string }>()
 
@@ -342,7 +377,7 @@ export default function ObjektDetail() {
         ? normalizeQueryError(error)
         : {
             ok: true,
-            rowCount: data?.length ?? 0,
+        rowCount: data?.length ?? 0,
           }
     } catch (err) {
       summaryQuery = normalizeQueryError(err)
@@ -397,37 +432,59 @@ export default function ObjektDetail() {
     } catch (err) {
       ledgerQuery = {
         ok: false,
-        error: getSupabaseErrorMessage(err, 'Ledger query failed'),
+        error: getErrorMessage(err, 'Ledger query failed'),
       }
     }
 
-    const nextDebugInfo: DebugInfo = {
-      timestamp: new Date().toISOString(),
-      origin,
-      hostname,
-      href,
-      propertyId: propertyId ?? null,
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
-      hasSession: !!sessionData?.session,
-      accessTokenExists: !!sessionData?.session?.access_token,
-      userId: userData?.user?.id ?? null,
-      sessionError: sessionError?.message ?? null,
-      userError: userError?.message ?? null,
-      summaryQuery,
-      eurViewQuery,
-      portfolioViewQuery,
-      ledgerQuery,
-    }
+    try {
+      const ledgerAuth = await getLoanLedgerAuthDebugInfo()
 
-    console.log('ObjektDetail debug info', nextDebugInfo)
-    setDebugInfo(nextDebugInfo)
+      setDebugInfo({
+        timestamp: new Date().toISOString(),
+        propertyId: propertyId ?? null,
+        origin,
+        hostname,
+        href,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
+        hasSession:
+          !!sessionData?.session || !!ledgerAuth?.hasSession,
+        accessTokenExists: !!sessionData?.session?.access_token,
+        userId: userData?.user?.id ?? ledgerAuth?.userId ?? null,
+        sessionError:
+          sessionError?.message ?? ledgerAuth?.sessionError?.message ?? null,
+        userError:
+          userError?.message ?? ledgerAuth?.userError?.message ?? null,
+        summaryQuery,
+        eurViewQuery,
+        portfolioViewQuery,
+        ledgerQuery,
+      })
+    } catch {
+      setDebugInfo({
+        timestamp: new Date().toISOString(),
+        propertyId: propertyId ?? null,
+        origin,
+        hostname,
+        href,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
+        hasSession: !!sessionData?.session,
+        accessTokenExists: !!sessionData?.session?.access_token,
+        userId: userData?.user?.id ?? null,
+        sessionError: sessionError?.message ?? null,
+        userError: userError?.message ?? null,
+        summaryQuery,
+        eurViewQuery,
+        portfolioViewQuery,
+        ledgerQuery,
+      })
+    }
   }, [propertyId])
 
   const loadDetail = useCallback(async () => {
     if (!propertyId) {
-      setError('Keine Immobilien-ID in der URL gefunden.')
       setSummary(null)
       setLedger([])
+      setError('Keine Immobilien-ID in der URL gefunden.')
       setLoading(false)
       return
     }
@@ -459,12 +516,12 @@ export default function ObjektDetail() {
         .maybeSingle()
 
       if (summaryError) {
-        console.error('Summary query failed', {
+        console.error('ObjektDetail summaryError', {
+          propertyId,
           code: summaryError.code,
           message: summaryError.message,
           details: summaryError.details,
           hint: summaryError.hint,
-          propertyId,
         })
 
         throw new Error(
@@ -494,31 +551,27 @@ export default function ObjektDetail() {
         refreshed_at: summaryData.refreshed_at ?? null,
       }
 
-      let ledgerData: LoanLedgerRow[] = []
+      let ledgerRows: LoanLedgerRow[] = []
 
       try {
-        ledgerData = await loadPropertyLoanLedger(propertyId)
+        ledgerRows = await loadPropertyLoanLedger(propertyId)
       } catch (ledgerError) {
-        console.error('Ledger query failed', {
+        console.error('ObjektDetail ledgerError', {
           propertyId,
           error: ledgerError,
         })
 
         throw new Error(
-          `Fehler beim Laden des Darlehens-Ledgers: ${getSupabaseErrorMessage(
-            ledgerError,
-            'Unbekannter Ledger-Fehler'
-          )}`
+          buildUiErrorMessage('Fehler beim Laden des Darlehens-Ledgers', ledgerError)
         )
       }
 
       setSummary(mappedSummary)
-      setLedger(ledgerData)
+      setLedger(ledgerRows)
     } catch (err) {
-      const message = getSupabaseErrorMessage(err, 'Fehler beim Laden der Objektseite.')
-      setError(message)
       setSummary(null)
       setLedger([])
+      setError(getErrorMessage(err, 'Fehler beim Laden der Objektseite.'))
     } finally {
       setLoading(false)
     }
@@ -590,7 +643,8 @@ export default function ObjektDetail() {
 
   const effectiveFirstYear = ledgerStats.firstYear ?? summary?.first_year ?? null
   const effectiveLastYear = ledgerStats.lastYear ?? summary?.last_year ?? null
-  const effectiveLastBalanceYear = ledgerStats.lastBalanceYear ?? summary?.last_balance_year ?? null
+  const effectiveLastBalanceYear =
+    ledgerStats.lastBalanceYear ?? summary?.last_balance_year ?? null
   const effectiveLastBalance = ledgerStats.lastBalance ?? summary?.last_balance ?? null
   const effectiveInterestTotal = ledgerStats.interestTotal ?? summary?.interest_total ?? null
   const effectivePrincipalTotal = ledgerStats.principalTotal ?? summary?.principal_total ?? null
@@ -618,25 +672,8 @@ export default function ObjektDetail() {
             }}
           >
             <div style={{ color: '#374151' }}>Objektdetails werden geladen…</div>
-
-            {debugInfo ? (
-              <pre
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  background: '#0f172a',
-                  color: '#86efac',
-                  borderRadius: 12,
-                  fontSize: 12,
-                  overflowX: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            ) : null}
           </div>
+          <DebugPanel debugInfo={debugInfo} />
         </div>
       </div>
     )
@@ -673,25 +710,9 @@ export default function ObjektDetail() {
             <div style={{ marginTop: 8, color: '#dc2626', whiteSpace: 'pre-wrap' }}>
               {error}
             </div>
-
-            {debugInfo ? (
-              <pre
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  background: '#111827',
-                  color: '#93c5fd',
-                  borderRadius: 12,
-                  fontSize: 12,
-                  overflowX: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            ) : null}
           </div>
+
+          <DebugPanel debugInfo={debugInfo} />
         </div>
       </div>
     )
@@ -867,7 +888,10 @@ export default function ObjektDetail() {
                   <EditableLoanLedgerTable
                     propertyId={propertyId}
                     rows={ledger}
-                    onChanged={loadDetail}
+                    onChanged={async () => {
+                      await loadDetail()
+                      await loadDebugInfo()
+                    }}
                   />
                 ) : null}
               </SectionCard>
@@ -875,31 +899,7 @@ export default function ObjektDetail() {
           )}
         </div>
 
-        {debugInfo ? (
-          <pre
-            style={{
-              position: 'fixed',
-              left: 8,
-              right: 8,
-              bottom: 8,
-              maxHeight: '40vh',
-              overflow: 'auto',
-              background: '#000000',
-              color: '#39ff14',
-              padding: 12,
-              borderRadius: 12,
-              fontSize: 11,
-              lineHeight: 1.4,
-              zIndex: 9999,
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-            }}
-          >
-            {JSON.stringify(debugInfo, null, 2)}
-          </pre>
-        ) : null}
+        <DebugPanel debugInfo={debugInfo} />
       </div>
     </div>
   )
