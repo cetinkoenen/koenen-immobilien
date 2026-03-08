@@ -287,22 +287,10 @@ export default function LoanChart({ data }: LoanChartProps) {
             marginBottom: 18,
           }}
         >
-          <SummaryBox
-            label="Startsumme"
-            value={formatCurrency(summary.startBalance)}
-          />
-          <SummaryBox
-            label="Aktuelle Restschuld"
-            value={formatCurrency(summary.currentBalance)}
-          />
-          <SummaryBox
-            label="Zeitraum"
-            value={formatYearRange(summary.startYear, summary.endYear)}
-          />
-          <SummaryBox
-            label="Abbau seit Start"
-            value={formatCurrency(summary.absoluteReduction)}
-          />
+          <SummaryBox label="Startsumme" value={formatCurrency(summary.startBalance)} />
+          <SummaryBox label="Aktuelle Restschuld" value={formatCurrency(summary.currentBalance)} />
+          <SummaryBox label="Zeitraum" value={formatYearRange(summary.startYear, summary.endYear)} />
+          <SummaryBox label="Abbau seit Start" value={formatCurrency(summary.absoluteReduction)} />
         </div>
       ) : null}
 
@@ -313,10 +301,7 @@ export default function LoanChart({ data }: LoanChartProps) {
         }}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={points}
-            margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
-          >
+          <LineChart data={points} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="year"

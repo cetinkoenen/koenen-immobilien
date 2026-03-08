@@ -1,175 +1,149 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import LoanChart from "../components/LoanChart";
-import { supabase } from "../lib/supabase";
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import EditableLoanLedgerTable from '../components/EditableLoanLedgerTable'
+import LoanChart from '../components/LoanChart'
+import { loadPropertyLoanLedger } from '../services/propertyLoanLedgerService'
+import type { LoanLedgerRow } from '../types/loanLedger'
+import { supabase } from '../lib/supabase'
 
 type SummaryRow = {
-  property_id: string;
-  property_name: string;
-  first_year: number | null;
-  last_year: number | null;
-  last_balance_year: number | null;
-  last_balance: number | null;
-  interest_total: number | null;
-  principal_total: number | null;
-  repaid_percent: number | null;
-  repaid_percent_display: string | null;
-  repayment_status: string | null;
-  repayment_label: string | null;
-  refreshed_at: string | null;
-};
-
-type LedgerRowRaw = {
-  property_id: string;
-  year: number | string | null;
-  interest: number | string | null;
-  principal: number | string | null;
-  balance: number | string | null;
-  source: string | null;
-};
-
-type LedgerRow = {
-  property_id: string;
-  year: number;
-  interest: number | null;
-  principal: number | null;
-  balance: number | null;
-  source: string | null;
-};
+  property_id: string
+  property_name: string
+  first_year: number | null
+  last_year: number | null
+  last_balance_year: number | null
+  last_balance: number | null
+  interest_total: number | null
+  principal_total: number | null
+  repaid_percent: number | null
+  repaid_percent_display: string | null
+  repayment_status: string | null
+  repayment_label: string | null
+  refreshed_at: string | null
+}
 
 type LoanChartPoint = {
-  year: number;
-  balance: number;
-};
+  year: number
+  balance: number
+}
+
+type LedgerStats = {
+  firstYear: number | null
+  lastYear: number | null
+  lastBalanceYear: number | null
+  lastBalance: number | null
+  interestTotal: number | null
+  principalTotal: number | null
+  repaidPercent: number | null
+}
 
 function parseNumber(value: unknown): number | null {
-  if (value == null) return null;
+  if (value == null) return null
 
   if (Array.isArray(value)) {
-    return parseNumber(value[0]);
+    return parseNumber(value[0])
   }
 
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
   }
 
-  if (typeof value === "string") {
-    const normalized = value.replace(",", ".").trim();
-    if (!normalized) return null;
-
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+  if (typeof value === 'string') {
+    const normalized = value.replace(',', '.').trim()
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
   }
 
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function formatCurrency(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return '—'
 
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value)
 }
 
-function formatPercent(
-  value: number | null,
-  displayValue?: string | null
-): string {
-  if (displayValue) return displayValue;
-  if (value == null || !Number.isFinite(value)) return "—";
+function formatPercent(value: number | null, displayValue?: string | null): string {
+  if (displayValue) return displayValue
+  if (value == null || !Number.isFinite(value)) return '—'
 
-  return new Intl.NumberFormat("de-DE", {
-    style: "percent",
+  return new Intl.NumberFormat('de-DE', {
+    style: 'percent',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(value)
 }
 
-function formatYearRange(
-  startYear: number | null,
-  endYear: number | null
-): string {
-  if (startYear != null && endYear != null) return `${startYear} – ${endYear}`;
-  if (startYear != null) return `${startYear} – ?`;
-  if (endYear != null) return `? – ${endYear}`;
-  return "—";
+function formatYearRange(startYear: number | null, endYear: number | null): string {
+  if (startYear != null && endYear != null) return `${startYear} – ${endYear}`
+  if (startYear != null) return `${startYear} – ?`
+  if (endYear != null) return `? – ${endYear}`
+  return '—'
 }
 
 function formatDateTime(value: string | null): string {
-  if (!value) return "—";
+  if (!value) return '—'
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
 
-  return new Intl.DateTimeFormat("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return new Intl.DateTimeFormat('de-DE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
 }
 
-function getStatusTone(
-  status: string | null
-): { background: string; color: string; border: string } {
-  const normalized = (status ?? "").toLowerCase();
+function getStatusTone(status: string | null): {
+  background: string
+  color: string
+  border: string
+} {
+  const normalized = (status ?? '').toLowerCase()
 
-  if (
-    normalized.includes("healthy") ||
-    normalized.includes("ok") ||
-    normalized.includes("gut")
-  ) {
+  if (normalized.includes('healthy') || normalized.includes('ok') || normalized.includes('gut')) {
     return {
-      background: "#dcfce7",
-      color: "#166534",
-      border: "#bbf7d0",
-    };
+      background: '#dcfce7',
+      color: '#166534',
+      border: '#bbf7d0',
+    }
   }
 
-  if (
-    normalized.includes("warning") ||
-    normalized.includes("warn") ||
-    normalized.includes("kritisch")
-  ) {
+  if (normalized.includes('warning') || normalized.includes('warn') || normalized.includes('kritisch')) {
     return {
-      background: "#fef3c7",
-      color: "#92400e",
-      border: "#fde68a",
-    };
+      background: '#fef3c7',
+      color: '#92400e',
+      border: '#fde68a',
+    }
   }
 
-  if (
-    normalized.includes("red") ||
-    normalized.includes("error") ||
-    normalized.includes("critical")
-  ) {
+  if (normalized.includes('red') || normalized.includes('error') || normalized.includes('critical')) {
     return {
-      background: "#fee2e2",
-      color: "#991b1b",
-      border: "#fecaca",
-    };
+      background: '#fee2e2',
+      color: '#991b1b',
+      border: '#fecaca',
+    }
   }
 
   return {
-    background: "#f3f4f6",
-    color: "#374151",
-    border: "#e5e7eb",
-  };
+    background: '#f3f4f6',
+    color: '#374151',
+    border: '#e5e7eb',
+  }
 }
 
-function StatBox(props: {
-  label: string;
-  value: string;
-  subvalue?: string;
-}) {
+function StatBox(props: { label: string; value: string; subvalue?: string }) {
   return (
     <div
       style={{
-        background: "#f8fafc",
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
+        background: '#f8fafc',
+        border: '1px solid #e5e7eb',
+        borderRadius: 16,
         padding: 16,
         minWidth: 0,
       }}
@@ -178,9 +152,9 @@ function StatBox(props: {
         style={{
           fontSize: 12,
           fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          color: "#6b7280",
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          color: '#6b7280',
           marginBottom: 6,
         }}
       >
@@ -189,11 +163,11 @@ function StatBox(props: {
 
       <div
         style={{
-          fontSize: 17,
-          fontWeight: 700,
-          color: "#111827",
-          lineHeight: 1.2,
-          wordBreak: "break-word",
+          fontSize: 18,
+          fontWeight: 800,
+          color: '#111827',
+          lineHeight: 1.25,
+          wordBreak: 'break-word',
         }}
       >
         {props.value}
@@ -204,42 +178,67 @@ function StatBox(props: {
           style={{
             marginTop: 6,
             fontSize: 12,
-            color: "#6b7280",
-            wordBreak: "break-word",
+            color: '#6b7280',
+            wordBreak: 'break-word',
           }}
         >
           {props.subvalue}
         </div>
       ) : null}
     </div>
-  );
+  )
+}
+
+function SectionCard(props: { title: string; children: React.ReactNode }) {
+  return (
+    <section
+      style={{
+        marginTop: 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 20,
+        padding: 20,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          marginBottom: 16,
+          fontSize: 18,
+          fontWeight: 800,
+          color: '#111827',
+        }}
+      >
+        {props.title}
+      </div>
+      {props.children}
+    </section>
+  )
 }
 
 export default function ObjektDetail() {
-  const { propertyId } = useParams<{ propertyId: string }>();
+  const { propertyId } = useParams<{ propertyId: string }>()
 
-  const [summary, setSummary] = useState<SummaryRow | null>(null);
-  const [ledger, setLedger] = useState<LedgerRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<SummaryRow | null>(null)
+  const [ledger, setLedger] = useState<LoanLedgerRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadDetail = useCallback(async () => {
+    if (!propertyId) {
+      setError('Keine Immobilien-ID in der URL gefunden.')
+      setSummary(null)
+      setLedger([])
+      setLoading(false)
+      return
+    }
 
-    async function loadDetail() {
-      if (!propertyId) {
-        setError("Keine Immobilien-ID in der URL gefunden.");
-        setSummary(null);
-        setLedger([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
+    try {
+      setLoading(true)
+      setError(null)
 
       const { data: summaryData, error: summaryError } = await supabase
-        .from("vw_property_loan_dashboard_dedup")
+        .from('vw_property_loan_dashboard_dedup')
         .select(`
           property_id,
           property_name,
@@ -255,30 +254,20 @@ export default function ObjektDetail() {
           repayment_label,
           refreshed_at
         `)
-        .eq("property_id", propertyId)
-        .maybeSingle();
-
-      if (cancelled) return;
+        .eq('property_id', propertyId)
+        .maybeSingle()
 
       if (summaryError) {
-        setError(summaryError.message || "Fehler beim Laden der Objektdaten.");
-        setSummary(null);
-        setLedger([]);
-        setLoading(false);
-        return;
+        throw new Error(summaryError.message || 'Fehler beim Laden der Objektdaten.')
       }
 
       if (!summaryData) {
-        setError("Für diese Immobilien-ID wurde kein Datensatz gefunden.");
-        setSummary(null);
-        setLedger([]);
-        setLoading(false);
-        return;
+        throw new Error('Für diese Immobilien-ID wurde kein Datensatz gefunden.')
       }
 
       const mappedSummary: SummaryRow = {
         property_id: summaryData.property_id,
-        property_name: summaryData.property_name ?? "Unbenannte Immobilie",
+        property_name: summaryData.property_name ?? 'Unbenannte Immobilie',
         first_year: parseNumber(summaryData.first_year),
         last_year: parseNumber(summaryData.last_year),
         last_balance_year: parseNumber(summaryData.last_balance_year),
@@ -290,104 +279,166 @@ export default function ObjektDetail() {
         repayment_status: summaryData.repayment_status ?? null,
         repayment_label: summaryData.repayment_label ?? null,
         refreshed_at: summaryData.refreshed_at ?? null,
-      };
-
-      setSummary(mappedSummary);
-
-      const { data: ledgerData, error: ledgerError } = await supabase
-        .from("vw_property_loan_ledger_by_loan")
-        .select("property_id, year, interest, principal, balance, source")
-        .eq("property_id", propertyId)
-        .order("year", { ascending: true });
-
-      if (cancelled) return;
-
-      if (ledgerError) {
-        setError(ledgerError.message || "Fehler beim Laden der Ledger-Daten.");
-        setLedger([]);
-        setLoading(false);
-        return;
       }
 
-      const mappedLedger: LedgerRow[] = ((ledgerData ?? []) as LedgerRowRaw[])
-        .map((row) => {
-          const year = parseNumber(row.year);
+      const ledgerData = await loadPropertyLoanLedger(propertyId)
 
-          if (year == null) return null;
-
-          return {
-            property_id: row.property_id,
-            year,
-            interest: parseNumber(row.interest),
-            principal: parseNumber(row.principal),
-            balance: parseNumber(row.balance),
-            source: row.source ?? null,
-          };
-        })
-        .filter((row): row is LedgerRow => row !== null)
-        .sort((a, b) => a.year - b.year);
-
-      if (cancelled) return;
-
-      setLedger(mappedLedger);
-      setLoading(false);
+      setSummary(mappedSummary)
+      setLedger(ledgerData)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Fehler beim Laden der Objektseite.'
+      setError(message)
+      setSummary(null)
+      setLedger([])
+    } finally {
+      setLoading(false)
     }
+  }, [propertyId])
 
-    void loadDetail();
+  useEffect(() => {
+    void loadDetail()
+  }, [loadDetail])
 
-    return () => {
-      cancelled = true;
-    };
-  }, [propertyId]);
+  const sortedLedger = useMemo(() => {
+    return [...ledger].sort((a, b) => a.year - b.year)
+  }, [ledger])
 
   const chartData = useMemo<LoanChartPoint[]>(() => {
-    return ledger
-      .filter((row) => row.balance != null)
+    return sortedLedger
+      .filter((row) => row.balance != null && Number.isFinite(row.balance))
       .map((row) => ({
         year: row.year,
-        balance: row.balance as number,
-      }));
-  }, [ledger]);
+        balance: row.balance,
+      }))
+  }, [sortedLedger])
 
-  const statusLabel =
-    summary?.repayment_label ?? summary?.repayment_status ?? "—";
+  const ledgerStats = useMemo<LedgerStats>(() => {
+    if (sortedLedger.length === 0) {
+      return {
+        firstYear: null,
+        lastYear: null,
+        lastBalanceYear: null,
+        lastBalance: null,
+        interestTotal: null,
+        principalTotal: null,
+        repaidPercent: null,
+      }
+    }
 
-  const statusTone = getStatusTone(
-    summary?.repayment_status ?? summary?.repayment_label ?? null
-  );
+    const firstRow = sortedLedger[0]
+    const lastRow = sortedLedger[sortedLedger.length - 1]
+
+    const interestTotal = sortedLedger.reduce((sum, row) => {
+      return sum + (Number.isFinite(row.interest) ? row.interest : 0)
+    }, 0)
+
+    const principalTotal = sortedLedger.reduce((sum, row) => {
+      return sum + (Number.isFinite(row.principal) ? row.principal : 0)
+    }, 0)
+
+    const startingBalance =
+      firstRow.balance != null && Number.isFinite(firstRow.balance)
+        ? firstRow.balance + (Number.isFinite(firstRow.principal) ? firstRow.principal : 0)
+        : null
+
+    const repaidPercent =
+      startingBalance != null && startingBalance > 0
+        ? principalTotal / startingBalance
+        : null
+
+    return {
+      firstYear: firstRow.year ?? null,
+      lastYear: lastRow.year ?? null,
+      lastBalanceYear: lastRow.year ?? null,
+      lastBalance:
+        lastRow.balance != null && Number.isFinite(lastRow.balance) ? lastRow.balance : null,
+      interestTotal,
+      principalTotal,
+      repaidPercent,
+    }
+  }, [sortedLedger])
+
+  const effectiveFirstYear = ledgerStats.firstYear ?? summary?.first_year ?? null
+  const effectiveLastYear = ledgerStats.lastYear ?? summary?.last_year ?? null
+  const effectiveLastBalanceYear = ledgerStats.lastBalanceYear ?? summary?.last_balance_year ?? null
+  const effectiveLastBalance = ledgerStats.lastBalance ?? summary?.last_balance ?? null
+  const effectiveInterestTotal = ledgerStats.interestTotal ?? summary?.interest_total ?? null
+  const effectivePrincipalTotal = ledgerStats.principalTotal ?? summary?.principal_total ?? null
+  const effectiveRepaidPercent = ledgerStats.repaidPercent ?? summary?.repaid_percent ?? null
+
+  const statusLabel = summary?.repayment_label ?? summary?.repayment_status ?? '—'
+  const statusTone = getStatusTone(summary?.repayment_status ?? summary?.repayment_label ?? null)
 
   const hasLoanData =
-    summary?.last_balance != null ||
-    summary?.interest_total != null ||
-    summary?.principal_total != null ||
-    ledger.length > 0;
+    effectiveLastBalance != null ||
+    effectiveInterestTotal != null ||
+    effectivePrincipalTotal != null ||
+    ledger.length > 0
 
   if (loading) {
     return (
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 24,
-            padding: 24,
-          }}
-        >
-          <div style={{ color: "#374151" }}>Objektdetails werden geladen…</div>
+      <div style={{ width: '100%', padding: 24 }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e5e7eb',
+              borderRadius: 24,
+              padding: 24,
+            }}
+          >
+            <div style={{ color: '#374151' }}>Objektdetails werden geladen…</div>
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
   if (error && !summary) {
     return (
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
+      <div style={{ width: '100%', padding: 24 }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div style={{ marginBottom: 16 }}>
+            <Link
+              to="/objekte"
+              style={{
+                textDecoration: 'none',
+                color: '#4f46e5',
+                fontWeight: 700,
+              }}
+            >
+              ← Zurück zu Objekte
+            </Link>
+          </div>
+
+          <div
+            style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 24,
+              padding: 24,
+            }}
+          >
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#b91c1c' }}>
+              Fehler beim Laden der Objektseite
+            </div>
+            <div style={{ marginTop: 8, color: '#dc2626' }}>{error}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ width: '100%', padding: 24 }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto' }}>
         <div style={{ marginBottom: 16 }}>
           <Link
             to="/objekte"
             style={{
-              textDecoration: "none",
-              color: "#4f46e5",
+              textDecoration: 'none',
+              color: '#4f46e5',
               fontWeight: 700,
             }}
           >
@@ -397,337 +448,165 @@ export default function ObjektDetail() {
 
         <div
           style={{
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
+            background: '#ffffff',
+            border: '1px solid #e5e7eb',
             borderRadius: 24,
             padding: 24,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            minWidth: 0,
           }}
         >
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#b91c1c" }}>
-            Fehler beim Laden der Objektseite
-          </div>
-          <div style={{ marginTop: 8, color: "#dc2626" }}>{error}</div>
-        </div>
-      </div>
-    );
-  }
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 16,
+              flexWrap: 'wrap',
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 28,
+                  fontWeight: 800,
+                  color: '#111827',
+                  lineHeight: 1.1,
+                  wordBreak: 'break-word',
+                }}
+              >
+                {summary?.property_name ?? 'Immobilie'}
+              </h1>
 
-  return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-      <div style={{ marginBottom: 16 }}>
-        <Link
-          to="/objekte"
-          style={{
-            textDecoration: "none",
-            color: "#4f46e5",
-            fontWeight: 700,
-          }}
-        >
-          ← Zurück zu Objekte
-        </Link>
-      </div>
-
-      <div
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 24,
-          padding: 24,
-          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-            flexWrap: "wrap",
-            marginBottom: 24,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 28,
-                fontWeight: 800,
-                color: "#111827",
-                lineHeight: 1.1,
-                wordBreak: "break-word",
-              }}
-            >
-              {summary?.property_name ?? "Immobilie"}
-            </h1>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: '#6b7280',
+                  fontSize: 15,
+                  lineHeight: 1.5,
+                  wordBreak: 'break-word',
+                }}
+              >
+                Zeitraum: {formatYearRange(effectiveFirstYear, effectiveLastYear)}
+                {' · '}
+                Stand Restschuld: {effectiveLastBalanceYear ?? '—'}
+                {' · '}
+                Letzte Aktualisierung: {formatDateTime(summary?.refreshed_at ?? null)}
+              </div>
+            </div>
 
             <div
               style={{
-                marginTop: 10,
-                color: "#6b7280",
-                fontSize: 15,
-                lineHeight: 1.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '8px 12px',
+                borderRadius: 999,
+                background: statusTone.background,
+                color: statusTone.color,
+                border: `1px solid ${statusTone.border}`,
+                fontSize: 13,
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
               }}
             >
-              Zeitraum:{" "}
-              {formatYearRange(
-                summary?.first_year ?? null,
-                summary?.last_year ?? null
+              {statusLabel}
+            </div>
+          </div>
+
+          {error ? (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: 14,
+                borderRadius: 14,
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#b91c1c',
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              Hinweis: {error}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+            }}
+          >
+            <StatBox
+              label="Aktuelle Restschuld"
+              value={formatCurrency(effectiveLastBalance)}
+              subvalue={`Stand: ${effectiveLastBalanceYear ?? '—'}`}
+            />
+            <StatBox
+              label="Zinsen gesamt"
+              value={formatCurrency(effectiveInterestTotal)}
+            />
+            <StatBox
+              label="Tilgung gesamt"
+              value={formatCurrency(effectivePrincipalTotal)}
+            />
+            <StatBox
+              label="Rückzahlungsgrad"
+              value={formatPercent(
+                effectiveRepaidPercent,
+                ledger.length === 0 ? summary?.repaid_percent_display ?? null : null
               )}
-              {" · "}
-              Stand Restschuld: {summary?.last_balance_year ?? "—"}
-              {" · "}
-              Letzte Aktualisierung:{" "}
-              {formatDateTime(summary?.refreshed_at ?? null)}
-            </div>
+            />
           </div>
 
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: statusTone.background,
-              color: statusTone.color,
-              border: `1px solid ${statusTone.border}`,
-              fontSize: 13,
-              fontWeight: 800,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {statusLabel}
-          </div>
-        </div>
-
-        {error ? (
-          <div
-            style={{
-              marginBottom: 20,
-              padding: 14,
-              borderRadius: 14,
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#b91c1c",
-              fontSize: 14,
-              fontWeight: 600,
-            }}
-          >
-            Hinweis: {error}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <StatBox
-            label="Aktuelle Restschuld"
-            value={formatCurrency(summary?.last_balance ?? null)}
-            subvalue={`Stand: ${summary?.last_balance_year ?? "—"}`}
-          />
-          <StatBox
-            label="Zinsen gesamt"
-            value={formatCurrency(summary?.interest_total ?? null)}
-          />
-          <StatBox
-            label="Tilgung gesamt"
-            value={formatCurrency(summary?.principal_total ?? null)}
-          />
-          <StatBox
-            label="Rückzahlungsgrad"
-            value={formatPercent(
-              summary?.repaid_percent ?? null,
-              summary?.repaid_percent_display ?? null
-            )}
-          />
-        </div>
-
-        {!hasLoanData ? (
-          <div
-            style={{
-              marginTop: 8,
-              padding: 18,
-              borderRadius: 16,
-              background: "#fffbeb",
-              border: "1px solid #fde68a",
-              color: "#92400e",
-            }}
-          >
-            <div style={{ fontSize: 17, fontWeight: 800 }}>
-              Keine Darlehensdaten vorhanden
-            </div>
-            <div style={{ marginTop: 8, fontSize: 14, color: "#b45309" }}>
-              Für diese Immobilie wurden aktuell weder zusammengefasste
-              Kennzahlen noch Ledger-Daten gefunden.
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ marginTop: 24 }}>
-              <LoanChart data={chartData} />
-            </div>
-
+          {!hasLoanData ? (
             <div
               style={{
                 marginTop: 24,
-                border: "1px solid #e5e7eb",
-                borderRadius: 18,
-                background: "#ffffff",
-                overflow: "hidden",
+                padding: 18,
+                borderRadius: 16,
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                color: '#92400e',
               }}
             >
-              <div
-                style={{
-                  padding: 18,
-                  borderBottom: "1px solid #e5e7eb",
-                  fontSize: 17,
-                  fontWeight: 800,
-                  color: "#111827",
-                }}
-              >
-                Darlehensverlauf (Ledger)
+              <div style={{ fontSize: 17, fontWeight: 800 }}>
+                Keine Darlehensdaten vorhanden
               </div>
-
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    minWidth: 760,
-                  }}
-                >
-                  <thead>
-                    <tr
-                      style={{
-                        background: "#f8fafc",
-                        textAlign: "left",
-                        color: "#6b7280",
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      <th
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        Jahr
-                      </th>
-                      <th
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        Zinsen
-                      </th>
-                      <th
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        Tilgung
-                      </th>
-                      <th
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        Restschuld
-                      </th>
-                      <th
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        Quelle
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {ledger.length > 0 ? (
-                      ledger.map((row) => (
-                        <tr key={`${row.property_id}-${row.year}`}>
-                          <td
-                            style={{
-                              padding: "14px 16px",
-                              borderBottom: "1px solid #f3f4f6",
-                              fontWeight: 700,
-                              color: "#111827",
-                            }}
-                          >
-                            {row.year}
-                          </td>
-                          <td
-                            style={{
-                              padding: "14px 16px",
-                              borderBottom: "1px solid #f3f4f6",
-                              color: "#111827",
-                            }}
-                          >
-                            {formatCurrency(row.interest)}
-                          </td>
-                          <td
-                            style={{
-                              padding: "14px 16px",
-                              borderBottom: "1px solid #f3f4f6",
-                              color: "#111827",
-                            }}
-                          >
-                            {formatCurrency(row.principal)}
-                          </td>
-                          <td
-                            style={{
-                              padding: "14px 16px",
-                              borderBottom: "1px solid #f3f4f6",
-                              fontWeight: 700,
-                              color: "#111827",
-                            }}
-                          >
-                            {formatCurrency(row.balance)}
-                          </td>
-                          <td
-                            style={{
-                              padding: "14px 16px",
-                              borderBottom: "1px solid #f3f4f6",
-                              color: "#6b7280",
-                              fontSize: 13,
-                            }}
-                          >
-                            {row.source ?? "—"}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          style={{
-                            padding: "18px 16px",
-                            color: "#6b7280",
-                          }}
-                        >
-                          Keine Ledger-Zeilen gefunden.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div style={{ marginTop: 8, fontSize: 14, color: '#b45309' }}>
+                Für diese Immobilie wurden aktuell weder zusammengefasste Kennzahlen noch
+                Ledger-Daten gefunden.
               </div>
             </div>
-          </>
-        )}
+          ) : (
+            <>
+              <SectionCard title="Darlehensverlauf">
+                <div
+                  style={{
+                    width: '100%',
+                    minWidth: 0,
+                    height: 360,
+                  }}
+                >
+                  <LoanChart data={chartData} />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Editierbares Darlehens-Ledger">
+                {propertyId ? (
+                  <EditableLoanLedgerTable
+                    propertyId={propertyId}
+                    rows={ledger}
+                    onChanged={loadDetail}
+                  />
+                ) : null}
+              </SectionCard>
+            </>
+          )}
+        </div>
       </div>
     </div>
-  );
+  )
 }
