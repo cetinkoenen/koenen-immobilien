@@ -6,6 +6,135 @@ import type {
   SaveLoanLedgerPayload,
 } from '@/types/loanLedger'
 
+type SupabaseLikeError = {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+  name?: string | null
+}
+
+type LedgerServiceDebugInfo = {
+  timestamp: string
+  action: string
+  propertyId?: string
+  rowId?: number
+  hasSession?: boolean
+  userId?: string | null
+  supabaseUrl?: string | null
+  origin?: string | null
+  hostname?: string | null
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+  extra?: Record<string, unknown>
+}
+
+function getRuntimeLocation() {
+  if (typeof window === 'undefined') {
+    return {
+      origin: null,
+      hostname: null,
+      href: null,
+    }
+  }
+
+  return {
+    origin: window.location.origin,
+    hostname: window.location.hostname,
+    href: window.location.href,
+  }
+}
+
+function getSupabaseProjectUrl(): string | null {
+  try {
+    return import.meta.env.VITE_SUPABASE_URL ?? null
+  } catch {
+    return null
+  }
+}
+
+function toSupabaseLikeError(error: unknown): SupabaseLikeError {
+  if (!error || typeof error !== 'object') {
+    return {
+      code: null,
+      message: error ? String(error) : 'Unknown error',
+      details: null,
+      hint: null,
+      name: null,
+    }
+  }
+
+  const candidate = error as Record<string, unknown>
+
+  return {
+    code: typeof candidate.code === 'string' ? candidate.code : null,
+    message: typeof candidate.message === 'string' ? candidate.message : 'Unknown error',
+    details: typeof candidate.details === 'string' ? candidate.details : null,
+    hint: typeof candidate.hint === 'string' ? candidate.hint : null,
+    name: typeof candidate.name === 'string' ? candidate.name : null,
+  }
+}
+
+async function getAuthDebugContext() {
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+
+    return {
+      hasSession: !!sessionData?.session,
+      userId: userData?.user?.id ?? null,
+      sessionError: sessionError ? toSupabaseLikeError(sessionError) : null,
+      userError: userError ? toSupabaseLikeError(userError) : null,
+    }
+  } catch (error) {
+    return {
+      hasSession: false,
+      userId: null,
+      sessionError: toSupabaseLikeError(error),
+      userError: null,
+    }
+  }
+}
+
+async function logLedgerDebug(
+  action: string,
+  options?: {
+    propertyId?: string
+    rowId?: number
+    error?: unknown
+    extra?: Record<string, unknown>
+  }
+) {
+  const auth = await getAuthDebugContext()
+  const location = getRuntimeLocation()
+  const normalizedError = options?.error ? toSupabaseLikeError(options.error) : null
+
+  const payload: LedgerServiceDebugInfo = {
+    timestamp: new Date().toISOString(),
+    action,
+    propertyId: options?.propertyId,
+    rowId: options?.rowId,
+    hasSession: auth.hasSession,
+    userId: auth.userId,
+    supabaseUrl: getSupabaseProjectUrl(),
+    origin: location.origin,
+    hostname: location.hostname,
+    code: normalizedError?.code ?? null,
+    message: normalizedError?.message ?? null,
+    details: normalizedError?.details ?? null,
+    hint: normalizedError?.hint ?? null,
+    extra: {
+      ...(options?.extra ?? {}),
+      sessionError: auth.sessionError,
+      userError: auth.userError,
+    },
+  }
+
+  console.error(`[propertyLoanLedgerService] ${action}`, payload)
+}
+
 function toNumberOrNaN(value: string): number {
   if (value == null) return Number.NaN
 
@@ -20,15 +149,20 @@ function toNumberOrNaN(value: string): number {
   return Number(normalized)
 }
 
+function toSafeNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function mapRowToLoanLedgerRow(row: any): LoanLedgerRow {
   return {
-    id: Number(row.id),
+    id: toSafeNumber(row.id),
     property_id: row.property_id,
     loan_id: row.loan_id,
-    year: Number(row.year),
-    interest: Number(row.interest ?? 0),
-    principal: Number(row.principal ?? 0),
-    balance: Number(row.balance ?? 0),
+    year: toSafeNumber(row.year),
+    interest: toSafeNumber(row.interest),
+    principal: toSafeNumber(row.principal),
+    balance: toSafeNumber(row.balance),
     source: row.source ?? null,
     created_at: row.created_at ?? undefined,
     updated_at: row.updated_at ?? undefined,
@@ -106,18 +240,11 @@ export function validateLedgerRow(
   }
 }
 
-export function mapLedgerError(error: unknown): string {
-  const err = error as {
-    code?: string
-    message?: string
-    details?: string
-    hint?: string
-  }
-
-  const code = err?.code ?? ''
-  const message = (err?.message ?? '').toLowerCase()
-  const details = (err?.details ?? '').toLowerCase()
-  const hint = (err?.hint ?? '').toLowerCase()
+function buildFriendlyLedgerErrorMessage(error: SupabaseLikeError): string {
+  const code = error.code ?? ''
+  const message = (error.message ?? '').toLowerCase()
+  const details = (error.details ?? '').toLowerCase()
+  const hint = (error.hint ?? '').toLowerCase()
   const fullText = `${message} ${details} ${hint}`
 
   if (
@@ -150,7 +277,45 @@ export function mapLedgerError(error: unknown): string {
     return 'Zu dieser Immobilie wurde kein Darlehen gefunden.'
   }
 
-  return err?.message || 'Die Änderung konnte nicht gespeichert werden.'
+  return error.message || 'Die Änderung konnte nicht gespeichert werden.'
+}
+
+function buildDetailedLedgerError(error: unknown, fallback: string): Error {
+  const normalized = toSupabaseLikeError(error)
+  const friendly = buildFriendlyLedgerErrorMessage(normalized)
+
+  const detailParts = [
+    normalized.code ? `Code: ${normalized.code}` : null,
+    normalized.details ? `Details: ${normalized.details}` : null,
+    normalized.hint ? `Hint: ${normalized.hint}` : null,
+  ].filter(Boolean)
+
+  const finalMessage = [friendly || fallback, ...detailParts].join(' | ')
+  return new Error(finalMessage)
+}
+
+export function mapLedgerError(error: unknown): string {
+  return buildDetailedLedgerError(
+    error,
+    'Die Änderung konnte nicht gespeichert werden.'
+  ).message
+}
+
+export async function getLoanLedgerAuthDebugInfo() {
+  const auth = await getAuthDebugContext()
+  const location = getRuntimeLocation()
+
+  return {
+    timestamp: new Date().toISOString(),
+    hasSession: auth.hasSession,
+    userId: auth.userId,
+    sessionError: auth.sessionError,
+    userError: auth.userError,
+    supabaseUrl: getSupabaseProjectUrl(),
+    origin: location.origin,
+    hostname: location.hostname,
+    href: location.href,
+  }
 }
 
 export async function loadPropertyLoanLedger(
@@ -158,7 +323,8 @@ export async function loadPropertyLoanLedger(
 ): Promise<LoanLedgerRow[]> {
   const { data, error } = await supabase
     .from('property_loan_ledger')
-    .select(`
+    .select(
+      `
       id,
       property_id,
       loan_id,
@@ -170,15 +336,35 @@ export async function loadPropertyLoanLedger(
       created_at,
       updated_at,
       updated_by
-    `)
+    `
+    )
     .eq('property_id', propertyId)
     .order('year', { ascending: true })
 
   if (error) {
-    throw new Error(mapLedgerError(error))
+    await logLedgerDebug('loadPropertyLoanLedger.error', {
+      propertyId,
+      error,
+      extra: {
+        table: 'property_loan_ledger',
+      },
+    })
+
+    throw buildDetailedLedgerError(
+      error,
+      'Fehler beim Laden des Darlehens-Ledgers.'
+    )
   }
 
-  return (data ?? []).map(mapRowToLoanLedgerRow)
+  const rows = (data ?? []).map(mapRowToLoanLedgerRow)
+
+  console.log('[propertyLoanLedgerService] loadPropertyLoanLedger.success', {
+    timestamp: new Date().toISOString(),
+    propertyId,
+    rowCount: rows.length,
+  })
+
+  return rows
 }
 
 export async function resolveLoanIdForProperty(
@@ -191,14 +377,40 @@ export async function resolveLoanIdForProperty(
     .order('created_at', { ascending: true })
 
   if (error) {
-    throw new Error(mapLedgerError(error))
+    await logLedgerDebug('resolveLoanIdForProperty.error', {
+      propertyId,
+      error,
+      extra: {
+        table: 'property_loans',
+      },
+    })
+
+    throw buildDetailedLedgerError(
+      error,
+      'Fehler beim Auflösen der loan_id für die Immobilie.'
+    )
   }
 
   if (!data || data.length === 0) {
+    await logLedgerDebug('resolveLoanIdForProperty.noLoan', {
+      propertyId,
+      extra: {
+        rowCount: 0,
+      },
+    })
+
     throw new Error('Zu dieser Immobilie wurde kein Darlehen gefunden.')
   }
 
   if (data.length > 1) {
+    await logLedgerDebug('resolveLoanIdForProperty.multipleLoans', {
+      propertyId,
+      extra: {
+        rowCount: data.length,
+        loanIds: data.map((row) => row.id),
+      },
+    })
+
     throw new Error(
       'Zu dieser Immobilie existieren mehrere Darlehen. Die automatische Auswahl von loan_id ist aktuell nicht eindeutig.'
     )
@@ -224,7 +436,8 @@ export async function insertPropertyLoanLedgerRow(
       balance: values.balance,
       source: values.source,
     })
-    .select(`
+    .select(
+      `
       id,
       property_id,
       loan_id,
@@ -236,13 +449,35 @@ export async function insertPropertyLoanLedgerRow(
       created_at,
       updated_at,
       updated_by
-    `)
+    `
+    )
 
   if (error) {
-    throw new Error(mapLedgerError(error))
+    await logLedgerDebug('insertPropertyLoanLedgerRow.error', {
+      propertyId,
+      error,
+      extra: {
+        loanId,
+        values,
+        table: 'property_loan_ledger',
+      },
+    })
+
+    throw buildDetailedLedgerError(
+      error,
+      'Die neue Ledger-Zeile konnte nicht angelegt werden.'
+    )
   }
 
   if (!data || data.length === 0) {
+    await logLedgerDebug('insertPropertyLoanLedgerRow.emptyResult', {
+      propertyId,
+      extra: {
+        loanId,
+        values,
+      },
+    })
+
     throw new Error(
       'Die neue Ledger-Zeile konnte nicht angelegt werden. Es wurde kein Datensatz geschrieben.'
     )
@@ -263,7 +498,8 @@ export async function updatePropertyLoanLedgerRow(
       source: values.source,
     })
     .eq('id', rowId)
-    .select(`
+    .select(
+      `
       id,
       property_id,
       loan_id,
@@ -275,13 +511,33 @@ export async function updatePropertyLoanLedgerRow(
       created_at,
       updated_at,
       updated_by
-    `)
+    `
+    )
 
   if (error) {
-    throw new Error(mapLedgerError(error))
+    await logLedgerDebug('updatePropertyLoanLedgerRow.error', {
+      rowId,
+      error,
+      extra: {
+        values,
+        table: 'property_loan_ledger',
+      },
+    })
+
+    throw buildDetailedLedgerError(
+      error,
+      'Die Zeile konnte nicht aktualisiert werden.'
+    )
   }
 
   if (!data || data.length === 0) {
+    await logLedgerDebug('updatePropertyLoanLedgerRow.emptyResult', {
+      rowId,
+      extra: {
+        values,
+      },
+    })
+
     throw new Error(
       'Die Zeile konnte nicht aktualisiert werden. Es wurde kein Datensatz geändert. Bitte Row-ID, RLS und Update-Berechtigung prüfen.'
     )
@@ -298,10 +554,25 @@ export async function deletePropertyLoanLedgerRow(
     .select('id')
 
   if (error) {
-    throw new Error(mapLedgerError(error))
+    await logLedgerDebug('deletePropertyLoanLedgerRow.error', {
+      rowId,
+      error,
+      extra: {
+        table: 'property_loan_ledger',
+      },
+    })
+
+    throw buildDetailedLedgerError(
+      error,
+      'Die Zeile konnte nicht gelöscht werden.'
+    )
   }
 
   if (!data || data.length === 0) {
+    await logLedgerDebug('deletePropertyLoanLedgerRow.emptyResult', {
+      rowId,
+    })
+
     throw new Error(
       'Die Zeile konnte nicht gelöscht werden. Es wurde kein Datensatz entfernt.'
     )

@@ -37,6 +37,37 @@ type LedgerStats = {
   repaidPercent: number | null
 }
 
+type QueryDebugResult = {
+  ok: boolean
+  rowCount?: number
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+}
+
+type DebugInfo = {
+  timestamp: string
+  origin: string | null
+  hostname: string | null
+  href: string | null
+  propertyId: string | null
+  supabaseUrl: string | null
+  hasSession: boolean
+  accessTokenExists: boolean
+  userId: string | null
+  sessionError: string | null
+  userError: string | null
+  summaryQuery: QueryDebugResult | null
+  eurViewQuery: QueryDebugResult | null
+  portfolioViewQuery: QueryDebugResult | null
+  ledgerQuery: {
+    ok: boolean
+    rowCount?: number
+    error?: string | null
+  } | null
+}
+
 function parseNumber(value: unknown): number | null {
   if (value == null) return null
 
@@ -137,6 +168,52 @@ function getStatusTone(status: string | null): {
   }
 }
 
+function getSupabaseErrorMessage(error: unknown, fallback: string): string {
+  if (!error) return fallback
+
+  if (error instanceof Error) {
+    return error.message || fallback
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const maybeMessage = 'message' in error ? error.message : null
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) return maybeMessage
+  }
+
+  return fallback
+}
+
+function normalizeQueryError(error: unknown): QueryDebugResult {
+  if (!error) {
+    return { ok: true }
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as {
+      code?: string
+      message?: string
+      details?: string
+      hint?: string
+    }
+
+    return {
+      ok: false,
+      code: maybeError.code ?? null,
+      message: maybeError.message ?? 'Unknown query error',
+      details: maybeError.details ?? null,
+      hint: maybeError.hint ?? null,
+    }
+  }
+
+  return {
+    ok: false,
+    code: null,
+    message: String(error),
+    details: null,
+    hint: null,
+  }
+}
+
 function StatBox(props: { label: string; value: string; subvalue?: string }) {
   return (
     <div
@@ -223,6 +300,128 @@ export default function ObjektDetail() {
   const [ledger, setLedger] = useState<LoanLedgerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
+
+  const loadDebugInfo = useCallback(async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : null
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : null
+    const href = typeof window !== 'undefined' ? window.location.href : null
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+
+    let summaryQuery: QueryDebugResult | null = null
+    let eurViewQuery: QueryDebugResult | null = null
+    let portfolioViewQuery: QueryDebugResult | null = null
+    let ledgerQuery: DebugInfo['ledgerQuery'] = null
+
+    try {
+      const { data, error } = await supabase
+        .from('vw_property_loan_dashboard_dedup')
+        .select(
+          `
+            property_id,
+            property_name,
+            first_year,
+            last_year,
+            last_balance_year,
+            last_balance,
+            interest_total,
+            principal_total,
+            repaid_percent,
+            repaid_percent_display,
+            repayment_status,
+            repayment_label,
+            refreshed_at
+          `
+        )
+        .eq('property_id', propertyId ?? '')
+        .limit(1)
+
+      summaryQuery = error
+        ? normalizeQueryError(error)
+        : {
+            ok: true,
+            rowCount: data?.length ?? 0,
+          }
+    } catch (err) {
+      summaryQuery = normalizeQueryError(err)
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vw_property_loan_dashboard_eur')
+        .select('*')
+        .limit(1)
+
+      eurViewQuery = error
+        ? normalizeQueryError(error)
+        : {
+            ok: true,
+            rowCount: data?.length ?? 0,
+          }
+    } catch (err) {
+      eurViewQuery = normalizeQueryError(err)
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vw_property_loan_dashboard_portfolio_v2')
+        .select('*')
+        .limit(1)
+
+      portfolioViewQuery = error
+        ? normalizeQueryError(error)
+        : {
+            ok: true,
+            rowCount: data?.length ?? 0,
+          }
+    } catch (err) {
+      portfolioViewQuery = normalizeQueryError(err)
+    }
+
+    try {
+      if (propertyId) {
+        const ledgerRows = await loadPropertyLoanLedger(propertyId)
+        ledgerQuery = {
+          ok: true,
+          rowCount: ledgerRows.length,
+          error: null,
+        }
+      } else {
+        ledgerQuery = {
+          ok: false,
+          error: 'propertyId missing',
+        }
+      }
+    } catch (err) {
+      ledgerQuery = {
+        ok: false,
+        error: getSupabaseErrorMessage(err, 'Ledger query failed'),
+      }
+    }
+
+    const nextDebugInfo: DebugInfo = {
+      timestamp: new Date().toISOString(),
+      origin,
+      hostname,
+      href,
+      propertyId: propertyId ?? null,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
+      hasSession: !!sessionData?.session,
+      accessTokenExists: !!sessionData?.session?.access_token,
+      userId: userData?.user?.id ?? null,
+      sessionError: sessionError?.message ?? null,
+      userError: userError?.message ?? null,
+      summaryQuery,
+      eurViewQuery,
+      portfolioViewQuery,
+      ledgerQuery,
+    }
+
+    console.log('ObjektDetail debug info', nextDebugInfo)
+    setDebugInfo(nextDebugInfo)
+  }, [propertyId])
 
   const loadDetail = useCallback(async () => {
     if (!propertyId) {
@@ -239,26 +438,40 @@ export default function ObjektDetail() {
 
       const { data: summaryData, error: summaryError } = await supabase
         .from('vw_property_loan_dashboard_dedup')
-        .select(`
-          property_id,
-          property_name,
-          first_year,
-          last_year,
-          last_balance_year,
-          last_balance,
-          interest_total,
-          principal_total,
-          repaid_percent,
-          repaid_percent_display,
-          repayment_status,
-          repayment_label,
-          refreshed_at
-        `)
+        .select(
+          `
+            property_id,
+            property_name,
+            first_year,
+            last_year,
+            last_balance_year,
+            last_balance,
+            interest_total,
+            principal_total,
+            repaid_percent,
+            repaid_percent_display,
+            repayment_status,
+            repayment_label,
+            refreshed_at
+          `
+        )
         .eq('property_id', propertyId)
         .maybeSingle()
 
       if (summaryError) {
-        throw new Error(summaryError.message || 'Fehler beim Laden der Objektdaten.')
+        console.error('Summary query failed', {
+          code: summaryError.code,
+          message: summaryError.message,
+          details: summaryError.details,
+          hint: summaryError.hint,
+          propertyId,
+        })
+
+        throw new Error(
+          `Fehler beim Laden der Objektdaten: ${summaryError.message}${
+            summaryError.code ? ` (Code: ${summaryError.code})` : ''
+          }`
+        )
       }
 
       if (!summaryData) {
@@ -281,13 +494,28 @@ export default function ObjektDetail() {
         refreshed_at: summaryData.refreshed_at ?? null,
       }
 
-      const ledgerData = await loadPropertyLoanLedger(propertyId)
+      let ledgerData: LoanLedgerRow[] = []
+
+      try {
+        ledgerData = await loadPropertyLoanLedger(propertyId)
+      } catch (ledgerError) {
+        console.error('Ledger query failed', {
+          propertyId,
+          error: ledgerError,
+        })
+
+        throw new Error(
+          `Fehler beim Laden des Darlehens-Ledgers: ${getSupabaseErrorMessage(
+            ledgerError,
+            'Unbekannter Ledger-Fehler'
+          )}`
+        )
+      }
 
       setSummary(mappedSummary)
       setLedger(ledgerData)
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Fehler beim Laden der Objektseite.'
+      const message = getSupabaseErrorMessage(err, 'Fehler beim Laden der Objektseite.')
       setError(message)
       setSummary(null)
       setLedger([])
@@ -298,7 +526,8 @@ export default function ObjektDetail() {
 
   useEffect(() => {
     void loadDetail()
-  }, [loadDetail])
+    void loadDebugInfo()
+  }, [loadDetail, loadDebugInfo])
 
   const sortedLedger = useMemo(() => {
     return [...ledger].sort((a, b) => a.year - b.year)
@@ -389,6 +618,24 @@ export default function ObjektDetail() {
             }}
           >
             <div style={{ color: '#374151' }}>Objektdetails werden geladen…</div>
+
+            {debugInfo ? (
+              <pre
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  background: '#0f172a',
+                  color: '#86efac',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  overflowX: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            ) : null}
           </div>
         </div>
       </div>
@@ -423,7 +670,27 @@ export default function ObjektDetail() {
             <div style={{ fontSize: 17, fontWeight: 800, color: '#b91c1c' }}>
               Fehler beim Laden der Objektseite
             </div>
-            <div style={{ marginTop: 8, color: '#dc2626' }}>{error}</div>
+            <div style={{ marginTop: 8, color: '#dc2626', whiteSpace: 'pre-wrap' }}>
+              {error}
+            </div>
+
+            {debugInfo ? (
+              <pre
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  background: '#111827',
+                  color: '#93c5fd',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  overflowX: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            ) : null}
           </div>
         </div>
       </div>
@@ -526,6 +793,7 @@ export default function ObjektDetail() {
                 color: '#b91c1c',
                 fontSize: 14,
                 fontWeight: 600,
+                whiteSpace: 'pre-wrap',
               }}
             >
               Hinweis: {error}
@@ -606,6 +874,32 @@ export default function ObjektDetail() {
             </>
           )}
         </div>
+
+        {debugInfo ? (
+          <pre
+            style={{
+              position: 'fixed',
+              left: 8,
+              right: 8,
+              bottom: 8,
+              maxHeight: '40vh',
+              overflow: 'auto',
+              background: '#000000',
+              color: '#39ff14',
+              padding: 12,
+              borderRadius: 12,
+              fontSize: 11,
+              lineHeight: 1.4,
+              zIndex: 9999,
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+            }}
+          >
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
+        ) : null}
       </div>
     </div>
   )
