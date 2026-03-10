@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import EditableLoanLedgerTable from '../components/EditableLoanLedgerTable'
-import LoanChart from '../components/LoanChart'
 import {
   getLoanLedgerAuthDebugInfo,
   loadPropertyLoanLedger,
@@ -114,9 +112,7 @@ type RenderDebugInfo = {
 function parseNumber(value: unknown): number | null {
   if (value == null) return null
 
-  if (Array.isArray(value)) {
-    return parseNumber(value[0])
-  }
+  if (Array.isArray(value)) return parseNumber(value[0])
 
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null
@@ -250,9 +246,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 function normalizeQueryError(error: unknown): QueryDebugResult {
-  if (!error) {
-    return { ok: true }
-  }
+  if (!error) return { ok: true }
 
   if (typeof error === 'object' && error !== null) {
     const maybeError = error as {
@@ -436,43 +430,6 @@ function SectionCard(props: { title: string; children: React.ReactNode }) {
       </div>
       {props.children}
     </section>
-  )
-}
-
-function DebugPanel(props: {
-  title: string
-  data: unknown
-  bottom?: number
-  background?: string
-  color?: string
-}) {
-  return (
-    <pre
-      style={{
-        position: 'fixed',
-        left: 8,
-        right: 8,
-        bottom: props.bottom ?? 8,
-        maxHeight: '28vh',
-        overflow: 'auto',
-        background: props.background ?? '#000000',
-        color: props.color ?? '#39ff14',
-        padding: 12,
-        borderRadius: 12,
-        fontSize: 11,
-        lineHeight: 1.4,
-        zIndex: 9999,
-        margin: 0,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
-    >
-      {props.title}
-      {'\n'}
-      {JSON.stringify(props.data, null, 2)}
-    </pre>
   )
 }
 
@@ -849,7 +806,6 @@ export default function ObjektDetail() {
     effectivePrincipalTotal != null ||
     ledger.length > 0
 
-  const canRenderChart = chartData.length > 0
   const canRenderLedgerTable = !!resolvedPropertyId
 
   const renderDebugInfo: RenderDebugInfo = {
@@ -881,8 +837,8 @@ export default function ObjektDetail() {
 
   if (loading) {
     return (
-      <div style={{ width: '100%', padding: 24 }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      <div style={{ width: '100%', padding: 24, background: '#f3f4f6' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <div
             style={{
               background: '#ffffff',
@@ -893,24 +849,18 @@ export default function ObjektDetail() {
           >
             <div style={{ color: '#374151' }}>Objektdetails werden geladen…</div>
           </div>
-        </div>
 
-        <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
-        <DebugPanel
-          title="RENDER DEBUG"
-          data={renderDebugInfo}
-          bottom={220}
-          background="#111827"
-          color="#93c5fd"
-        />
+          <InlineDebugCard title="Fetch-Diagnose" data={debugInfo} />
+          <InlineDebugCard title="Render-Diagnose" data={renderDebugInfo} />
+        </div>
       </div>
     )
   }
 
   if (error && !summary) {
     return (
-      <div style={{ width: '100%', padding: 24 }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      <div style={{ width: '100%', padding: 24, background: '#f3f4f6' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <div style={{ marginBottom: 16 }}>
             <Link
               to="/objekte"
@@ -940,25 +890,16 @@ export default function ObjektDetail() {
             </div>
           </div>
 
-          <InlineDebugCard title="Render-Diagnose" data={renderDebugInfo} />
           <InlineDebugCard title="Fetch-Diagnose" data={debugInfo} />
+          <InlineDebugCard title="Render-Diagnose" data={renderDebugInfo} />
         </div>
-
-        <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
-        <DebugPanel
-          title="RENDER DEBUG"
-          data={renderDebugInfo}
-          bottom={220}
-          background="#111827"
-          color="#93c5fd"
-        />
       </div>
     )
   }
 
   return (
-    <div style={{ width: '100%', padding: 24 }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{ width: '100%', padding: 24, background: '#f3f4f6' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ marginBottom: 16 }}>
           <Link
             to="/objekte"
@@ -980,7 +921,6 @@ export default function ObjektDetail() {
             padding: 24,
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             minWidth: 0,
-            overflow: 'hidden',
           }}
         >
           <div
@@ -1107,36 +1047,32 @@ export default function ObjektDetail() {
             />
           </div>
 
-          <SectionCard title="Render-Diagnose">
+          <SectionCard title="Minimal-Test">
             <div
               style={{
-                fontSize: 14,
-                color: '#374151',
-                lineHeight: 1.6,
-                marginBottom: 12,
-              }}
-            >
-              Dieser Block zeigt den tatsächlich gerenderten React-State. Wenn die Queries
-              erfolgreich sind, aber die UI dennoch kaputt aussieht, sieht man hier sofort,
-              ob das Problem im State, Mapping oder in einer Child-Komponente liegt.
-            </div>
-
-            <pre
-              style={{
-                margin: 0,
-                background: '#0f172a',
-                color: '#d1fae5',
                 padding: 16,
                 borderRadius: 16,
-                whiteSpace: 'pre-wrap',
+                background: '#ecfeff',
+                border: '1px solid #a5f3fc',
+                color: '#155e75',
+                lineHeight: 1.7,
                 wordBreak: 'break-word',
-                fontSize: 12,
-                lineHeight: 1.5,
-                overflow: 'auto',
               }}
             >
-              {JSON.stringify(renderDebugInfo, null, 2)}
-            </pre>
+              Minimal-Test aktiv.
+              <br />
+              Keine Chart-Komponente.
+              <br />
+              Keine Ledger-Komponente.
+              <br />
+              Route-ID: {routePropertyId ?? '—'}
+              <br />
+              property_id: {resolvedPropertyId ?? '—'}
+              <br />
+              Ledger rows: {ledger.length}
+              <br />
+              Chart points: {chartData.length}
+            </div>
           </SectionCard>
 
           {!hasLoanData ? (
@@ -1161,88 +1097,54 @@ export default function ObjektDetail() {
           ) : (
             <>
               <SectionCard title="Darlehensverlauf">
-                {!canRenderChart ? (
-                  <div
-                    style={{
-                      padding: 16,
-                      borderRadius: 14,
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      color: '#1d4ed8',
-                    }}
-                  >
-                    Chart wird nicht gerendert, weil keine gültigen Balance-Daten im
-                    `chartData`-Array vorhanden sind. Ledger-Zeilen: {ledger.length},
-                    Chart-Punkte: {chartData.length}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      width: '100%',
-                      minWidth: 0,
-                      height: 360,
-                    }}
-                  >
-                    <LoanChart data={chartData} />
-                  </div>
-                )}
+                <div
+                  style={{
+                    padding: 16,
+                    borderRadius: 14,
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Chart testweise deaktiviert.
+                  <br />
+                  chartDataCount: {chartData.length}
+                  <br />
+                  firstYear: {effectiveFirstYear ?? '—'}
+                  <br />
+                  lastYear: {effectiveLastYear ?? '—'}
+                </div>
               </SectionCard>
 
               <SectionCard title="Editierbares Darlehens-Ledger">
-                {!canRenderLedgerTable ? (
-                  <div
-                    style={{
-                      padding: 16,
-                      borderRadius: 14,
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      color: '#1d4ed8',
-                    }}
-                  >
-                    Ledger-Tabelle wird nicht gerendert, weil keine `resolvedPropertyId`
-                    vorhanden ist.
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      style={{
-                        marginBottom: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: '#f8fafc',
-                        border: '1px solid #e5e7eb',
-                        color: '#475569',
-                        fontSize: 13,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      Primitive Render-Prüfung: propertyId = {resolvedPropertyId},
-                      rows = {ledger.length}
-                    </div>
-
-                    <EditableLoanLedgerTable
-                      propertyId={resolvedPropertyId}
-                      rows={ledger}
-                      onChanged={async () => {
-                        await loadPage()
-                      }}
-                    />
-                  </>
-                )}
+                <div
+                  style={{
+                    padding: 16,
+                    borderRadius: 14,
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    color: '#166534',
+                    lineHeight: 1.6,
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  Ledger primitive test.
+                  <br />
+                  propertyId: {resolvedPropertyId ?? '—'}
+                  <br />
+                  rows: {ledger.length}
+                  <br />
+                  canRenderLedgerTable: {String(canRenderLedgerTable)}
+                </div>
               </SectionCard>
             </>
           )}
+
+          <InlineDebugCard title="Fetch-Diagnose" data={debugInfo} />
+          <InlineDebugCard title="Render-Diagnose" data={renderDebugInfo} />
         </div>
       </div>
-
-      <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
-      <DebugPanel
-        title="RENDER DEBUG"
-        data={renderDebugInfo}
-        bottom={220}
-        background="#111827"
-        color="#93c5fd"
-      />
     </div>
   )
 }
