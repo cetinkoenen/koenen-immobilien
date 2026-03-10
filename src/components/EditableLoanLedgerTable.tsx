@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
 import {
   deletePropertyLoanLedgerRow,
@@ -20,12 +20,47 @@ type EditableLoanLedgerTableProps = {
   onChanged: () => Promise<void> | void
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 2,
-  }).format(value)
+function formatCurrency(value: unknown): string {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : Number(value ?? NaN)
+
+  if (!Number.isFinite(parsed)) return '—'
+
+  try {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+      maximumFractionDigits: 2,
+    }).format(parsed)
+  } catch {
+    return `${parsed.toFixed(2)} €`
+  }
+}
+
+function formatPlain(value: unknown): string {
+  if (value == null) return '—'
+  const str = String(value).trim()
+  return str || '—'
+}
+
+function useIsMobile(breakpoint = 768) {
+  const getIsMobile = () =>
+    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
+
+  const [isMobile, setIsMobile] = useState<boolean>(getIsMobile)
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(getIsMobile())
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [breakpoint])
+
+  return isMobile
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -34,6 +69,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 16,
     background: '#ffffff',
     padding: 20,
+    minWidth: 0,
   },
   headerRow: {
     display: 'flex',
@@ -48,6 +84,17 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 18,
     fontWeight: 800,
     color: '#111827',
+  },
+  metaBox: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    background: '#f8fafc',
+    border: '1px solid #e5e7eb',
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 1.5,
+    wordBreak: 'break-word',
   },
   primaryButton: {
     border: '1px solid #d1d5db',
@@ -79,6 +126,16 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  saveButton: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    padding: '8px 12px',
+    background: '#f0fdf4',
+    color: '#166534',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
   disabledButton: {
     opacity: 0.5,
     cursor: 'not-allowed',
@@ -91,14 +148,17 @@ const styles: Record<string, CSSProperties> = {
     padding: '12px 14px',
     fontSize: 14,
     marginBottom: 16,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   },
   scroll: {
     overflowX: 'auto',
+    width: '100%',
+    WebkitOverflowScrolling: 'touch',
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    minWidth: 900,
     tableLayout: 'fixed',
   },
   thead: {
@@ -119,6 +179,7 @@ const styles: Record<string, CSSProperties> = {
     color: '#111827',
     fontSize: 14,
     verticalAlign: 'top',
+    wordBreak: 'break-word',
   },
   mutedText: {
     color: '#6b7280',
@@ -134,7 +195,7 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 8,
-    padding: '9px 10px',
+    padding: '10px 10px',
     fontSize: 14,
     color: '#111827',
     background: '#ffffff',
@@ -144,7 +205,7 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 8,
-    padding: '9px 10px',
+    padding: '10px 10px',
     fontSize: 14,
     color: '#111827',
     background: '#ffffff',
@@ -153,6 +214,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 6,
     fontSize: 12,
     color: '#dc2626',
+    wordBreak: 'break-word',
   },
   emptyState: {
     textAlign: 'center',
@@ -163,6 +225,70 @@ const styles: Record<string, CSSProperties> = {
   addRow: {
     background: '#f8fafc',
   },
+  mobileList: {
+    display: 'grid',
+    gap: 12,
+  },
+  mobileCard: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 14,
+    background: '#ffffff',
+  },
+  mobileCardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  mobileYearBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '6px 10px',
+    borderRadius: 999,
+    background: '#eef2ff',
+    color: '#3730a3',
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  mobileGrid: {
+    display: 'grid',
+    gap: 10,
+  },
+  mobileField: {
+    border: '1px solid #f1f5f9',
+    borderRadius: 10,
+    padding: 10,
+    background: '#f8fafc',
+  },
+  mobileFieldLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+    marginBottom: 4,
+  },
+  mobileFieldValue: {
+    fontSize: 14,
+    color: '#111827',
+    wordBreak: 'break-word',
+  },
+  mobileActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  mobileAddCard: {
+    border: '1px solid #dbeafe',
+    borderRadius: 14,
+    padding: 14,
+    background: '#f8fbff',
+    marginBottom: 12,
+  },
 }
 
 export default function EditableLoanLedgerTable({
@@ -170,6 +296,8 @@ export default function EditableLoanLedgerTable({
   rows,
   onChanged,
 }: EditableLoanLedgerTableProps) {
+  const isMobile = useIsMobile()
+
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingValues, setEditingValues] = useState<LoanLedgerFormValues | null>(null)
   const [isAddingRow, setIsAddingRow] = useState(false)
@@ -183,7 +311,11 @@ export default function EditableLoanLedgerTable({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => a.year - b.year)
+    return [...rows].sort((a, b) => {
+      const yearA = Number.isFinite(a.year) ? a.year : 0
+      const yearB = Number.isFinite(b.year) ? b.year : 0
+      return yearA - yearB
+    })
   }, [rows])
 
   function clearMessages() {
@@ -312,9 +444,10 @@ export default function EditableLoanLedgerTable({
   }
 
   async function handleDelete(row: LoanLedgerRow) {
-    const confirmed = window.confirm(
-      `Möchtest du den Ledger-Eintrag für ${row.year} wirklich löschen?`
-    )
+    const confirmed =
+      typeof window !== 'undefined'
+        ? window.confirm(`Möchtest du den Ledger-Eintrag für ${row.year} wirklich löschen?`)
+        : false
 
     if (!confirmed) return
 
@@ -339,7 +472,90 @@ export default function EditableLoanLedgerTable({
     return <div style={styles.fieldError}>{fieldErrors[field]}</div>
   }
 
-  function renderFormCells(values: LoanLedgerFormValues, mode: 'add' | 'edit') {
+  function renderFormFields(values: LoanLedgerFormValues, mode: 'add' | 'edit') {
+    const onChange = mode === 'add' ? handleNewFieldChange : handleEditFieldChange
+
+    return (
+      <>
+        <div>
+          <div style={styles.mobileFieldLabel}>Jahr</div>
+          <input
+            type="number"
+            step="1"
+            min="1900"
+            max="2200"
+            value={values.year}
+            onChange={(event) => onChange('year', event)}
+            disabled={saving}
+            style={styles.input}
+          />
+          {renderFieldError('year')}
+        </div>
+
+        <div>
+          <div style={styles.mobileFieldLabel}>Zinsen</div>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={values.interest}
+            onChange={(event) => onChange('interest', event)}
+            disabled={saving}
+            style={styles.input}
+          />
+          {renderFieldError('interest')}
+        </div>
+
+        <div>
+          <div style={styles.mobileFieldLabel}>Tilgung</div>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={values.principal}
+            onChange={(event) => onChange('principal', event)}
+            disabled={saving}
+            style={styles.input}
+          />
+          {renderFieldError('principal')}
+        </div>
+
+        <div>
+          <div style={styles.mobileFieldLabel}>Restschuld</div>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={values.balance}
+            onChange={(event) => onChange('balance', event)}
+            disabled={saving}
+            style={styles.input}
+          />
+          {renderFieldError('balance')}
+        </div>
+
+        <div>
+          <div style={styles.mobileFieldLabel}>Quelle</div>
+          <select
+            value={values.source}
+            onChange={(event) => onChange('source', event)}
+            disabled={saving}
+            style={styles.select}
+          >
+            <option value="">Bitte wählen</option>
+            {LOAN_LEDGER_SOURCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {renderFieldError('source')}
+        </div>
+      </>
+    )
+  }
+
+  function renderDesktopFormCells(values: LoanLedgerFormValues, mode: 'add' | 'edit') {
     const onChange = mode === 'add' ? handleNewFieldChange : handleEditFieldChange
 
     return (
@@ -435,142 +651,315 @@ export default function EditableLoanLedgerTable({
         </button>
       </div>
 
+      <div style={styles.metaBox}>
+        propertyId: {propertyId}
+        <br />
+        rows: {rows.length}
+        <br />
+        sortedRows: {sortedRows.length}
+        <br />
+        isMobile: {String(isMobile)}
+        <br />
+        isAddingRow: {String(isAddingRow)}
+        <br />
+        editingId: {editingId ?? 'null'}
+      </div>
+
       {errorMessage ? <div style={styles.errorBox}>{errorMessage}</div> : null}
 
-      <div style={styles.scroll}>
-        <table style={styles.table}>
-          <thead style={styles.thead}>
-            <tr>
-              <th style={{ ...styles.th, width: '12%' }}>Jahr</th>
-              <th style={{ ...styles.th, width: '18%' }}>Zinsen</th>
-              <th style={{ ...styles.th, width: '18%' }}>Tilgung</th>
-              <th style={{ ...styles.th, width: '20%' }}>Restschuld</th>
-              <th style={{ ...styles.th, width: '16%' }}>Quelle</th>
-              <th style={{ ...styles.th, width: '16%' }}>Aktionen</th>
-            </tr>
-          </thead>
+      {isMobile ? (
+        <div style={styles.mobileList}>
+          {isAddingRow ? (
+            <div style={styles.mobileAddCard}>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 800,
+                  color: '#111827',
+                  marginBottom: 12,
+                }}
+              >
+                Neue Zeile
+              </div>
 
-          <tbody>
-            {isAddingRow ? (
-              <tr style={styles.addRow}>
-                {renderFormCells(newValues, 'add')}
-                <td style={styles.td}>
-                  <div style={styles.rowActions}>
-                    <button
-                      type="button"
-                      onClick={handleSaveNewRow}
-                      disabled={saving}
-                      style={{
-                        ...styles.neutralButton,
-                        ...(saving ? styles.disabledButton : {}),
-                      }}
-                    >
-                      Speichern
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCancelAdd}
-                      disabled={saving}
-                      style={{
-                        ...styles.neutralButton,
-                        ...(saving ? styles.disabledButton : {}),
-                      }}
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ) : null}
+              <div style={styles.mobileGrid}>{renderFormFields(newValues, 'add')}</div>
 
-            {sortedRows.length === 0 && !isAddingRow ? (
+              <div style={styles.mobileActions}>
+                <button
+                  type="button"
+                  onClick={handleSaveNewRow}
+                  disabled={saving}
+                  style={{
+                    ...styles.saveButton,
+                    ...(saving ? styles.disabledButton : {}),
+                  }}
+                >
+                  Speichern
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelAdd}
+                  disabled={saving}
+                  style={{
+                    ...styles.neutralButton,
+                    ...(saving ? styles.disabledButton : {}),
+                  }}
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {sortedRows.length === 0 && !isAddingRow ? (
+            <div style={styles.emptyState}>Noch keine Ledger-Einträge vorhanden.</div>
+          ) : null}
+
+          {sortedRows.map((row) => {
+            const isEditing = editingId === row.id && editingValues
+
+            return (
+              <div key={row.id} style={styles.mobileCard}>
+                <div style={styles.mobileCardHeader}>
+                  <div style={styles.mobileYearBadge}>{formatPlain(row.year)}</div>
+                </div>
+
+                {isEditing ? (
+                  <>
+                    <div style={styles.mobileGrid}>
+                      {renderFormFields(editingValues, 'edit')}
+                    </div>
+
+                    <div style={styles.mobileActions}>
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        disabled={saving}
+                        style={{
+                          ...styles.saveButton,
+                          ...(saving ? styles.disabledButton : {}),
+                        }}
+                      >
+                        Speichern
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={saving}
+                        style={{
+                          ...styles.neutralButton,
+                          ...(saving ? styles.disabledButton : {}),
+                        }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.mobileGrid}>
+                      <div style={styles.mobileField}>
+                        <div style={styles.mobileFieldLabel}>Zinsen</div>
+                        <div style={styles.mobileFieldValue}>
+                          {formatCurrency(row.interest)}
+                        </div>
+                      </div>
+
+                      <div style={styles.mobileField}>
+                        <div style={styles.mobileFieldLabel}>Tilgung</div>
+                        <div style={styles.mobileFieldValue}>
+                          {formatCurrency(row.principal)}
+                        </div>
+                      </div>
+
+                      <div style={styles.mobileField}>
+                        <div style={styles.mobileFieldLabel}>Restschuld</div>
+                        <div style={styles.mobileFieldValue}>
+                          {formatCurrency(row.balance)}
+                        </div>
+                      </div>
+
+                      <div style={styles.mobileField}>
+                        <div style={styles.mobileFieldLabel}>Quelle</div>
+                        <div style={styles.mobileFieldValue}>
+                          {formatPlain(row.source)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={styles.mobileActions}>
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(row)}
+                        disabled={saving || isAddingRow || editingId !== null}
+                        style={{
+                          ...styles.neutralButton,
+                          ...(saving || isAddingRow || editingId !== null
+                            ? styles.disabledButton
+                            : {}),
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row)}
+                        disabled={saving || isAddingRow || editingId !== null}
+                        style={{
+                          ...styles.dangerButton,
+                          ...(saving || isAddingRow || editingId !== null
+                            ? styles.disabledButton
+                            : {}),
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={styles.scroll}>
+          <table style={styles.table}>
+            <thead style={styles.thead}>
               <tr>
-                <td colSpan={6} style={styles.emptyState}>
-                  Noch keine Ledger-Einträge vorhanden.
-                </td>
+                <th style={{ ...styles.th, width: '12%' }}>Jahr</th>
+                <th style={{ ...styles.th, width: '18%' }}>Zinsen</th>
+                <th style={{ ...styles.th, width: '18%' }}>Tilgung</th>
+                <th style={{ ...styles.th, width: '20%' }}>Restschuld</th>
+                <th style={{ ...styles.th, width: '16%' }}>Quelle</th>
+                <th style={{ ...styles.th, width: '16%' }}>Aktionen</th>
               </tr>
-            ) : null}
+            </thead>
 
-            {sortedRows.map((row) => {
-              const isEditing = editingId === row.id && editingValues
-
-              return (
-                <tr key={row.id}>
-                  {isEditing ? (
-                    <>
-                      {renderFormCells(editingValues, 'edit')}
-                      <td style={styles.td}>
-                        <div style={styles.rowActions}>
-                          <button
-                            type="button"
-                            onClick={handleSaveEdit}
-                            disabled={saving}
-                            style={{
-                              ...styles.neutralButton,
-                              ...(saving ? styles.disabledButton : {}),
-                            }}
-                          >
-                            Speichern
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleCancelEdit}
-                            disabled={saving}
-                            style={{
-                              ...styles.neutralButton,
-                              ...(saving ? styles.disabledButton : {}),
-                            }}
-                          >
-                            Abbrechen
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={styles.td}>{row.year}</td>
-                      <td style={styles.td}>{formatCurrency(row.interest)}</td>
-                      <td style={styles.td}>{formatCurrency(row.principal)}</td>
-                      <td style={styles.td}>{formatCurrency(row.balance)}</td>
-                      <td style={{ ...styles.td, ...styles.mutedText }}>{row.source ?? '—'}</td>
-                      <td style={styles.td}>
-                        <div style={styles.rowActions}>
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(row)}
-                            disabled={saving || isAddingRow || editingId !== null}
-                            style={{
-                              ...styles.neutralButton,
-                              ...(saving || isAddingRow || editingId !== null
-                                ? styles.disabledButton
-                                : {}),
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(row)}
-                            disabled={saving || isAddingRow || editingId !== null}
-                            style={{
-                              ...styles.dangerButton,
-                              ...(saving || isAddingRow || editingId !== null
-                                ? styles.disabledButton
-                                : {}),
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  )}
+            <tbody>
+              {isAddingRow ? (
+                <tr style={styles.addRow}>
+                  {renderDesktopFormCells(newValues, 'add')}
+                  <td style={styles.td}>
+                    <div style={styles.rowActions}>
+                      <button
+                        type="button"
+                        onClick={handleSaveNewRow}
+                        disabled={saving}
+                        style={{
+                          ...styles.saveButton,
+                          ...(saving ? styles.disabledButton : {}),
+                        }}
+                      >
+                        Speichern
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelAdd}
+                        disabled={saving}
+                        style={{
+                          ...styles.neutralButton,
+                          ...(saving ? styles.disabledButton : {}),
+                        }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              ) : null}
+
+              {sortedRows.length === 0 && !isAddingRow ? (
+                <tr>
+                  <td colSpan={6} style={styles.emptyState}>
+                    Noch keine Ledger-Einträge vorhanden.
+                  </td>
+                </tr>
+              ) : null}
+
+              {sortedRows.map((row) => {
+                const isEditing = editingId === row.id && editingValues
+
+                return (
+                  <tr key={row.id}>
+                    {isEditing ? (
+                      <>
+                        {renderDesktopFormCells(editingValues, 'edit')}
+                        <td style={styles.td}>
+                          <div style={styles.rowActions}>
+                            <button
+                              type="button"
+                              onClick={handleSaveEdit}
+                              disabled={saving}
+                              style={{
+                                ...styles.saveButton,
+                                ...(saving ? styles.disabledButton : {}),
+                              }}
+                            >
+                              Speichern
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEdit}
+                              disabled={saving}
+                              style={{
+                                ...styles.neutralButton,
+                                ...(saving ? styles.disabledButton : {}),
+                              }}
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={styles.td}>{formatPlain(row.year)}</td>
+                        <td style={styles.td}>{formatCurrency(row.interest)}</td>
+                        <td style={styles.td}>{formatCurrency(row.principal)}</td>
+                        <td style={styles.td}>{formatCurrency(row.balance)}</td>
+                        <td style={{ ...styles.td, ...styles.mutedText }}>
+                          {formatPlain(row.source)}
+                        </td>
+                        <td style={styles.td}>
+                          <div style={styles.rowActions}>
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(row)}
+                              disabled={saving || isAddingRow || editingId !== null}
+                              style={{
+                                ...styles.neutralButton,
+                                ...(saving || isAddingRow || editingId !== null
+                                  ? styles.disabledButton
+                                  : {}),
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row)}
+                              disabled={saving || isAddingRow || editingId !== null}
+                              style={{
+                                ...styles.dangerButton,
+                                ...(saving || isAddingRow || editingId !== null
+                                  ? styles.disabledButton
+                                  : {}),
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

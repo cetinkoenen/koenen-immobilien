@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import EditableLoanLedgerTable from '../components/EditableLoanLedgerTable'
 import LoanChart from '../components/LoanChart'
@@ -49,9 +49,21 @@ type QueryDebugResult = {
   hint?: string | null
 }
 
+type ResolvedPropertyIdentity = {
+  routeId: string
+  resolvedPropertyId: string | null
+  matchedBy: 'property_id' | 'portfolio_property_id' | 'route_param' | 'none'
+  propertyName: string | null
+  portfolioPropertyId: string | null
+}
+
 type DebugInfo = {
   timestamp: string
-  propertyId: string | null
+  routePropertyId: string | null
+  resolvedPropertyId: string | null
+  matchedBy: 'property_id' | 'portfolio_property_id' | 'route_param' | 'none'
+  propertyName: string | null
+  portfolioPropertyId: string | null
   origin: string | null
   hostname: string | null
   href: string | null
@@ -61,6 +73,7 @@ type DebugInfo = {
   userId: string | null
   sessionError: string | null
   userError: string | null
+  routeResolutionQuery: QueryDebugResult | null
   summaryQuery: QueryDebugResult | null
   eurViewQuery: QueryDebugResult | null
   portfolioViewQuery: QueryDebugResult | null
@@ -69,6 +82,33 @@ type DebugInfo = {
     rowCount?: number
     error?: string | null
   } | null
+}
+
+type RenderDebugInfo = {
+  loading: boolean
+  error: string | null
+  routePropertyId: string | null
+  resolvedPropertyId: string | null
+  matchedBy: 'property_id' | 'portfolio_property_id' | 'route_param' | 'none'
+  resolvedPropertyName: string | null
+  portfolioPropertyId: string | null
+  summaryExists: boolean
+  summaryPropertyId: string | null
+  summaryPropertyName: string | null
+  ledgerCount: number
+  sortedLedgerCount: number
+  chartDataCount: number
+  hasLoanData: boolean
+  effectiveFirstYear: number | null
+  effectiveLastYear: number | null
+  effectiveLastBalanceYear: number | null
+  effectiveLastBalance: number | null
+  effectiveInterestTotal: number | null
+  effectivePrincipalTotal: number | null
+  effectiveRepaidPercent: number | null
+  willRenderNoLoanDataState: boolean
+  willRenderChartSection: boolean
+  willRenderLedgerSection: boolean
 }
 
 function parseNumber(value: unknown): number | null {
@@ -96,22 +136,30 @@ function parseNumber(value: unknown): number | null {
 function formatCurrency(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return '—'
 
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 0,
-  }).format(value)
+  try {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+      maximumFractionDigits: 0,
+    }).format(value)
+  } catch {
+    return `${Math.round(value)} €`
+  }
 }
 
 function formatPercent(value: number | null, displayValue?: string | null): string {
   if (displayValue) return displayValue
   if (value == null || !Number.isFinite(value)) return '—'
 
-  return new Intl.NumberFormat('de-DE', {
-    style: 'percent',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+  try {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'percent',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return `${(value * 100).toFixed(2)} %`
+  }
 }
 
 function formatYearRange(startYear: number | null, endYear: number | null): string {
@@ -127,10 +175,14 @@ function formatDateTime(value: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
 
-  return new Intl.DateTimeFormat('de-DE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
+  try {
+    return new Intl.DateTimeFormat('de-DE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date)
+  } catch {
+    return value
+  }
 }
 
 function getStatusTone(status: string | null): {
@@ -140,7 +192,13 @@ function getStatusTone(status: string | null): {
 } {
   const normalized = (status ?? '').toLowerCase()
 
-  if (normalized.includes('healthy') || normalized.includes('ok') || normalized.includes('gut')) {
+  if (
+    normalized.includes('healthy') ||
+    normalized.includes('ok') ||
+    normalized.includes('gut') ||
+    normalized.includes('läuft') ||
+    normalized.includes('in_progress')
+  ) {
     return {
       background: '#dcfce7',
       color: '#166534',
@@ -148,7 +206,11 @@ function getStatusTone(status: string | null): {
     }
   }
 
-  if (normalized.includes('warning') || normalized.includes('warn') || normalized.includes('kritisch')) {
+  if (
+    normalized.includes('warning') ||
+    normalized.includes('warn') ||
+    normalized.includes('kritisch')
+  ) {
     return {
       background: '#fef3c7',
       color: '#92400e',
@@ -156,7 +218,11 @@ function getStatusTone(status: string | null): {
     }
   }
 
-  if (normalized.includes('red') || normalized.includes('error') || normalized.includes('critical')) {
+  if (
+    normalized.includes('red') ||
+    normalized.includes('error') ||
+    normalized.includes('critical')
+  ) {
     return {
       background: '#fee2e2',
       color: '#991b1b',
@@ -217,6 +283,81 @@ function normalizeQueryError(error: unknown): QueryDebugResult {
 function buildUiErrorMessage(title: string, error: unknown): string {
   const message = getErrorMessage(error, title)
   return `${title}: ${message}`
+}
+
+async function resolvePropertyIdentity(
+  routeId: string
+): Promise<{
+  identity: ResolvedPropertyIdentity
+  debug: QueryDebugResult
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('vw_property_loan_dashboard_portfolio_v2')
+      .select('property_id, portfolio_property_id, property_name')
+      .or(`property_id.eq.${routeId},portfolio_property_id.eq.${routeId}`)
+      .limit(2)
+
+    if (error) {
+      return {
+        identity: {
+          routeId,
+          resolvedPropertyId: routeId,
+          matchedBy: 'route_param',
+          propertyName: null,
+          portfolioPropertyId: null,
+        },
+        debug: normalizeQueryError(error),
+      }
+    }
+
+    const rows = data ?? []
+
+    if (rows.length > 0) {
+      const row = rows[0]
+      const matchedBy =
+        row.property_id === routeId ? 'property_id' : 'portfolio_property_id'
+
+      return {
+        identity: {
+          routeId,
+          resolvedPropertyId: row.property_id ?? routeId,
+          matchedBy,
+          propertyName: row.property_name ?? null,
+          portfolioPropertyId: row.portfolio_property_id ?? null,
+        },
+        debug: {
+          ok: true,
+          rowCount: rows.length,
+        },
+      }
+    }
+
+    return {
+      identity: {
+        routeId,
+        resolvedPropertyId: routeId,
+        matchedBy: 'route_param',
+        propertyName: null,
+        portfolioPropertyId: null,
+      },
+      debug: {
+        ok: true,
+        rowCount: 0,
+      },
+    }
+  } catch (error) {
+    return {
+      identity: {
+        routeId,
+        resolvedPropertyId: routeId,
+        matchedBy: 'route_param',
+        propertyName: null,
+        portfolioPropertyId: null,
+      },
+      debug: normalizeQueryError(error),
+    }
+  }
 }
 
 function StatBox(props: { label: string; value: string; subvalue?: string }) {
@@ -298,20 +439,24 @@ function SectionCard(props: { title: string; children: React.ReactNode }) {
   )
 }
 
-function DebugPanel(props: { debugInfo: DebugInfo | null }) {
-  if (!props.debugInfo) return null
-
+function DebugPanel(props: {
+  title: string
+  data: unknown
+  bottom?: number
+  background?: string
+  color?: string
+}) {
   return (
     <pre
       style={{
         position: 'fixed',
         left: 8,
         right: 8,
-        bottom: 8,
-        maxHeight: '40vh',
+        bottom: props.bottom ?? 8,
+        maxHeight: '28vh',
         overflow: 'auto',
-        background: '#000000',
-        color: '#39ff14',
+        background: props.background ?? '#000000',
+        color: props.color ?? '#39ff14',
         padding: 12,
         borderRadius: 12,
         fontSize: 11,
@@ -321,177 +466,120 @@ function DebugPanel(props: { debugInfo: DebugInfo | null }) {
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+        border: '1px solid rgba(255,255,255,0.08)',
       }}
     >
-      {JSON.stringify(props.debugInfo, null, 2)}
+      {props.title}
+      {'\n'}
+      {JSON.stringify(props.data, null, 2)}
     </pre>
   )
 }
 
+function InlineDebugCard(props: { title: string; data: unknown }) {
+  return (
+    <section
+      style={{
+        marginTop: 24,
+        background: '#0f172a',
+        color: '#d1fae5',
+        border: '1px solid #1e293b',
+        borderRadius: 20,
+        padding: 16,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          marginBottom: 12,
+          fontSize: 16,
+          fontWeight: 800,
+          color: '#ffffff',
+        }}
+      >
+        {props.title}
+      </div>
+
+      <pre
+        style={{
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          fontSize: 12,
+          lineHeight: 1.5,
+          overflow: 'auto',
+        }}
+      >
+        {JSON.stringify(props.data, null, 2)}
+      </pre>
+    </section>
+  )
+}
+
 export default function ObjektDetail() {
-  const { propertyId } = useParams<{ propertyId: string }>()
+  const { propertyId: routePropertyId } = useParams<{ propertyId: string }>()
 
   const [summary, setSummary] = useState<SummaryRow | null>(null)
   const [ledger, setLedger] = useState<LoanLedgerRow[]>([])
+  const [resolvedPropertyId, setResolvedPropertyId] = useState<string | null>(null)
+  const [matchedBy, setMatchedBy] = useState<
+    'property_id' | 'portfolio_property_id' | 'route_param' | 'none'
+  >('none')
+  const [portfolioPropertyId, setPortfolioPropertyId] = useState<string | null>(null)
+  const [resolvedPropertyName, setResolvedPropertyName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
 
-  const loadDebugInfo = useCallback(async () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : null
-    const hostname = typeof window !== 'undefined' ? window.location.hostname : null
-    const href = typeof window !== 'undefined' ? window.location.href : null
-
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    const { data: userData, error: userError } = await supabase.auth.getUser()
-
-    let summaryQuery: QueryDebugResult | null = null
-    let eurViewQuery: QueryDebugResult | null = null
-    let portfolioViewQuery: QueryDebugResult | null = null
-    let ledgerQuery: DebugInfo['ledgerQuery'] = null
-
-    try {
-      const { data, error } = await supabase
-        .from('vw_property_loan_dashboard_dedup')
-        .select(
-          `
-            property_id,
-            property_name,
-            first_year,
-            last_year,
-            last_balance_year,
-            last_balance,
-            interest_total,
-            principal_total,
-            repaid_percent,
-            repaid_percent_display,
-            repayment_status,
-            repayment_label,
-            refreshed_at
-          `
-        )
-        .eq('property_id', propertyId ?? '')
-        .limit(1)
-
-      summaryQuery = error
-        ? normalizeQueryError(error)
-        : {
-            ok: true,
-        rowCount: data?.length ?? 0,
-          }
-    } catch (err) {
-      summaryQuery = normalizeQueryError(err)
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('vw_property_loan_dashboard_eur')
-        .select('*')
-        .limit(1)
-
-      eurViewQuery = error
-        ? normalizeQueryError(error)
-        : {
-            ok: true,
-            rowCount: data?.length ?? 0,
-          }
-    } catch (err) {
-      eurViewQuery = normalizeQueryError(err)
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('vw_property_loan_dashboard_portfolio_v2')
-        .select('*')
-        .limit(1)
-
-      portfolioViewQuery = error
-        ? normalizeQueryError(error)
-        : {
-            ok: true,
-            rowCount: data?.length ?? 0,
-          }
-    } catch (err) {
-      portfolioViewQuery = normalizeQueryError(err)
-    }
-
-    try {
-      if (propertyId) {
-        const ledgerRows = await loadPropertyLoanLedger(propertyId)
-        ledgerQuery = {
-          ok: true,
-          rowCount: ledgerRows.length,
-          error: null,
-        }
-      } else {
-        ledgerQuery = {
-          ok: false,
-          error: 'propertyId missing',
-        }
-      }
-    } catch (err) {
-      ledgerQuery = {
-        ok: false,
-        error: getErrorMessage(err, 'Ledger query failed'),
-      }
-    }
-
-    try {
-      const ledgerAuth = await getLoanLedgerAuthDebugInfo()
-
-      setDebugInfo({
-        timestamp: new Date().toISOString(),
-        propertyId: propertyId ?? null,
-        origin,
-        hostname,
-        href,
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
-        hasSession:
-          !!sessionData?.session || !!ledgerAuth?.hasSession,
-        accessTokenExists: !!sessionData?.session?.access_token,
-        userId: userData?.user?.id ?? ledgerAuth?.userId ?? null,
-        sessionError:
-          sessionError?.message ?? ledgerAuth?.sessionError?.message ?? null,
-        userError:
-          userError?.message ?? ledgerAuth?.userError?.message ?? null,
-        summaryQuery,
-        eurViewQuery,
-        portfolioViewQuery,
-        ledgerQuery,
-      })
-    } catch {
-      setDebugInfo({
-        timestamp: new Date().toISOString(),
-        propertyId: propertyId ?? null,
-        origin,
-        hostname,
-        href,
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
-        hasSession: !!sessionData?.session,
-        accessTokenExists: !!sessionData?.session?.access_token,
-        userId: userData?.user?.id ?? null,
-        sessionError: sessionError?.message ?? null,
-        userError: userError?.message ?? null,
-        summaryQuery,
-        eurViewQuery,
-        portfolioViewQuery,
-        ledgerQuery,
-      })
-    }
-  }, [propertyId])
-
-  const loadDetail = useCallback(async () => {
-    if (!propertyId) {
+  const loadPage = useCallback(async () => {
+    if (!routePropertyId) {
       setSummary(null)
       setLedger([])
+      setResolvedPropertyId(null)
+      setMatchedBy('none')
+      setPortfolioPropertyId(null)
+      setResolvedPropertyName(null)
       setError('Keine Immobilien-ID in der URL gefunden.')
       setLoading(false)
       return
     }
 
+    const origin = typeof window !== 'undefined' ? window.location.origin : null
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : null
+    const href = typeof window !== 'undefined' ? window.location.href : null
+
+    let summaryQuery: QueryDebugResult | null = null
+    let eurViewQuery: QueryDebugResult | null = null
+    let portfolioViewQuery: QueryDebugResult | null = null
+    let ledgerQuery: DebugInfo['ledgerQuery'] = null
+    let identityResultForDebug:
+      | {
+          identity: ResolvedPropertyIdentity
+          debug: QueryDebugResult
+        }
+      | null = null
+
     try {
       setLoading(true)
       setError(null)
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+
+      const [identityResult, ledgerAuth] = await Promise.all([
+        resolvePropertyIdentity(routePropertyId),
+        getLoanLedgerAuthDebugInfo().catch(() => null),
+      ])
+
+      identityResultForDebug = identityResult
+
+      const identity = identityResult.identity
+      const corePropertyId = identity.resolvedPropertyId
+
+      setResolvedPropertyId(corePropertyId)
+      setMatchedBy(identity.matchedBy)
+      setPortfolioPropertyId(identity.portfolioPropertyId)
+      setResolvedPropertyName(identity.propertyName)
 
       const { data: summaryData, error: summaryError } = await supabase
         .from('vw_property_loan_dashboard_dedup')
@@ -512,18 +600,45 @@ export default function ObjektDetail() {
             refreshed_at
           `
         )
-        .eq('property_id', propertyId)
+        .eq('property_id', corePropertyId ?? '')
         .maybeSingle()
 
-      if (summaryError) {
-        console.error('ObjektDetail summaryError', {
-          propertyId,
-          code: summaryError.code,
-          message: summaryError.message,
-          details: summaryError.details,
-          hint: summaryError.hint,
-        })
+      summaryQuery = summaryError
+        ? normalizeQueryError(summaryError)
+        : {
+            ok: true,
+            rowCount: summaryData ? 1 : 0,
+          }
 
+      const { data: eurData, error: eurError } = await supabase
+        .from('vw_property_loan_dashboard_eur')
+        .select('property_id, property_name, last_balance')
+        .eq('property_id', corePropertyId ?? '')
+        .limit(5)
+
+      eurViewQuery = eurError
+        ? normalizeQueryError(eurError)
+        : {
+            ok: true,
+            rowCount: eurData?.length ?? 0,
+          }
+
+      const { data: portfolioData, error: portfolioError } = await supabase
+        .from('vw_property_loan_dashboard_portfolio_v2')
+        .select('property_id, portfolio_property_id, property_name, last_balance')
+        .or(
+          `property_id.eq.${routePropertyId},portfolio_property_id.eq.${routePropertyId},property_id.eq.${corePropertyId ?? ''}`
+        )
+        .limit(5)
+
+      portfolioViewQuery = portfolioError
+        ? normalizeQueryError(portfolioError)
+        : {
+            ok: true,
+            rowCount: portfolioData?.length ?? 0,
+          }
+
+      if (summaryError) {
         throw new Error(
           `Fehler beim Laden der Objektdaten: ${summaryError.message}${
             summaryError.code ? ` (Code: ${summaryError.code})` : ''
@@ -532,12 +647,17 @@ export default function ObjektDetail() {
       }
 
       if (!summaryData) {
-        throw new Error('Für diese Immobilien-ID wurde kein Datensatz gefunden.')
+        throw new Error(
+          `Für diese Immobilien-ID wurde kein Datensatz gefunden. Route-ID: ${routePropertyId}, aufgelöste property_id: ${corePropertyId ?? '—'}`
+        )
       }
 
       const mappedSummary: SummaryRow = {
         property_id: summaryData.property_id,
-        property_name: summaryData.property_name ?? 'Unbenannte Immobilie',
+        property_name:
+          summaryData.property_name ??
+          identity.propertyName ??
+          'Unbenannte Immobilie',
         first_year: parseNumber(summaryData.first_year),
         last_year: parseNumber(summaryData.last_year),
         last_balance_year: parseNumber(summaryData.last_balance_year),
@@ -554,12 +674,21 @@ export default function ObjektDetail() {
       let ledgerRows: LoanLedgerRow[] = []
 
       try {
-        ledgerRows = await loadPropertyLoanLedger(propertyId)
+        if (!corePropertyId) {
+          throw new Error('Es konnte keine gültige property_id aufgelöst werden.')
+        }
+
+        ledgerRows = await loadPropertyLoanLedger(corePropertyId)
+        ledgerQuery = {
+          ok: true,
+          rowCount: ledgerRows.length,
+          error: null,
+        }
       } catch (ledgerError) {
-        console.error('ObjektDetail ledgerError', {
-          propertyId,
-          error: ledgerError,
-        })
+        ledgerQuery = {
+          ok: false,
+          error: getErrorMessage(ledgerError, 'Ledger query failed'),
+        }
 
         throw new Error(
           buildUiErrorMessage('Fehler beim Laden des Darlehens-Ledgers', ledgerError)
@@ -567,23 +696,84 @@ export default function ObjektDetail() {
       }
 
       setSummary(mappedSummary)
-      setLedger(ledgerRows)
+      setLedger(Array.isArray(ledgerRows) ? ledgerRows : [])
+
+      setDebugInfo({
+        timestamp: new Date().toISOString(),
+        routePropertyId,
+        resolvedPropertyId: corePropertyId,
+        matchedBy: identity.matchedBy,
+        propertyName: identity.propertyName,
+        portfolioPropertyId: identity.portfolioPropertyId,
+        origin,
+        hostname,
+        href,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
+        hasSession: !!sessionData?.session || !!ledgerAuth?.hasSession,
+        accessTokenExists: !!sessionData?.session?.access_token,
+        userId: userData?.user?.id ?? ledgerAuth?.userId ?? null,
+        sessionError:
+          sessionError?.message ?? ledgerAuth?.sessionError?.message ?? null,
+        userError: userError?.message ?? ledgerAuth?.userError?.message ?? null,
+        routeResolutionQuery: identityResult.debug,
+        summaryQuery,
+        eurViewQuery,
+        portfolioViewQuery,
+        ledgerQuery,
+      })
     } catch (err) {
       setSummary(null)
       setLedger([])
       setError(getErrorMessage(err, 'Fehler beim Laden der Objektseite.'))
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        const ledgerAuth = await getLoanLedgerAuthDebugInfo().catch(() => null)
+        const identityResult =
+          identityResultForDebug ?? (await resolvePropertyIdentity(routePropertyId))
+
+        setDebugInfo({
+          timestamp: new Date().toISOString(),
+          routePropertyId,
+          resolvedPropertyId: identityResult.identity.resolvedPropertyId ?? null,
+          matchedBy: identityResult.identity.matchedBy ?? 'none',
+          propertyName: identityResult.identity.propertyName ?? null,
+          portfolioPropertyId: identityResult.identity.portfolioPropertyId ?? null,
+          origin,
+          hostname,
+          href,
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? null,
+          hasSession: !!sessionData?.session || !!ledgerAuth?.hasSession,
+          accessTokenExists: !!sessionData?.session?.access_token,
+          userId: userData?.user?.id ?? ledgerAuth?.userId ?? null,
+          sessionError:
+            sessionError?.message ?? ledgerAuth?.sessionError?.message ?? null,
+          userError: userError?.message ?? ledgerAuth?.userError?.message ?? null,
+          routeResolutionQuery: identityResult.debug,
+          summaryQuery,
+          eurViewQuery,
+          portfolioViewQuery,
+          ledgerQuery,
+        })
+      } catch {
+        // no-op
+      }
     } finally {
       setLoading(false)
     }
-  }, [propertyId])
+  }, [routePropertyId])
 
   useEffect(() => {
-    void loadDetail()
-    void loadDebugInfo()
-  }, [loadDetail, loadDebugInfo])
+    void loadPage()
+  }, [loadPage])
 
   const sortedLedger = useMemo(() => {
-    return [...ledger].sort((a, b) => a.year - b.year)
+    return [...ledger].sort((a, b) => {
+      const yearA = Number.isFinite(a.year) ? a.year : 0
+      const yearB = Number.isFinite(b.year) ? b.year : 0
+      return yearA - yearB
+    })
   }, [ledger])
 
   const chartData = useMemo<LoanChartPoint[]>(() => {
@@ -630,9 +820,9 @@ export default function ObjektDetail() {
         : null
 
     return {
-      firstYear: firstRow.year ?? null,
-      lastYear: lastRow.year ?? null,
-      lastBalanceYear: lastRow.year ?? null,
+      firstYear: Number.isFinite(firstRow.year) ? firstRow.year : null,
+      lastYear: Number.isFinite(lastRow.year) ? lastRow.year : null,
+      lastBalanceYear: Number.isFinite(lastRow.year) ? lastRow.year : null,
       lastBalance:
         lastRow.balance != null && Number.isFinite(lastRow.balance) ? lastRow.balance : null,
       interestTotal,
@@ -659,6 +849,36 @@ export default function ObjektDetail() {
     effectivePrincipalTotal != null ||
     ledger.length > 0
 
+  const canRenderChart = chartData.length > 0
+  const canRenderLedgerTable = !!resolvedPropertyId
+
+  const renderDebugInfo: RenderDebugInfo = {
+    loading,
+    error,
+    routePropertyId: routePropertyId ?? null,
+    resolvedPropertyId,
+    matchedBy,
+    resolvedPropertyName,
+    portfolioPropertyId,
+    summaryExists: !!summary,
+    summaryPropertyId: summary?.property_id ?? null,
+    summaryPropertyName: summary?.property_name ?? null,
+    ledgerCount: ledger.length,
+    sortedLedgerCount: sortedLedger.length,
+    chartDataCount: chartData.length,
+    hasLoanData,
+    effectiveFirstYear,
+    effectiveLastYear,
+    effectiveLastBalanceYear,
+    effectiveLastBalance,
+    effectiveInterestTotal,
+    effectivePrincipalTotal,
+    effectiveRepaidPercent,
+    willRenderNoLoanDataState: !hasLoanData,
+    willRenderChartSection: hasLoanData,
+    willRenderLedgerSection: hasLoanData && canRenderLedgerTable,
+  }
+
   if (loading) {
     return (
       <div style={{ width: '100%', padding: 24 }}>
@@ -673,8 +893,16 @@ export default function ObjektDetail() {
           >
             <div style={{ color: '#374151' }}>Objektdetails werden geladen…</div>
           </div>
-          <DebugPanel debugInfo={debugInfo} />
         </div>
+
+        <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
+        <DebugPanel
+          title="RENDER DEBUG"
+          data={renderDebugInfo}
+          bottom={220}
+          background="#111827"
+          color="#93c5fd"
+        />
       </div>
     )
   }
@@ -712,8 +940,18 @@ export default function ObjektDetail() {
             </div>
           </div>
 
-          <DebugPanel debugInfo={debugInfo} />
+          <InlineDebugCard title="Render-Diagnose" data={renderDebugInfo} />
+          <InlineDebugCard title="Fetch-Diagnose" data={debugInfo} />
         </div>
+
+        <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
+        <DebugPanel
+          title="RENDER DEBUG"
+          data={renderDebugInfo}
+          bottom={220}
+          background="#111827"
+          color="#93c5fd"
+        />
       </div>
     )
   }
@@ -742,6 +980,7 @@ export default function ObjektDetail() {
             padding: 24,
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             minWidth: 0,
+            overflow: 'hidden',
           }}
         >
           <div
@@ -765,7 +1004,7 @@ export default function ObjektDetail() {
                   wordBreak: 'break-word',
                 }}
               >
-                {summary?.property_name ?? 'Immobilie'}
+                {summary?.property_name ?? resolvedPropertyName ?? 'Immobilie'}
               </h1>
 
               <div
@@ -783,6 +1022,23 @@ export default function ObjektDetail() {
                 {' · '}
                 Letzte Aktualisierung: {formatDateTime(summary?.refreshed_at ?? null)}
               </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: '#9ca3af',
+                  wordBreak: 'break-word',
+                }}
+              >
+                Route-ID: {routePropertyId ?? '—'}
+                {' · '}
+                property_id: {resolvedPropertyId ?? '—'}
+                {' · '}
+                Match: {matchedBy}
+                {' · '}
+                portfolio_property_id: {portfolioPropertyId ?? '—'}
+              </div>
             </div>
 
             <div
@@ -797,6 +1053,7 @@ export default function ObjektDetail() {
                 fontSize: 13,
                 fontWeight: 800,
                 whiteSpace: 'nowrap',
+                maxWidth: '100%',
               }}
             >
               {statusLabel}
@@ -850,6 +1107,38 @@ export default function ObjektDetail() {
             />
           </div>
 
+          <SectionCard title="Render-Diagnose">
+            <div
+              style={{
+                fontSize: 14,
+                color: '#374151',
+                lineHeight: 1.6,
+                marginBottom: 12,
+              }}
+            >
+              Dieser Block zeigt den tatsächlich gerenderten React-State. Wenn die Queries
+              erfolgreich sind, aber die UI dennoch kaputt aussieht, sieht man hier sofort,
+              ob das Problem im State, Mapping oder in einer Child-Komponente liegt.
+            </div>
+
+            <pre
+              style={{
+                margin: 0,
+                background: '#0f172a',
+                color: '#d1fae5',
+                padding: 16,
+                borderRadius: 16,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontSize: 12,
+                lineHeight: 1.5,
+                overflow: 'auto',
+              }}
+            >
+              {JSON.stringify(renderDebugInfo, null, 2)}
+            </pre>
+          </SectionCard>
+
           {!hasLoanData ? (
             <div
               style={{
@@ -872,35 +1161,88 @@ export default function ObjektDetail() {
           ) : (
             <>
               <SectionCard title="Darlehensverlauf">
-                <div
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    height: 360,
-                  }}
-                >
-                  <LoanChart data={chartData} />
-                </div>
+                {!canRenderChart ? (
+                  <div
+                    style={{
+                      padding: 16,
+                      borderRadius: 14,
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      color: '#1d4ed8',
+                    }}
+                  >
+                    Chart wird nicht gerendert, weil keine gültigen Balance-Daten im
+                    `chartData`-Array vorhanden sind. Ledger-Zeilen: {ledger.length},
+                    Chart-Punkte: {chartData.length}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: '100%',
+                      minWidth: 0,
+                      height: 360,
+                    }}
+                  >
+                    <LoanChart data={chartData} />
+                  </div>
+                )}
               </SectionCard>
 
               <SectionCard title="Editierbares Darlehens-Ledger">
-                {propertyId ? (
-                  <EditableLoanLedgerTable
-                    propertyId={propertyId}
-                    rows={ledger}
-                    onChanged={async () => {
-                      await loadDetail()
-                      await loadDebugInfo()
+                {!canRenderLedgerTable ? (
+                  <div
+                    style={{
+                      padding: 16,
+                      borderRadius: 14,
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      color: '#1d4ed8',
                     }}
-                  />
-                ) : null}
+                  >
+                    Ledger-Tabelle wird nicht gerendert, weil keine `resolvedPropertyId`
+                    vorhanden ist.
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: '#f8fafc',
+                        border: '1px solid #e5e7eb',
+                        color: '#475569',
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Primitive Render-Prüfung: propertyId = {resolvedPropertyId},
+                      rows = {ledger.length}
+                    </div>
+
+                    <EditableLoanLedgerTable
+                      propertyId={resolvedPropertyId}
+                      rows={ledger}
+                      onChanged={async () => {
+                        await loadPage()
+                      }}
+                    />
+                  </>
+                )}
               </SectionCard>
             </>
           )}
         </div>
-
-        <DebugPanel debugInfo={debugInfo} />
       </div>
+
+      <DebugPanel title="FETCH DEBUG" data={debugInfo} bottom={8} />
+      <DebugPanel
+        title="RENDER DEBUG"
+        data={renderDebugInfo}
+        bottom={220}
+        background="#111827"
+        color="#93c5fd"
+      />
     </div>
   )
 }
