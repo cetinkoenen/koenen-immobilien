@@ -18,6 +18,12 @@ export type PortfolioOutletContext = {
   mapErr: string | null;
 };
 
+type PortfolioResolverRow = {
+  property_id: string | null;
+  portfolio_property_id: string | null;
+  property_name: string | null;
+};
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
@@ -99,6 +105,47 @@ async function fetchPortfolioPropertyById(id: string): Promise<PortfolioProperty
     id: normalizeUuid(data.id) ?? data.id,
     name: data.name ?? null,
     core_property_id: normalizeUuid(data.core_property_id ?? "") ?? null,
+  };
+}
+
+async function resolveCanonicalPortfolioProperty(routeId: string): Promise<PortfolioPropertyRow | null> {
+  const safeRouteId = normalizeUuid(routeId);
+  if (!safeRouteId || !isUuid(safeRouteId)) {
+    return null;
+  }
+
+  // Fall 1: Route ist bereits die kanonische portfolio_properties.id
+  const direct = await fetchPortfolioPropertyById(safeRouteId);
+  if (direct) {
+    return direct;
+  }
+
+  // Fall 2: Route ist core property_id oder portfolio_property_id aus der Portfolio-View
+  const { data, error } = await supabase
+    .from("vw_property_loan_dashboard_portfolio_v2")
+    .select("property_id, portfolio_property_id, property_name")
+    .or(`property_id.eq.${safeRouteId},portfolio_property_id.eq.${safeRouteId}`)
+    .limit(1)
+    .maybeSingle<PortfolioResolverRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  const canonicalPortfolioId = normalizeUuid(String(data?.portfolio_property_id ?? "").trim());
+  if (!canonicalPortfolioId) {
+    return null;
+  }
+
+  const canonical = await fetchPortfolioPropertyById(canonicalPortfolioId);
+  if (canonical) {
+    return canonical;
+  }
+
+  return {
+    id: canonicalPortfolioId,
+    name: data?.property_name ?? null,
+    core_property_id: normalizeUuid(String(data?.property_id ?? "").trim()) ?? null,
   };
 }
 
@@ -282,11 +329,13 @@ export default function PortfolioPropertyLayout() {
           return;
         }
 
-        const portfolioProperty = await fetchPortfolioPropertyById(safeRouteId);
+        const portfolioProperty = await resolveCanonicalPortfolioProperty(safeRouteId);
 
         if (!cancelled) {
           if (!portfolioProperty) {
-            setMapErr("Die URL enthält keine gültige kanonische portfolio_properties.id.");
+            setMapErr(
+              "Die URL konnte weder direkt noch über property_id / portfolio_property_id auf eine kanonische portfolio_properties.id aufgelöst werden."
+            );
             setMapLoading(false);
             return;
           }
