@@ -108,19 +108,21 @@ async function fetchPortfolioPropertyById(id: string): Promise<PortfolioProperty
   };
 }
 
-async function resolveCanonicalPortfolioProperty(routeId: string): Promise<PortfolioPropertyRow | null> {
+async function resolveCanonicalPortfolioProperty(
+  routeId: string
+): Promise<PortfolioPropertyRow | null> {
   const safeRouteId = normalizeUuid(routeId);
   if (!safeRouteId || !isUuid(safeRouteId)) {
     return null;
   }
 
-  // Fall 1: Route ist bereits die kanonische portfolio_properties.id
+  // 1) Direktfall: Route ist bereits portfolio_properties.id
   const direct = await fetchPortfolioPropertyById(safeRouteId);
   if (direct) {
     return direct;
   }
 
-  // Fall 2: Route ist core property_id oder portfolio_property_id aus der Portfolio-View
+  // 2) Fallback: Route ist property_id oder portfolio_property_id aus der Portfolio-View
   const { data, error } = await supabase
     .from("vw_property_loan_dashboard_portfolio_v2")
     .select("property_id, portfolio_property_id, property_name")
@@ -137,11 +139,13 @@ async function resolveCanonicalPortfolioProperty(routeId: string): Promise<Portf
     return null;
   }
 
+  // 3) Kanonische Portfolio-ID erneut gegen portfolio_properties laden
   const canonical = await fetchPortfolioPropertyById(canonicalPortfolioId);
   if (canonical) {
     return canonical;
   }
 
+  // 4) Fallback-Rückgabe, falls View-Datensatz existiert, aber portfolio_properties-Select nichts liefert
   return {
     id: canonicalPortfolioId,
     name: data?.property_name ?? null,
@@ -331,20 +335,20 @@ export default function PortfolioPropertyLayout() {
 
         const portfolioProperty = await resolveCanonicalPortfolioProperty(safeRouteId);
 
-        if (!cancelled) {
-          if (!portfolioProperty) {
-            setMapErr(
-              "Die URL konnte weder direkt noch über property_id / portfolio_property_id auf eine kanonische portfolio_properties.id aufgelöst werden."
-            );
-            setMapLoading(false);
-            return;
-          }
+        if (cancelled) return;
 
-          setPortfolioPropertyId(portfolioProperty.id);
-          setCorePropertyId(portfolioProperty.core_property_id ?? null);
-          setPropertyName(portfolioProperty.name ?? null);
+        if (!portfolioProperty) {
+          setMapErr(
+            "Die URL konnte weder direkt noch über property_id / portfolio_property_id auf eine kanonische portfolio_properties.id aufgelöst werden."
+          );
           setMapLoading(false);
+          return;
         }
+
+        setPortfolioPropertyId(portfolioProperty.id);
+        setCorePropertyId(portfolioProperty.core_property_id ?? null);
+        setPropertyName(portfolioProperty.name ?? null);
+        setMapLoading(false);
       } catch (error) {
         if (!cancelled) {
           console.error("PortfolioPropertyLayout mapping failed:", error);
