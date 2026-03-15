@@ -1,8 +1,25 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { loadPropertyLoanLedger } from "../services/propertyLoanLedgerService";
-import type { LoanLedgerRow } from "../types/loanLedger";
+import {
+  deletePropertyLoanLedgerRow,
+  insertPropertyLoanLedgerRow,
+  loadPropertyLoanLedger,
+  mapLedgerError,
+  parseLoanLedgerFormValues,
+  rowToFormValues,
+  updatePropertyLoanLedgerRow,
+  validateLedgerRow,
+} from "../services/propertyLoanLedgerService";
+import type { LoanLedgerFormValues, LoanLedgerRow } from "../types/loanLedger";
 
 const DEBUG = import.meta.env.DEV;
 
@@ -25,6 +42,14 @@ type SummaryRow = {
 type ChartPoint = {
   year: number;
   balance: number;
+};
+
+const EMPTY_FORM_VALUES: LoanLedgerFormValues = {
+  year: "",
+  interest: "",
+  principal: "",
+  balance: "",
+  source: "",
 };
 
 function parseNumber(value: unknown): number | null {
@@ -257,6 +282,76 @@ function Stat({
   );
 }
 
+function FormField({
+  label,
+  name,
+  value,
+  onChange,
+  error,
+  placeholder,
+  inputMode,
+}: {
+  label: string;
+  name: keyof LoanLedgerFormValues;
+  value: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
+  placeholder?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+}) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <label
+        htmlFor={name}
+        style={{
+          display: "block",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#6b7280",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </label>
+
+      <input
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          borderRadius: 12,
+          border: `1px solid ${error ? "#fca5a5" : "#d1d5db"}`,
+          padding: "12px 14px",
+          fontSize: 14,
+          outline: "none",
+          background: "#ffffff",
+          color: "#111827",
+        }}
+      />
+
+      {error ? (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 12,
+            color: "#b91c1c",
+            fontWeight: 600,
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ObjektDetail() {
   const { propertyId } = useParams<{ propertyId: string }>();
 
@@ -264,6 +359,15 @@ export default function ObjektDetail() {
   const [ledger, setLedger] = useState<LoanLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingRowId, setEditingRowId] = useState<number | null>(null);
+  const [formValues, setFormValues] = useState<LoanLedgerFormValues>(EMPTY_FORM_VALUES);
+  const [formFieldErrors, setFormFieldErrors] = useState<
+    Partial<Record<keyof LoanLedgerFormValues, string>>
+  >({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadPage = useCallback(async () => {
     if (!propertyId) {
@@ -358,6 +462,133 @@ export default function ObjektDetail() {
   useEffect(() => {
     void loadPage();
   }, [loadPage]);
+
+  const reloadLedgerOnly = useCallback(async () => {
+    if (!propertyId) return;
+
+    const ledgerRows = await loadPropertyLoanLedger(propertyId);
+    setLedger(Array.isArray(ledgerRows) ? ledgerRows : []);
+  }, [propertyId]);
+
+  const resetEditor = useCallback(() => {
+    setIsEditorOpen(false);
+    setEditingRowId(null);
+    setFormValues(EMPTY_FORM_VALUES);
+    setFormFieldErrors({});
+    setFormError(null);
+  }, []);
+
+  const startCreate = useCallback(() => {
+    setIsEditorOpen(true);
+    setEditingRowId(null);
+    setFormValues(EMPTY_FORM_VALUES);
+    setFormFieldErrors({});
+    setFormError(null);
+  }, []);
+
+  const startEdit = useCallback((row: LoanLedgerRow) => {
+    setIsEditorOpen(true);
+    setEditingRowId(row.id);
+    setFormValues(rowToFormValues(row));
+    setFormFieldErrors({});
+    setFormError(null);
+  }, []);
+
+  const handleFieldChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const { name, value } = event.target;
+      const fieldName = name as keyof LoanLedgerFormValues;
+
+      setFormValues((prev) => ({
+        ...prev,
+        [fieldName]: value,
+      }));
+
+      setFormFieldErrors((prev) => ({
+        ...prev,
+        [fieldName]: undefined,
+      }));
+
+      setFormError(null);
+    },
+    []
+  );
+
+  const handleSave = useCallback(async () => {
+    if (!propertyId) {
+      setFormError("Keine property_id vorhanden.");
+      return;
+    }
+
+    const validation = validateLedgerRow(formValues);
+
+    if (!validation.valid) {
+      setFormFieldErrors(validation.errors);
+      setFormError("Bitte korrigiere die markierten Felder.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setFormError(null);
+      setFormFieldErrors({});
+
+      const payload = parseLoanLedgerFormValues(formValues);
+
+      if (editingRowId == null) {
+        await insertPropertyLoanLedgerRow(propertyId, payload);
+      } else {
+        await updatePropertyLoanLedgerRow(editingRowId, payload);
+      }
+
+      await reloadLedgerOnly();
+      resetEditor();
+    } catch (err) {
+      setFormError(mapLedgerError(err));
+
+      if (DEBUG) {
+        console.error("ObjektDetail save ledger error", {
+          propertyId,
+          editingRowId,
+          error: err,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [editingRowId, formValues, propertyId, reloadLedgerOnly, resetEditor]);
+
+  const handleDelete = useCallback(
+    async (rowId: number) => {
+      const confirmed = window.confirm("Diese Ledger-Zeile wirklich löschen?");
+      if (!confirmed) return;
+
+      try {
+        setSaving(true);
+        setFormError(null);
+
+        await deletePropertyLoanLedgerRow(rowId);
+        await reloadLedgerOnly();
+
+        if (editingRowId === rowId) {
+          resetEditor();
+        }
+      } catch (err) {
+        setFormError(mapLedgerError(err));
+
+        if (DEBUG) {
+          console.error("ObjektDetail delete ledger error", {
+            propertyId,
+            rowId,
+            error: err,
+          });
+        }
+      } finally {
+        setSaving(false);
+      }
+    },
+    [editingRowId, propertyId, reloadLedgerOnly, resetEditor]
+  );
 
   const sortedLedger = useMemo(() => {
     return [...ledger].sort((a, b) => {
@@ -463,7 +694,7 @@ export default function ObjektDetail() {
   if (loading) {
     return (
       <div style={{ width: "100%", padding: 24, background: "#f3f4f6" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div
             style={{
               background: "#ffffff",
@@ -482,7 +713,7 @@ export default function ObjektDetail() {
   if (error) {
     return (
       <div style={{ width: "100%", padding: 24, background: "#f3f4f6" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ marginBottom: 16 }}>
             <Link
               to="/objekte"
@@ -518,7 +749,7 @@ export default function ObjektDetail() {
 
   return (
     <div style={{ width: "100%", padding: 24, background: "#f3f4f6" }}>
-      <div style={{ maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 16 }}>
           <Link
             to="/objekte"
@@ -677,13 +908,174 @@ export default function ObjektDetail() {
                 </Section>
               ) : null}
 
-              {hasLedgerData ? (
-                <Section title="Darlehens-Ledger">
+              <Section title="Darlehens-Ledger">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginBottom: 16,
+                  }}
+                >
+                  <div style={{ color: "#374151", fontWeight: 600 }}>
+                    Jahresweise Bearbeitung der Darlehensdaten
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={startCreate}
+                    disabled={saving}
+                    style={buttonPrimaryStyle}
+                  >
+                    + Neue Zeile
+                  </button>
+                </div>
+
+                {isEditorOpen ? (
+                  <div
+                    style={{
+                      marginBottom: 20,
+                      padding: 16,
+                      border: "1px solid #d1d5db",
+                      borderRadius: 16,
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 800,
+                        marginBottom: 16,
+                        color: "#111827",
+                      }}
+                    >
+                      {editingRowId == null
+                        ? "Neue Ledger-Zeile anlegen"
+                        : "Ledger-Zeile bearbeiten"}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      <FormField
+                        label="Jahr"
+                        name="year"
+                        value={formValues.year}
+                        onChange={handleFieldChange}
+                        error={formFieldErrors.year}
+                        placeholder="z. B. 2026"
+                        inputMode="numeric"
+                      />
+                      <FormField
+                        label="Zinsen"
+                        name="interest"
+                        value={formValues.interest}
+                        onChange={handleFieldChange}
+                        error={formFieldErrors.interest}
+                        placeholder="z. B. 3500"
+                        inputMode="decimal"
+                      />
+                      <FormField
+                        label="Tilgung"
+                        name="principal"
+                        value={formValues.principal}
+                        onChange={handleFieldChange}
+                        error={formFieldErrors.principal}
+                        placeholder="z. B. 4200"
+                        inputMode="decimal"
+                      />
+                      <FormField
+                        label="Restschuld"
+                        name="balance"
+                        value={formValues.balance}
+                        onChange={handleFieldChange}
+                        error={formFieldErrors.balance}
+                        placeholder="z. B. 105615,68"
+                        inputMode="decimal"
+                      />
+                      <FormField
+                        label="Quelle"
+                        name="source"
+                        value={formValues.source}
+                        onChange={handleFieldChange}
+                        error={formFieldErrors.source}
+                        placeholder="z. B. Bank / Excel"
+                      />
+                    </div>
+
+                    {formError ? (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          background: "#fef2f2",
+                          border: "1px solid #fecaca",
+                          color: "#b91c1c",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {formError}
+                      </div>
+                    ) : null}
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        marginTop: 16,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={saving}
+                        style={buttonPrimaryStyle}
+                      >
+                        {saving ? "Speichert..." : "Speichern"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={resetEditor}
+                        disabled={saving}
+                        style={buttonSecondaryStyle}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {formError && !isEditorOpen ? (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      color: "#b91c1c",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {formError}
+                  </div>
+                ) : null}
+
+                {hasLedgerData ? (
                   <div style={{ overflowX: "auto" }}>
                     <table
                       style={{
                         width: "100%",
-                        minWidth: 640,
+                        minWidth: 820,
                         borderCollapse: "collapse",
                       }}
                     >
@@ -693,22 +1085,62 @@ export default function ObjektDetail() {
                           <th style={thStyle}>Zinsen</th>
                           <th style={thStyle}>Tilgung</th>
                           <th style={thStyle}>Restschuld</th>
+                          <th style={thStyle}>Quelle</th>
+                          <th style={thStyle}>Aktionen</th>
                         </tr>
                       </thead>
                       <tbody>
                         {sortedLedger.map((row) => (
-                          <tr key={`${row.year}-${row.balance ?? "na"}`}>
+                          <tr key={row.id}>
                             <td style={tdStyle}>{row.year ?? "—"}</td>
                             <td style={tdStyle}>{formatCurrency(parseNumber(row.interest))}</td>
                             <td style={tdStyle}>{formatCurrency(parseNumber(row.principal))}</td>
                             <td style={tdStyle}>{formatCurrency(parseNumber(row.balance))}</td>
+                            <td style={tdStyle}>{row.source ?? "—"}</td>
+                            <td style={tdStyle}>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(row)}
+                                  disabled={saving}
+                                  style={buttonSecondaryStyle}
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(row.id)}
+                                  disabled={saving}
+                                  style={buttonDangerStyle}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </Section>
-              ) : null}
+                ) : (
+                  <div
+                    style={{
+                      padding: 18,
+                      borderRadius: 16,
+                      background: "#fffbeb",
+                      border: "1px solid #fde68a",
+                      color: "#92400e",
+                    }}
+                  >
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>
+                      Noch keine Ledger-Zeilen vorhanden
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 14, color: "#b45309" }}>
+                      Du kannst jetzt die erste Darlehenszeile für diese Immobilie anlegen.
+                    </div>
+                  </div>
+                )}
+              </Section>
             </>
           )}
         </div>
@@ -717,7 +1149,7 @@ export default function ObjektDetail() {
   );
 }
 
-const thStyle: React.CSSProperties = {
+const thStyle: CSSProperties = {
   textAlign: "left",
   padding: "12px 14px",
   borderBottom: "1px solid #e5e7eb",
@@ -728,9 +1160,45 @@ const thStyle: React.CSSProperties = {
   letterSpacing: "0.04em",
 };
 
-const tdStyle: React.CSSProperties = {
+const tdStyle: CSSProperties = {
   padding: "14px",
   borderBottom: "1px solid #f3f4f6",
   color: "#111827",
   verticalAlign: "top",
+};
+
+const buttonPrimaryStyle: CSSProperties = {
+  appearance: "none",
+  border: "1px solid #4f46e5",
+  background: "#4f46e5",
+  color: "#ffffff",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const buttonSecondaryStyle: CSSProperties = {
+  appearance: "none",
+  border: "1px solid #d1d5db",
+  background: "#ffffff",
+  color: "#111827",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const buttonDangerStyle: CSSProperties = {
+  appearance: "none",
+  border: "1px solid #ef4444",
+  background: "#ffffff",
+  color: "#b91c1c",
+  borderRadius: 12,
+  padding: "10px 14px",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
 };
