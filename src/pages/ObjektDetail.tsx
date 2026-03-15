@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import {
-  getLoanLedgerAuthDebugInfo,
-  loadPropertyLoanLedger,
-} from "../services/propertyLoanLedgerService";
+import { loadPropertyLoanLedger } from "../services/propertyLoanLedgerService";
 import type { LoanLedgerRow } from "../types/loanLedger";
 
 const DEBUG = import.meta.env.DEV;
@@ -30,27 +27,28 @@ type ChartPoint = {
   balance: number;
 };
 
-type DebugInfo = {
-  propertyId: string;
-  summaryExists: boolean;
-  ledgerRows: number;
-  authDebug: unknown | null;
-};
-
 function parseNumber(value: unknown): number | null {
   if (value == null) return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
   if (typeof value === "string") {
     const normalized = value.trim().replace(",", ".");
     if (!normalized) return null;
+
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
+
   return null;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
 
   if (typeof error === "object" && error !== null && "message" in error) {
     const maybeMessage = (error as { message?: unknown }).message;
@@ -166,47 +164,6 @@ function getStatusTone(status: string | null): {
   };
 }
 
-function DebugPanel({ title, data }: { title: string; data: unknown }) {
-  if (!DEBUG) return null;
-
-  return (
-    <section
-      style={{
-        marginTop: 24,
-        background: "#0f172a",
-        color: "#d1fae5",
-        border: "1px solid #1e293b",
-        borderRadius: 16,
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          marginBottom: 12,
-          fontSize: 16,
-          fontWeight: 800,
-          color: "#ffffff",
-        }}
-      >
-        {title}
-      </div>
-
-      <pre
-        style={{
-          margin: 0,
-          fontSize: 12,
-          lineHeight: 1.5,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflow: "auto",
-        }}
-      >
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </section>
-  );
-}
-
 function Section({
   title,
   children,
@@ -307,7 +264,6 @@ export default function ObjektDetail() {
   const [ledger, setLedger] = useState<LoanLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
   const loadPage = useCallback(async () => {
     if (!propertyId) {
@@ -322,11 +278,7 @@ export default function ObjektDetail() {
       setLoading(true);
       setError(null);
 
-      const authDebugPromise = DEBUG
-        ? getLoanLedgerAuthDebugInfo().catch(() => null)
-        : Promise.resolve(null);
-
-      const [summaryResult, ledgerRows, authDebug] = await Promise.all([
+      const [summaryResult, ledgerRows] = await Promise.all([
         supabase
           .from("vw_property_loan_dashboard_dedup")
           .select(
@@ -349,7 +301,6 @@ export default function ObjektDetail() {
           .eq("property_id", propertyId)
           .maybeSingle(),
         loadPropertyLoanLedger(propertyId),
-        authDebugPromise,
       ]);
 
       const { data: summaryData, error: summaryError } = summaryResult;
@@ -376,23 +327,29 @@ export default function ObjektDetail() {
           }
         : null;
 
+      const normalizedLedger = Array.isArray(ledgerRows) ? ledgerRows : [];
+
       setSummary(normalizedSummary);
-      setLedger(Array.isArray(ledgerRows) ? ledgerRows : []);
+      setLedger(normalizedLedger);
 
       if (DEBUG) {
-        setDebugInfo({
+        console.log("ObjektDetail loaded", {
           propertyId,
           summaryExists: !!normalizedSummary,
-          ledgerRows: Array.isArray(ledgerRows) ? ledgerRows.length : 0,
-          authDebug,
+          ledgerRows: normalizedLedger.length,
         });
-      } else {
-        setDebugInfo(null);
       }
     } catch (err) {
       setSummary(null);
       setLedger([]);
       setError(getErrorMessage(err, "Fehler beim Laden der Objektseite."));
+
+      if (DEBUG) {
+        console.error("ObjektDetail load error", {
+          propertyId,
+          error: err,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -404,19 +361,24 @@ export default function ObjektDetail() {
 
   const sortedLedger = useMemo(() => {
     return [...ledger].sort((a, b) => {
-      const yearA = Number.isFinite(a.year) ? a.year : 0;
-      const yearB = Number.isFinite(b.year) ? b.year : 0;
+      const yearA = typeof a.year === "number" ? a.year : parseNumber(a.year) ?? 0;
+      const yearB = typeof b.year === "number" ? b.year : parseNumber(b.year) ?? 0;
       return yearA - yearB;
     });
   }, [ledger]);
 
   const chartData = useMemo<ChartPoint[]>(() => {
     return sortedLedger
-      .filter((row) => row.balance != null && Number.isFinite(row.balance))
-      .map((row) => ({
-        year: row.year,
-        balance: row.balance as number,
-      }));
+      .map((row) => {
+        const year = typeof row.year === "number" ? row.year : parseNumber(row.year);
+        const balance =
+          typeof row.balance === "number" ? row.balance : parseNumber(row.balance);
+
+        if (year == null || balance == null) return null;
+
+        return { year, balance };
+      })
+      .filter((point): point is ChartPoint => point !== null);
   }, [sortedLedger]);
 
   const hasLedgerData = sortedLedger.length > 0;
@@ -437,20 +399,29 @@ export default function ObjektDetail() {
     const firstRow = sortedLedger[0];
     const lastRow = sortedLedger[sortedLedger.length - 1];
 
+    const firstYear =
+      typeof firstRow.year === "number" ? firstRow.year : parseNumber(firstRow.year);
+    const lastYear =
+      typeof lastRow.year === "number" ? lastRow.year : parseNumber(lastRow.year);
+    const lastBalance =
+      typeof lastRow.balance === "number"
+        ? lastRow.balance
+        : parseNumber(lastRow.balance);
+
     const interestTotal = sortedLedger.reduce((sum, row) => {
-      return sum + (Number.isFinite(row.interest) ? row.interest : 0);
+      const interest =
+        typeof row.interest === "number" ? row.interest : parseNumber(row.interest);
+      return sum + (interest ?? 0);
     }, 0);
 
     const principalTotal = sortedLedger.reduce((sum, row) => {
-      return sum + (Number.isFinite(row.principal) ? row.principal : 0);
+      const principal =
+        typeof row.principal === "number" ? row.principal : parseNumber(row.principal);
+      return sum + (principal ?? 0);
     }, 0);
 
     const startingBalance =
-      lastRow.balance != null &&
-      Number.isFinite(lastRow.balance) &&
-      Number.isFinite(principalTotal)
-        ? lastRow.balance + principalTotal
-        : null;
+      lastBalance != null && principalTotal != null ? lastBalance + principalTotal : null;
 
     const repaidPercent =
       startingBalance != null && startingBalance > 0
@@ -458,13 +429,10 @@ export default function ObjektDetail() {
         : null;
 
     return {
-      firstYear: Number.isFinite(firstRow.year) ? firstRow.year : null,
-      lastYear: Number.isFinite(lastRow.year) ? lastRow.year : null,
-      lastBalanceYear: Number.isFinite(lastRow.year) ? lastRow.year : null,
-      lastBalance:
-        lastRow.balance != null && Number.isFinite(lastRow.balance)
-          ? lastRow.balance
-          : null,
+      firstYear: firstYear ?? null,
+      lastYear: lastYear ?? null,
+      lastBalanceYear: lastYear ?? null,
+      lastBalance: lastBalance ?? null,
       interestTotal,
       principalTotal,
       repaidPercent,
@@ -506,8 +474,6 @@ export default function ObjektDetail() {
           >
             <div style={{ color: "#374151" }}>Objektdetails werden geladen…</div>
           </div>
-
-          <DebugPanel title="ObjektDetail Debug" data={debugInfo} />
         </div>
       </div>
     );
@@ -545,8 +511,6 @@ export default function ObjektDetail() {
               {error}
             </div>
           </div>
-
-          <DebugPanel title="ObjektDetail Debug" data={debugInfo} />
         </div>
       </div>
     );
@@ -616,17 +580,6 @@ export default function ObjektDetail() {
                 Stand Restschuld: {effectiveLastBalanceYear ?? "—"}
                 {" · "}
                 Letzte Aktualisierung: {formatDateTime(summary?.refreshed_at ?? null)}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  color: "#9ca3af",
-                  wordBreak: "break-word",
-                }}
-              >
-                property_id: {propertyId ?? "—"}
               </div>
             </div>
 
@@ -700,12 +653,7 @@ export default function ObjektDetail() {
 
               {chartData.length > 0 ? (
                 <Section title="Darlehensverlauf">
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "grid", gap: 10 }}>
                     {chartData.map((point) => (
                       <div
                         key={point.year}
@@ -750,10 +698,10 @@ export default function ObjektDetail() {
                       <tbody>
                         {sortedLedger.map((row) => (
                           <tr key={`${row.year}-${row.balance ?? "na"}`}>
-                            <td style={tdStyle}>{row.year}</td>
-                            <td style={tdStyle}>{formatCurrency(row.interest ?? null)}</td>
-                            <td style={tdStyle}>{formatCurrency(row.principal ?? null)}</td>
-                            <td style={tdStyle}>{formatCurrency(row.balance ?? null)}</td>
+                            <td style={tdStyle}>{row.year ?? "—"}</td>
+                            <td style={tdStyle}>{formatCurrency(parseNumber(row.interest))}</td>
+                            <td style={tdStyle}>{formatCurrency(parseNumber(row.principal))}</td>
+                            <td style={tdStyle}>{formatCurrency(parseNumber(row.balance))}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -763,8 +711,6 @@ export default function ObjektDetail() {
               ) : null}
             </>
           )}
-
-          <DebugPanel title="ObjektDetail Debug" data={debugInfo} />
         </div>
       </div>
     </div>

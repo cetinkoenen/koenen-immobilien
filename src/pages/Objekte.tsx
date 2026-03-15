@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import LoanChart from "../components/LoanChart";
 import { supabase } from "../lib/supabase";
 
+const DEBUG = import.meta.env.DEV;
+
 type PropertyDashboardRow = {
   property_id: string;
   property_name: string | null;
@@ -132,10 +134,7 @@ function groupLedgerRowsByProperty(
       grouped[row.property_id] = [];
     }
 
-    grouped[row.property_id].push({
-      year,
-      balance,
-    });
+    grouped[row.property_id].push({ year, balance });
   }
 
   for (const propertyId of Object.keys(grouped)) {
@@ -205,16 +204,14 @@ export default function Objekte() {
     Record<string, LoanChartPoint[]>
   >({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [chartWarning, setChartWarning] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadData() {
-      setLoading(true);
-      setError(null);
-
-      const { data: propertyData, error: propertyError } = await supabase
+    async function loadProperties() {
+      const { data, error } = await supabase
         .from("vw_property_loan_dashboard_dedup")
         .select(`
           property_id,
@@ -233,72 +230,105 @@ export default function Objekte() {
         `)
         .order("property_name", { ascending: true });
 
-      if (cancelled) return;
-
-      if (propertyError) {
-        setError(propertyError.message || "Fehler beim Laden der Immobilien.");
-        setProperties([]);
-        setChartDataByPropertyId({});
-        setLoading(false);
-        return;
+      if (error) {
+        throw new Error(error.message || "Fehler beim Laden der Immobilien.");
       }
 
-      const mappedProperties: PropertyCard[] = (
-        (propertyData ?? []) as PropertyDashboardRow[]
-      ).map((row) => ({
-        property_id: row.property_id,
-        property_name: row.property_name ?? "Unbenannte Immobilie",
-        first_year: parseNumber(row.first_year),
-        last_year: parseNumber(row.last_year),
-        last_balance_year: parseNumber(row.last_balance_year),
-        last_balance: parseNumber(row.last_balance),
-        interest_total: parseNumber(row.interest_total),
-        principal_total: parseNumber(row.principal_total),
-        repaid_percent: parseNumber(row.repaid_percent),
-        repaid_percent_display: row.repaid_percent_display ?? null,
-        repayment_status: row.repayment_status ?? null,
-        repayment_label: row.repayment_label ?? null,
-        refreshed_at: row.refreshed_at ?? null,
-      }));
+      const mapped: PropertyCard[] = ((data ?? []) as PropertyDashboardRow[]).map(
+        (row) => ({
+          property_id: row.property_id,
+          property_name: row.property_name ?? "Unbenannte Immobilie",
+          first_year: parseNumber(row.first_year),
+          last_year: parseNumber(row.last_year),
+          last_balance_year: parseNumber(row.last_balance_year),
+          last_balance: parseNumber(row.last_balance),
+          interest_total: parseNumber(row.interest_total),
+          principal_total: parseNumber(row.principal_total),
+          repaid_percent: parseNumber(row.repaid_percent),
+          repaid_percent_display: row.repaid_percent_display ?? null,
+          repayment_status: row.repayment_status ?? null,
+          repayment_label: row.repayment_label ?? null,
+          refreshed_at: row.refreshed_at ?? null,
+        })
+      );
 
-      if (cancelled) return;
+      return mapped;
+    }
 
-      setProperties(mappedProperties);
+    async function loadCharts(propertyIds: string[]) {
+      if (propertyIds.length === 0) return {};
 
-      const propertyIds = mappedProperties
-        .map((property) => property.property_id)
-        .filter(Boolean);
-
-      if (propertyIds.length === 0) {
-        setChartDataByPropertyId({});
-        setLoading(false);
-        return;
-      }
-
-      const { data: ledgerData, error: ledgerError } = await supabase
+      const { data, error } = await supabase
         .from("vw_property_loan_ledger_by_loan")
         .select("property_id, year, balance")
         .in("property_id", propertyIds)
         .order("property_id", { ascending: true })
         .order("year", { ascending: true });
 
-      if (cancelled) return;
-
-      if (ledgerError) {
-        setError(ledgerError.message || "Fehler beim Laden der Chart-Daten.");
-        setChartDataByPropertyId({});
-        setLoading(false);
-        return;
+      if (error) {
+        throw new Error(error.message || "Fehler beim Laden der Chart-Daten.");
       }
 
-      const grouped = groupLedgerRowsByProperty(
-        (ledgerData ?? []) as LoanLedgerRow[]
-      );
+      return groupLedgerRowsByProperty((data ?? []) as LoanLedgerRow[]);
+    }
 
-      if (cancelled) return;
+    async function loadData() {
+      setLoading(true);
+      setPageError(null);
+      setChartWarning(null);
 
-      setChartDataByPropertyId(grouped);
-      setLoading(false);
+      try {
+        const mappedProperties = await loadProperties();
+
+        if (cancelled) return;
+
+        setProperties(mappedProperties);
+
+        const propertyIds = mappedProperties
+          .map((property) => property.property_id)
+          .filter(Boolean);
+
+        try {
+          const groupedCharts = await loadCharts(propertyIds);
+
+          if (cancelled) return;
+
+          setChartDataByPropertyId(groupedCharts);
+        } catch (chartError) {
+          if (cancelled) return;
+
+          const message =
+            chartError instanceof Error
+              ? chartError.message
+              : "Chart-Daten konnten nicht geladen werden.";
+
+          setChartDataByPropertyId({});
+          setChartWarning(message);
+
+          if (DEBUG) {
+            console.warn("Objekte: Chart-Daten konnten nicht geladen werden:", message);
+          }
+        }
+      } catch (pageLoadError) {
+        if (cancelled) return;
+
+        const message =
+          pageLoadError instanceof Error
+            ? pageLoadError.message
+            : "Fehler beim Laden der Objekte.";
+
+        setPageError(message);
+        setProperties([]);
+        setChartDataByPropertyId({});
+
+        if (DEBUG) {
+          console.error("Objekte: Hauptdaten konnten nicht geladen werden:", message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
     void loadData();
@@ -323,8 +353,7 @@ export default function Objekte() {
           Objekte
         </h1>
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>
-          Lade Daten aus `vw_property_loan_dashboard_dedup` und
-          `vw_property_loan_ledger_by_loan`…
+          Lade Immobilienübersicht…
         </p>
 
         <div
@@ -336,15 +365,13 @@ export default function Objekte() {
             padding: 24,
           }}
         >
-          <div style={{ color: "#374151" }}>
-            Objekte und Darlehensverläufe werden geladen…
-          </div>
+          <div style={{ color: "#374151" }}>Objekte werden geladen…</div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (pageError) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>
@@ -366,7 +393,7 @@ export default function Objekte() {
           <div style={{ fontSize: 17, fontWeight: 700, color: "#b91c1c" }}>
             Fehler beim Laden der Objekte
           </div>
-          <div style={{ marginTop: 8, color: "#dc2626" }}>{error}</div>
+          <div style={{ marginTop: 8, color: "#dc2626" }}>{pageError}</div>
         </div>
       </div>
     );
@@ -411,6 +438,23 @@ export default function Objekte() {
         <p style={{ marginTop: 8, color: "#6b7280", fontSize: 16 }}>{subtitle}</p>
       </div>
 
+      {chartWarning ? (
+        <div
+          style={{
+            marginBottom: 24,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            borderRadius: 16,
+            padding: 16,
+            color: "#1d4ed8",
+          }}
+        >
+          Die Immobilien wurden geladen, aber die Verlaufsgrafiken konnten nicht geladen
+          werden. Die Detailseiten sollten trotzdem erreichbar sein.
+          {DEBUG ? <div style={{ marginTop: 6 }}>{chartWarning}</div> : null}
+        </div>
+      ) : null}
+
       <div style={{ display: "grid", gap: 24 }}>
         {properties.map((property) => (
           <section
@@ -432,7 +476,8 @@ export default function Objekte() {
               padding: 24,
               boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
               cursor: "pointer",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+              transition:
+                "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
             }}
             onMouseEnter={(event) => {
               event.currentTarget.style.transform = "translateY(-2px)";
@@ -533,9 +578,7 @@ export default function Objekte() {
             </div>
 
             <div style={{ marginTop: 24 }}>
-              <LoanChart
-                data={chartDataByPropertyId[property.property_id] ?? []}
-              />
+              <LoanChart data={chartDataByPropertyId[property.property_id] ?? []} />
             </div>
           </section>
         ))}
