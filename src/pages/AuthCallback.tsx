@@ -6,14 +6,16 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let isActive = true;
+    let active = true;
 
-    async function handleAuthCallback() {
+    async function handleCallback() {
       try {
-        const { error } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
 
-        if (error) {
-          console.error("[AuthCallback] getSession error", error);
+        if (!active) return;
+
+        if (error || !data.session) {
+          console.error("[AuthCallback] session error:", error);
           navigate("/login", {
             replace: true,
             state: {
@@ -23,13 +25,11 @@ export default function AuthCallback() {
           return;
         }
 
-        if (!isActive) return;
+        navigate("/objekte", { replace: true });
+      } catch (err) {
+        console.error("[AuthCallback] unexpected error:", err);
 
-        navigate("/", { replace: true });
-      } catch (error) {
-        console.error("[AuthCallback] unexpected error", error);
-
-        if (!isActive) return;
+        if (!active) return;
 
         navigate("/login", {
           replace: true,
@@ -40,10 +40,10 @@ export default function AuthCallback() {
       }
     }
 
-    void handleAuthCallback();
+    void handleCallback();
 
     return () => {
-      isActive = false;
+      active = false;
     };
   }, [navigate]);
 
@@ -54,7 +54,8 @@ export default function AuthCallback() {
         display: "grid",
         placeItems: "center",
         padding: 24,
-        background: "#f9fafb",
+        background: "#f8fafc",
+        fontFamily: "system-ui, sans-serif",
       }}
     >
       <div
@@ -67,7 +68,7 @@ export default function AuthCallback() {
           color: "#111827",
         }}
       >
-        Anmeldung wird abgeschlossen...
+        Anmeldung wird abgeschlossen…
       </div>
     </div>
   );

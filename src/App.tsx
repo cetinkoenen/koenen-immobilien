@@ -1,8 +1,22 @@
-import type { CSSProperties } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import type { CSSProperties, ReactNode } from "react";
+import {
+  Routes,
+  Route,
+  Navigate,
+  NavLink,
+  Outlet,
+  useNavigate,
+} from "react-router-dom";
+
+import { supabase } from "./lib/supabaseClient";
+import { useAuth } from "./auth/AuthProvider";
+import RequireAuth from "./components/RequireAuth";
 
 import Auswertung from "./pages/Auswertung";
+import AuthCallback from "./pages/AuthCallback";
 import EntryAdd from "./pages/EntryAdd";
+import Login from "./pages/Login";
+import MFA from "./pages/MFA";
 import Monate from "./pages/Monate";
 import ObjektDetail from "./pages/ObjektDetail";
 import Objekte from "./pages/Objekte";
@@ -80,7 +94,48 @@ function navLinkStyle(isActive: boolean): CSSProperties {
   };
 }
 
+function logoutButtonStyle(): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    color: "#111827",
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+}
+
+function userBadgeStyle(): CSSProperties {
+  return {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#374151",
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    whiteSpace: "nowrap",
+  };
+}
+
 function AppNavigation() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut();
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("Logout fehlgeschlagen:", error);
+    }
+  }
+
   return (
     <header
       style={{
@@ -142,46 +197,72 @@ function AppNavigation() {
             Buchung
           </NavLink>
         </nav>
+
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={userBadgeStyle()}>{user?.email ?? "Eingeloggt"}</div>
+
+          <button onClick={handleLogout} type="button" style={logoutButtonStyle()}>
+            Logout
+          </button>
+        </div>
       </div>
     </header>
   );
 }
 
+function ProtectedLayout({ children }: { children?: ReactNode }) {
+  return (
+    <RequireAuth>
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#f8fafc",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        <AppNavigation />
+        <main>{children ?? <Outlet />}</main>
+      </div>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <AppNavigation />
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/mfa" element={<MFA />} />
 
-      <main>
-        <Routes>
-          <Route path="/" element={<Navigate to="/objekte" replace />} />
+      <Route element={<ProtectedLayout />}>
+        <Route path="/objekte" element={<Objekte />} />
+        <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
 
-          <Route path="/objekte" element={<Objekte />} />
-          <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
+        <Route path="/portfolio" element={<Portfolio />} />
+        <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
+          <Route index element={<Navigate to="address" replace />} />
+          <Route path="address" element={<PortfolioAddress />} />
+          <Route path="details" element={<PortfolioDetails />} />
+          <Route path="finanzen" element={<PortfolioFinance />} />
+          <Route path="energie" element={<PortfolioEnergy />} />
+          <Route path="vermietung" element={<PortfolioRenting />} />
+        </Route>
 
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>
-            <Route index element={<Navigate to="address" replace />} />
-            <Route path="address" element={<PortfolioAddress />} />
-            <Route path="details" element={<PortfolioDetails />} />
-            <Route path="finanzen" element={<PortfolioFinance />} />
-            <Route path="energie" element={<PortfolioEnergy />} />
-            <Route path="vermietung" element={<PortfolioRenting />} />
-          </Route>
+        <Route path="/monate" element={<Monate />} />
+        <Route path="/auswertung" element={<Auswertung />} />
+        <Route path="/entry-add" element={<EntryAdd />} />
+      </Route>
 
-          <Route path="/monate" element={<Monate />} />
-          <Route path="/auswertung" element={<Auswertung />} />
-          <Route path="/entry-add" element={<EntryAdd />} />
-
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-    </div>
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
 }

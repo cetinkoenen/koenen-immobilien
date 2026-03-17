@@ -1,4 +1,3 @@
-// src/auth/AuthProvider.tsx
 import {
   createContext,
   useContext,
@@ -23,46 +22,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    // 1) initiale Session laden
-    (async () => {
+    async function initializeAuth() {
       try {
         const { data, error } = await supabase.auth.getSession();
-        if (error) console.error("AuthProvider getSession error:", error);
-        if (!mounted) return;
+
+        if (error) {
+          console.error("AuthProvider getSession error:", error);
+        }
+
+        if (!isMounted) return;
         setSession(data.session ?? null);
-      } catch (e) {
-        console.error("AuthProvider getSession failed:", e);
-        if (!mounted) return;
+      } catch (err) {
+        console.error("AuthProvider getSession failed:", err);
+        if (!isMounted) return;
         setSession(null);
       } finally {
-        if (mounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    })();
+    }
 
-    // 2) Session-Änderungen abonnieren
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (!mounted) return;
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!isMounted) return;
       setSession(newSession);
       setLoading(false);
     });
 
     return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
+      isMounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
-  const value = useMemo<AuthState>(() => {
-    return { loading, session, user: session?.user ?? null };
-  }, [loading, session]);
+  const value = useMemo<AuthState>(
+    () => ({
+      loading,
+      session,
+      user: session?.user ?? null,
+    }),
+    [loading, session]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+
+  return context;
 }

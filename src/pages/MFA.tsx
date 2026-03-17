@@ -1,38 +1,50 @@
-import { supabase } from "@/lib/supabaseClient";
-// src/pages/MFA.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabaseClient";
 
 type TotpEnroll = {
   factorId: string;
-  qr?: string; // svg string or data url
-  uri?: string; // otpauth://...
+  qr?: string;
+  uri?: string;
 };
 
 type Stage = "setup" | "verify";
 
+type FromState =
+  | string
+  | {
+      pathname?: string;
+    }
+  | undefined;
+
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getFrom(loc: any): string {
-  const raw = loc?.state?.from;
+function getFromPath(locationState: unknown): string {
+  const from = (locationState as { from?: FromState } | null)?.from;
 
-  // Case 1: from is string like "/portfolio"
-  if (typeof raw === "string" && raw.startsWith("/")) return raw;
+  if (typeof from === "string" && from.startsWith("/")) {
+    return from;
+  }
 
-  // Case 2: from is a location object: { pathname: "/portfolio", ... }
-  const p = raw?.pathname;
-  if (typeof p === "string" && p.startsWith("/")) return p;
+  if (
+    typeof from === "object" &&
+    from !== null &&
+    typeof from.pathname === "string" &&
+    from.pathname.startsWith("/")
+  ) {
+    return from.pathname;
+  }
 
-  return "/portfolio";
+  return "/objekte";
 }
 
 export default function MFA() {
   const navigate = useNavigate();
-  const location = useLocation() as any;
+  const location = useLocation();
 
-  const from = useMemo(() => getFrom(location), [location]);
+  const from = useMemo(() => getFromPath(location.state), [location.state]);
 
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState<Stage>("verify");
@@ -45,50 +57,59 @@ export default function MFA() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
-  const qrIsSvg = typeof enroll?.qr === "string" && enroll.qr.trim().startsWith("<svg");
+  const qrIsSvg =
+    typeof enroll?.qr === "string" && enroll.qr.trim().startsWith("<svg");
 
   async function ensureLoggedIn(): Promise<boolean> {
     const { data, error } = await supabase.auth.getSession();
+
     if (error) throw error;
 
     if (!data.session) {
       navigate("/login", { replace: true, state: { from } });
       return false;
     }
+
     return true;
   }
 
   async function getAalLevel(): Promise<"aal1" | "aal2" | null> {
-    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const { data, error } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
     if (error) throw error;
-    const lvl = data?.currentLevel;
-    if (lvl === "aal1" || lvl === "aal2") return lvl;
+
+    if (data?.currentLevel === "aal1" || data?.currentLevel === "aal2") {
+      return data.currentLevel;
+    }
+
     return null;
   }
 
   async function redirectIfAal2(): Promise<boolean> {
-    const lvl = await getAalLevel();
-    if (lvl === "aal2") {
+    const level = await getAalLevel();
+
+    if (level === "aal2") {
       navigate(from, { replace: true });
       return true;
     }
+
     return false;
   }
 
   async function refreshAndWaitForAal2(): Promise<boolean> {
-    // Refresh helps a lot after verify
-    const { error: rErr } = await supabase.auth.refreshSession();
-    if (rErr) {
-      // not fatal; we'll still poll AAL
-      console.warn("[MFA] refreshSession error:", rErr);
+    const { error } = await supabase.auth.refreshSession();
+
+    if (error) {
+      console.warn("[MFA] refreshSession error:", error);
     }
 
-    // Poll a few times (total ~1.2s)
-    for (let i = 0; i < 4; i++) {
-      const lvl = await getAalLevel();
-      if (lvl === "aal2") return true;
+    for (let i = 0; i < 4; i += 1) {
+      const level = await getAalLevel();
+      if (level === "aal2") return true;
       await sleep(300);
     }
+
     return false;
   }
 
@@ -96,13 +117,20 @@ export default function MFA() {
     setError(null);
     setChallengeId(null);
 
-    const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
-    if (chErr) throw chErr;
+    const { data, error } = await supabase.auth.mfa.challenge({ factorId });
 
-    const chId = (ch as any)?.id ?? (ch as any)?.challengeId;
-    if (!chId) throw new Error("MFA challenge: challengeId fehlt.");
+    if (error) throw error;
 
-    setChallengeId(chId);
+    const id =
+      (data as { id?: string; challengeId?: string } | null)?.id ??
+      (data as { id?: string; challengeId?: string } | null)?.challengeId ??
+      null;
+
+    if (!id) {
+      throw new Error("MFA challengeId fehlt.");
+    }
+
+    setChallengeId(id);
   }
 
   async function enrollTotpAndChallenge() {
@@ -110,60 +138,100 @@ export default function MFA() {
     setEnroll(null);
     setChallengeId(null);
 
-    const { data: enrolled, error: enrollErr } = await supabase.auth.mfa.enroll({
+    const { data, error } = await supabase.auth.mfa.enroll({
       factorType: "totp",
       friendlyName: "Authenticator",
     });
-    if (enrollErr) throw enrollErr;
+
+    if (error) throw error;
+
+    const raw = data as
+      | {
+          id?: string;
+          factorId?: string;
+          totp?: {
+            qr_code?: string;
+            qrCode?: string;
+            qr_svg?: string;
+            qr_svg_data?: string;
+            qr?: string;
+            uri?: string;
+            otpauth_url?: string;
+            otpauthUrl?: string;
+          };
+          data?: {
+            id?: string;
+            factorId?: string;
+            totp?: {
+              qr_code?: string;
+              qrCode?: string;
+              qr_svg?: string;
+              qr_svg_data?: string;
+              qr?: string;
+              uri?: string;
+              otpauth_url?: string;
+              otpauthUrl?: string;
+            };
+            qr_code?: string;
+            qrCode?: string;
+            qr_svg?: string;
+            qr_svg_data?: string;
+            qr?: string;
+            uri?: string;
+            otpauth_url?: string;
+            otpauthUrl?: string;
+          };
+        }
+      | null;
 
     const factorId =
-      (enrolled as any)?.id ??
-      (enrolled as any)?.factorId ??
-      (enrolled as any)?.data?.id ??
-      (enrolled as any)?.data?.factorId;
+      raw?.id ?? raw?.factorId ?? raw?.data?.id ?? raw?.data?.factorId ?? null;
 
-    const totpObj =
-      (enrolled as any)?.totp ??
-      (enrolled as any)?.data?.totp ??
-      (enrolled as any)?.data;
+    const totp = raw?.totp ?? raw?.data ?? null;
 
     const qr =
-      totpObj?.qr_code ??
-      totpObj?.qrCode ??
-      totpObj?.qr_svg ??
-      totpObj?.qr_svg_data ??
-      totpObj?.qr;
+      totp?.qr_code ??
+      totp?.qrCode ??
+      totp?.qr_svg ??
+      totp?.qr_svg_data ??
+      totp?.qr ??
+      undefined;
 
-    const uri = totpObj?.uri ?? totpObj?.otpauth_url ?? totpObj?.otpauthUrl;
+    const uri =
+      totp?.uri ?? totp?.otpauth_url ?? totp?.otpauthUrl ?? undefined;
 
-    if (!factorId) throw new Error("MFA enroll: factorId fehlt (Supabase response unerwartet).");
+    if (!factorId) {
+      throw new Error("MFA factorId fehlt.");
+    }
 
     setEnroll({ factorId, qr, uri });
     await startChallenge(factorId);
   }
 
   async function loadAndDecide() {
-    // If already aal2, leave
-    const done = await redirectIfAal2();
-    if (done) return;
+    const alreadyDone = await redirectIfAal2();
+    if (alreadyDone) return;
 
     const { data, error } = await supabase.auth.mfa.listFactors();
+
     if (error) throw error;
 
-    const totp = (data?.totp ?? []) as any[];
-    const hasTotp = totp.length > 0;
+    const totpFactors = data?.totp ?? [];
 
-    if (hasTotp) {
-      const factorId = totp[0].id as string;
+    if (totpFactors.length > 0) {
+      const factorId = totpFactors[0].id;
       setStage("verify");
       setHint("Bitte gib den 6-stelligen Code aus deiner Authenticator-App ein.");
       setEnroll({ factorId });
       await startChallenge(factorId);
-    } else {
-      setStage("setup");
-      setHint("Richte 2FA ein: QR-Code scannen und danach den 6-stelligen Code eingeben.");
-      await enrollTotpAndChallenge();
+      return;
     }
+
+    setStage("setup");
+    setHint(
+      "Richte 2FA ein: QR-Code scannen und danach den 6-stelligen Code eingeben."
+    );
+    await enrollTotpAndChallenge();
   }
 
   async function onVerify() {
@@ -171,46 +239,52 @@ export default function MFA() {
     setError(null);
 
     try {
-      const ok = await ensureLoggedIn();
-      if (!ok) return;
+      const loggedIn = await ensureLoggedIn();
+      if (!loggedIn) return;
 
-      if (!enroll?.factorId) throw new Error("factorId fehlt.");
-      if (!challengeId) throw new Error("challengeId fehlt.");
+      if (!enroll?.factorId) {
+        throw new Error("factorId fehlt.");
+      }
 
-      const clean = code.replace(/\s/g, "");
-      if (!/^\d{6}$/.test(clean)) {
+      if (!challengeId) {
+        throw new Error("challengeId fehlt.");
+      }
+
+      const cleanCode = code.replace(/\s/g, "");
+
+      if (!/^\d{6}$/.test(cleanCode)) {
         setError("Bitte gib einen 6-stelligen Code ein.");
         return;
       }
 
-      const { error: vErr } = await supabase.auth.mfa.verify({
+      const { error } = await supabase.auth.mfa.verify({
         factorId: enroll.factorId,
         challengeId,
-        code: clean,
+        code: cleanCode,
       });
 
-      if (vErr) {
-        // Often challenge expired -> re-challenge
-        setError(vErr.message ?? "Verifizierung fehlgeschlagen.");
+      if (error) {
+        setError(error.message ?? "Verifizierung fehlgeschlagen.");
         try {
           await startChallenge(enroll.factorId);
         } catch {
-          // ignore
+          // ignore re-challenge failure
         }
         return;
       }
 
       const becameAal2 = await refreshAndWaitForAal2();
+
       if (!becameAal2) {
         setError(
-          "MFA wurde bestätigt, aber AAL2 ist noch nicht sichtbar. Bitte „Neu laden“ drücken oder kurz warten und erneut versuchen."
+          "MFA wurde bestätigt, aber AAL2 ist noch nicht sichtbar. Bitte kurz warten und erneut laden."
         );
         return;
       }
 
       navigate(from, { replace: true });
-    } catch (e: any) {
-      setError(e?.message ?? e?.error_description ?? String(e));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -220,12 +294,13 @@ export default function MFA() {
     setBusy(true);
     setError(null);
     setCode("");
+
     try {
-      const ok = await ensureLoggedIn();
-      if (!ok) return;
+      const loggedIn = await ensureLoggedIn();
+      if (!loggedIn) return;
       await loadAndDecide();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -234,6 +309,7 @@ export default function MFA() {
   async function onLogout() {
     setBusy(true);
     setError(null);
+
     try {
       await supabase.auth.signOut();
       navigate("/login", { replace: true });
@@ -243,39 +319,50 @@ export default function MFA() {
   }
 
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
-    (async () => {
+    async function bootstrap() {
       try {
-        const ok = await ensureLoggedIn();
-        if (!ok || !alive) return;
+        const loggedIn = await ensureLoggedIn();
+        if (!loggedIn || !active) return;
 
         await loadAndDecide();
-      } catch (e: any) {
-        if (!alive) return;
-        setError(e?.message ?? String(e));
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
-        if (alive) setLoading(false);
+        if (active) setLoading(false);
       }
-    })();
+    }
+
+    void bootstrap();
 
     return () => {
-      alive = false;
+      active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading) return <div style={{ padding: 24 }}>Lädt…</div>;
+  if (loading) {
+    return <div style={{ padding: 24 }}>Lädt…</div>;
+  }
 
   const showQr = stage === "setup";
 
   return (
     <div style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <h2 style={{ marginTop: 0 }}>Zwei-Faktor-Login (2FA)</h2>
           <div style={{ opacity: 0.75, fontSize: 13 }}>
-            Ziel: Ohne bestätigte Authenticator-App (AAL2) kein Zugriff auf die App.
+            Ziel: Ohne bestätigte Authenticator-App (AAL2) kein Zugriff auf die
+            App.
           </div>
         </div>
 
@@ -314,7 +401,7 @@ export default function MFA() {
         </div>
       </div>
 
-      {hint && (
+      {hint ? (
         <div
           style={{
             marginTop: 14,
@@ -327,9 +414,9 @@ export default function MFA() {
         >
           {hint}
         </div>
-      )}
+      ) : null}
 
-      {showQr && (
+      {showQr ? (
         <div
           style={{
             marginTop: 14,
@@ -339,7 +426,9 @@ export default function MFA() {
             background: "white",
           }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>Setup: QR-Code scannen</div>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>
+            Setup: QR-Code scannen
+          </div>
 
           {enroll?.qr ? (
             qrIsSvg ? (
@@ -352,21 +441,33 @@ export default function MFA() {
                     ? enroll.qr
                     : `data:image/svg+xml;utf8,${encodeURIComponent(enroll.qr)}`
                 }
-                style={{ width: 220, height: 220, borderRadius: 12, border: "1px solid #e5e7eb" }}
+                style={{
+                  width: 220,
+                  height: 220,
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                }}
               />
             )
           ) : (
             <div style={{ opacity: 0.7, fontSize: 13 }}>QR wird geladen…</div>
           )}
 
-          {enroll?.uri && (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, wordBreak: "break-all" }}>
+          {enroll?.uri ? (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 12,
+                opacity: 0.8,
+                wordBreak: "break-all",
+              }}
+            >
               <div style={{ fontWeight: 800 }}>Backup-Link (otpauth):</div>
               <code>{enroll.uri}</code>
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
 
       <div
         style={{
@@ -381,7 +482,14 @@ export default function MFA() {
           {stage === "setup" ? "Code bestätigen" : "Code eingeben"}
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
@@ -419,10 +527,10 @@ export default function MFA() {
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-          Tipp: Wenn der Code abgelehnt wird, prüfe Uhrzeit/Zeitzone am Handy (Automatisch stellen).
+          Tipp: Wenn der Code abgelehnt wird, prüfe Uhrzeit/Zeitzone am Handy.
         </div>
 
-        {error && (
+        {error ? (
           <div
             style={{
               marginTop: 12,
@@ -438,7 +546,7 @@ export default function MFA() {
             <div style={{ fontWeight: 900, marginBottom: 4 }}>Fehler</div>
             {error}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
