@@ -30,3 +30,5 @@ tmp.tsx
 property_scope.json
 .vercel/
 scripts/get_access_token.mjs
+.vercel
+.env*.local

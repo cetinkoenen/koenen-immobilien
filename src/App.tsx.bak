@@ -18,7 +18,7 @@ import EntryAdd from "./pages/EntryAdd";
 import Login from "./pages/Login";
 import MFA from "./pages/MFA";
 import Monate from "./pages/Monate";
-import { PropertyDetailPage } from "@/features/property-detail";
+import ObjektDetail from "./pages/ObjektDetail";
 import Objekte from "./pages/Objekte";
 import Portfolio from "./pages/Portfolio";
 
@@ -245,7 +245,7 @@ export default function App() {
 
       <Route element={<ProtectedLayout />}>
         <Route path="/objekte" element={<Objekte />} />
-        <Route path="/objekte/:propertyId" element={<PropertyDetailPage />} />
+        <Route path="/objekte/:propertyId" element={<ObjektDetail />} />
 
         <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/portfolio/:propertyId" element={<PortfolioPropertyLayout />}>

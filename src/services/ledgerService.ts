@@ -1,43 +1,9 @@
-import { supabase } from "../lib/supabase";
+// src/services/ledgerService.ts
+
+import { supabase } from "@/lib/supabase";
+import type { YearlyLedgerEntry } from "@/types/finance";
 
 const TABLE_NAME = "property_loan_ledger";
-
-const DB_COLUMNS = {
-  id: "id",
-  propertyId: "property_id",
-  year: "year",
-  interest: "interest",
-  principal: "principal",
-  balance: "balance",
-  source: "source",
-} as const;
-
-export interface YearlyLedgerEntry {
-  id: string;
-  propertyId: string;
-  year: number;
-  interest: number;
-  principal: number;
-  balance: number;
-  source: string | null;
-}
-
-export interface CreateYearlyLedgerEntryInput {
-  propertyId: string;
-  year: number;
-  interest: number;
-  principal: number;
-  balance: number;
-  source?: string | null;
-}
-
-export interface UpdateYearlyLedgerEntryInput {
-  year?: number;
-  interest?: number;
-  principal?: number;
-  balance?: number;
-  source?: string | null;
-}
 
 type LedgerRow = {
   id: string;
@@ -48,6 +14,33 @@ type LedgerRow = {
   balance: number | string | null;
   source: string | null;
 };
+
+export type CreateYearlyLedgerEntryInput = {
+  propertyId: string;
+  year: number;
+  interest: number;
+  principal: number;
+  balance: number;
+  source?: string | null;
+};
+
+export type UpdateYearlyLedgerEntryInput = {
+  year?: number;
+  interest?: number;
+  principal?: number;
+  balance?: number;
+  source?: string | null;
+};
+
+const ledgerSelect = `
+  id,
+  property_id,
+  year,
+  interest,
+  principal,
+  balance,
+  source
+`;
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") {
@@ -63,11 +56,10 @@ function toNumber(value: unknown): number {
 }
 
 function toYear(value: unknown): number {
-  const parsed = toNumber(value);
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+  return Math.trunc(toNumber(value));
 }
 
-function mapRowToYearlyLedgerEntry(row: LedgerRow): YearlyLedgerEntry {
+function normalizeLedgerRow(row: LedgerRow): YearlyLedgerEntry {
   return {
     id: row.id,
     propertyId: row.property_id,
@@ -79,38 +71,44 @@ function mapRowToYearlyLedgerEntry(row: LedgerRow): YearlyLedgerEntry {
   };
 }
 
-function mapCreateInputToDb(input: CreateYearlyLedgerEntryInput) {
+function mapCreateInputToRow(input: CreateYearlyLedgerEntryInput) {
   return {
-    [DB_COLUMNS.propertyId]: input.propertyId,
-    [DB_COLUMNS.year]: input.year,
-    [DB_COLUMNS.interest]: input.interest,
-    [DB_COLUMNS.principal]: input.principal,
-    [DB_COLUMNS.balance]: input.balance,
-    [DB_COLUMNS.source]: input.source ?? null,
+    property_id: input.propertyId,
+    year: input.year,
+    interest: input.interest,
+    principal: input.principal,
+    balance: input.balance,
+    source: input.source ?? null,
   };
 }
 
-function mapUpdateInputToDb(input: UpdateYearlyLedgerEntryInput) {
-  const payload: Record<string, unknown> = {};
+function mapUpdateInputToRow(input: UpdateYearlyLedgerEntryInput) {
+  const payload: Partial<{
+    year: number;
+    interest: number;
+    principal: number;
+    balance: number;
+    source: string | null;
+  }> = {};
 
   if (input.year !== undefined) {
-    payload[DB_COLUMNS.year] = input.year;
+    payload.year = input.year;
   }
 
   if (input.interest !== undefined) {
-    payload[DB_COLUMNS.interest] = input.interest;
+    payload.interest = input.interest;
   }
 
   if (input.principal !== undefined) {
-    payload[DB_COLUMNS.principal] = input.principal;
+    payload.principal = input.principal;
   }
 
   if (input.balance !== undefined) {
-    payload[DB_COLUMNS.balance] = input.balance;
+    payload.balance = input.balance;
   }
 
   if (input.source !== undefined) {
-    payload[DB_COLUMNS.source] = input.source;
+    payload.source = input.source ?? null;
   }
 
   return payload;
@@ -120,126 +118,81 @@ export const ledgerService = {
   async getByPropertyId(propertyId: string): Promise<YearlyLedgerEntry[]> {
     const { data, error } = await supabase
       .from(TABLE_NAME)
-      .select(
-        `
-        id,
-        property_id,
-        year,
-        interest,
-        principal,
-        balance,
-        source
-      `
-      )
-      .eq(DB_COLUMNS.propertyId, propertyId)
-      .order(DB_COLUMNS.year, { ascending: true });
+      .select(ledgerSelect)
+      .eq("property_id", propertyId)
+      .order("year", { ascending: true });
 
     if (error) {
-      console.error("Error loading yearly ledger:", error);
-      throw new Error("Jahresledger konnte nicht geladen werden.");
+      throw error;
     }
 
-    return ((data ?? []) as LedgerRow[])
-      .map(mapRowToYearlyLedgerEntry)
-      .sort((a, b) => a.year - b.year);
+    return ((data ?? []) as LedgerRow[]).map(normalizeLedgerRow);
   },
 
   async getById(id: string): Promise<YearlyLedgerEntry | null> {
     const { data, error } = await supabase
       .from(TABLE_NAME)
-      .select(
-        `
-        id,
-        property_id,
-        year,
-        interest,
-        principal,
-        balance,
-        source
-      `
-      )
-      .eq(DB_COLUMNS.id, id)
+      .select(ledgerSelect)
+      .eq("id", id)
       .maybeSingle();
 
     if (error) {
-      console.error("Error loading yearly ledger entry:", error);
-      throw new Error("Jahreseintrag konnte nicht geladen werden.");
+      throw error;
     }
 
     if (!data) {
       return null;
     }
 
-    return mapRowToYearlyLedgerEntry(data as LedgerRow);
+    return normalizeLedgerRow(data as LedgerRow);
   },
 
-  async create(
-    input: CreateYearlyLedgerEntryInput
-  ): Promise<YearlyLedgerEntry> {
+  async create(input: CreateYearlyLedgerEntryInput): Promise<YearlyLedgerEntry> {
+    const payload = mapCreateInputToRow(input);
+
     const { data, error } = await supabase
       .from(TABLE_NAME)
-      .insert(mapCreateInputToDb(input))
-      .select(
-        `
-        id,
-        property_id,
-        year,
-        interest,
-        principal,
-        balance,
-        source
-      `
-      )
+      .insert(payload)
+      .select(ledgerSelect)
       .single();
 
     if (error) {
-      console.error("Error creating yearly ledger entry:", error);
-      throw new Error("Jahreseintrag konnte nicht erstellt werden.");
+      throw error;
     }
 
-    return mapRowToYearlyLedgerEntry(data as LedgerRow);
+    return normalizeLedgerRow(data as LedgerRow);
   },
 
   async update(
     id: string,
     input: UpdateYearlyLedgerEntryInput
   ): Promise<YearlyLedgerEntry> {
-    const payload = mapUpdateInputToDb(input);
+    const payload = mapUpdateInputToRow(input);
 
     const { data, error } = await supabase
       .from(TABLE_NAME)
       .update(payload)
-      .eq(DB_COLUMNS.id, id)
-      .select(
-        `
-        id,
-        property_id,
-        year,
-        interest,
-        principal,
-        balance,
-        source
-      `
-      )
+      .eq("id", id)
+      .select(ledgerSelect)
       .single();
 
     if (error) {
-      console.error("Error updating yearly ledger entry:", error);
-      throw new Error("Jahreseintrag konnte nicht aktualisiert werden.");
+      throw error;
     }
 
-    return mapRowToYearlyLedgerEntry(data as LedgerRow);
+    return normalizeLedgerRow(data as LedgerRow);
   },
 
   async remove(id: string): Promise<void> {
     const { error } = await supabase
       .from(TABLE_NAME)
       .delete()
-      .eq(DB_COLUMNS.id, id);
+      .eq("id", id);
 
     if (error) {
-      console.error("Error deleting yearly ledger entry:", error);
-      throw new Error("Jahreseintrag konnte nicht gelöscht werden.");
+      throw error;
     }
   },
 };
+
+export type { YearlyLedgerEntry };
