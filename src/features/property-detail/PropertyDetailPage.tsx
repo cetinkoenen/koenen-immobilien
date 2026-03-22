@@ -178,6 +178,10 @@ export default function PropertyDetailPage() {
     );
   }
 
+  const propertyDisplayName = property.title || property.name || "Unbenanntes Objekt";
+  const propertyAddress = property.address || "Keine Adresse hinterlegt";
+  const propertyCity = property.city || "Kein Ort hinterlegt";
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="space-y-6">
@@ -185,24 +189,19 @@ export default function PropertyDetailPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                {property.title || property.name || "Unbenanntes Objekt"}
+                {propertyDisplayName}
               </h1>
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                <span>{property.address || "Keine Adresse hinterlegt"}</span>
+                <span>{propertyAddress}</span>
                 <span className="text-slate-300">•</span>
-                <span>{property.city || "Kein Ort hinterlegt"}</span>
+                <span>{propertyCity}</span>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                   Objekt-ID: {property.id}
                 </span>
-                {property.source_table ? (
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                    Quelle: {property.source_table}
-                  </span>
-                ) : null}
               </div>
             </div>
 
@@ -210,6 +209,7 @@ export default function PropertyDetailPage() {
               <button
                 type="button"
                 onClick={() => {
+                  void reload();
                   void reloadIncome();
                   void reloadLedger();
                 }}
@@ -239,7 +239,7 @@ export default function PropertyDetailPage() {
             <div className="h-full rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <SectionHeader
                 title="Basisdaten"
-                subtitle="Stammdaten und Herkunft des Objekts."
+                subtitle="Stammdaten des Objekts."
               />
 
               <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4">
@@ -251,7 +251,6 @@ export default function PropertyDetailPage() {
                   label="Erstellt am"
                   value={formatDate(property.created_at)}
                 />
-                <InfoRow label="Quelle" value={property.source_table || "—"} />
               </div>
             </div>
           </div>

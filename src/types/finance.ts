@@ -1,145 +1,149 @@
-// src/types/finance.ts
+export type RiskLevel = "low" | "medium" | "high" | string;
 
-export type RiskLevel = "green" | "yellow" | "red" | "unknown";
-
-/**
- * Buchungsnahes Darlehensmodell.
- * Kann parallel zu aggregierten Jahresdaten bestehen bleiben.
- */
-export type LoanLedgerEntry = {
-  id: string;
-  property_id: string;
-  booking_date: string;
-  interest_amount: number;
-  principal_amount: number;
-  remaining_balance: number | null;
-  note?: string | null;
+export type FinanceChartDataPoint = {
+  year: number | string;
+  label?: string;
+  value?: number;
+  balance?: number;
+  cashflow?: number;
+  dscr?: number | null;
+  capex?: number;
+  [key: string]: any;
 };
 
-/**
- * Aggregierter Jahreseintrag für Zins, Tilgung und Restschuld.
- * Wird in der UI und in den Finanzberechnungen verwendet.
- */
-export type YearlyLedgerEntry = {
-  id: string;
-  propertyId: string;
-  year: number;
-  interest: number;
-  principal: number;
-  balance: number;
-  source?: string | null;
-};
-
-/**
- * Statische Einnahmenbasis pro Objekt.
- * Dient als persistenter Fallback, solange keine vollständige
- * yearly-income-Zeitreihe vorhanden ist.
- */
 export type PropertyIncome = {
-  id: string;
-  property_id: string;
-  annual_rent: number;
-  other_income: number;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-/**
- * Jahresbezogene Einnahmen pro Objekt.
- * Genau ein Datensatz pro property_id + year.
- */
-export type YearlyIncomeEntry = {
-  id: string;
-  property_id: string;
-  year: number;
-  annual_rent: number;
-  other_income: number;
+  id?: string;
+  propertyId?: string;
+  property_id?: string;
+  coldRent?: number;
+  parkingIncome?: number;
+  otherIncome?: number;
+  other_income?: number;
+  vacancyRate?: number;
+  annualRent?: number;
+  annual_rent?: number;
+  annualGrossIncome?: number;
   source?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+  created_at?: string | undefined;
+  updated_at?: string | undefined;
+  [key: string]: any;
 };
 
-/**
- * Zentrale berechnete Finanzreihe pro Jahr.
- * Grundlage für Charts, Aggregationen und Risiko-Logik.
- */
+export type YearlyIncomeEntry = {
+  id?: string;
+  propertyId?: string;
+  property_id?: string;
+  year: number;
+  amount?: number;
+  annual_rent?: number;
+  other_income?: number;
+  category?: string;
+  note?: string;
+  source?: string | null;
+  created_at?: string | undefined;
+  updated_at?: string | undefined;
+  [key: string]: any;
+};
+
+export type YearlyCapexEntry = {
+  id?: string;
+  propertyId?: string;
+  property_id?: string;
+  year: number;
+  amount?: number;
+  category?: string;
+  note?: string;
+  source?: string | null;
+  [key: string]: any;
+};
+
+export type DbYearlyCapexEntry = {
+  id?: string;
+  property_id?: string;
+  year: number;
+  amount?: number;
+  category?: string;
+  note?: string;
+  source?: string | null;
+  [key: string]: any;
+};
+
+export type YearlyLedgerEntry = {
+  id?: string;
+  propertyId?: string;
+  property_id?: string;
+  year: number;
+  amount?: number;
+  interest?: number;
+  principal?: number;
+  balance?: number;
+  category?: string;
+  note?: string;
+  source?: string | null;
+  [key: string]: any;
+};
+
+export type SimulationInput = {
+  property?: any;
+  ledger?: YearlyLedgerEntry[];
+  income?: PropertyIncome | null;
+  yearlyIncome?: YearlyIncomeEntry[];
+  yearlyCapex?: YearlyCapexEntry[];
+  riskLevel?: RiskLevel;
+  [key: string]: any;
+};
+
+export type BaseFinanceMetrics = {
+  grossIncome?: number;
+  netIncome?: number;
+  cashflow?: number;
+  totalCapex?: number;
+  totalExpenses?: number;
+  vacancyCost?: number;
+  totalInterest?: number;
+  totalPrincipal?: number;
+  avgInterestPerYear?: number;
+  avgPrincipalPerYear?: number;
+  currentRemainingBalance?: number;
+  estimatedRemainingYears?: number | null;
+  estimatedDebtFreeYear?: number | null;
+  dscr?: number | null;
+  debtService?: number;
+  annualIncome?: number;
+  riskLevel?: string;
+  [key: string]: any;
+};
+
 export type YearlyFinanceMetrics = {
   year: number;
-
-  income: number;
-
-  interest: number;
-  principal: number;
-  debtService: number;
-
-  cashflow: number;
-  dscr: number | null;
-
-  balance: number;
+  income?: number;
+  expenses?: number;
+  cashflow?: number;
+  capex?: number;
+  interest?: number;
+  principal?: number;
+  debtService?: number;
+  dscr?: number | null;
+  balance?: number;
+  [key: string]: any;
 };
 
-/**
- * Aggregierte Kennzahlen für die Objektansicht.
- * Werden aus der Finanzzeitreihe abgeleitet.
- */
-export type BaseFinanceMetrics = {
-  totalInterest: number;
-  totalPrincipal: number;
-
-  avgInterestPerYear: number;
-  avgPrincipalPerYear: number;
-
-  currentRemainingBalance: number;
-  estimatedRemainingYears: number | null;
-  estimatedDebtFreeYear: number | null;
-
-  annualIncome: number;
-  debtService: number;
-  cashflow: number;
-  dscr: number | null;
-
-  riskLevel: RiskLevel;
-};
-
-/**
- * Input für vereinfachte Szenario-Simulationen.
- */
-export type SimulationInput = {
-  rentDeltaPct: number;
-  interestDeltaPct: number;
-  principalDeltaPct: number;
-};
-
-/**
- * Ergebnis einer vereinfachten Szenario-Simulation.
- */
 export type SimulationResult = {
-  annualIncome: number;
-
-  avgInterestPerYear: number;
-  avgPrincipalPerYear: number;
-
-  debtService: number;
-  cashflow: number;
-  dscr: number | null;
-
-  riskLevel: RiskLevel;
-
-  estimatedRemainingYears: number | null;
-  estimatedDebtFreeYear: number | null;
-
-  deltaCashflow: number;
-  deltaDscr: number | null;
-  deltaRemainingYears: number | null;
-};
-
-/**
- * Darstellungsmodell für Finance-Charts.
- * DSCR ist nullable, weil er fachlich nicht immer berechenbar ist.
- */
-export type FinanceChartDataPoint = {
-  year: number;
-  balance: number;
-  cashflow: number;
-  dscr: number | null;
+  summary?: BaseFinanceMetrics;
+  yearlyMetrics?: YearlyFinanceMetrics[];
+  chartData?: FinanceChartDataPoint[];
+  capex?: number;
+  annualIncome?: number;
+  avgInterestPerYear?: number;
+  avgPrincipalPerYear?: number;
+  debtService?: number;
+  cashflow?: number;
+  dscr?: number | null;
+  riskLevel?: string;
+  estimatedRemainingYears?: number | null;
+  estimatedDebtFreeYear?: number | null;
+  deltaCashflow?: number;
+  deltaDscr?: number | null;
+  deltaRemainingYears?: number | null;
+  [key: string]: any;
 };
