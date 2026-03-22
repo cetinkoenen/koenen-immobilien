@@ -1,6 +1,9 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/((?!assets/|.*\\..*).*)",
+      "destination": "/"
+    }
   ],
   "headers": [
     {
