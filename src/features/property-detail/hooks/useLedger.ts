@@ -1,183 +1,135 @@
-import { useCallback, useMemo, useState } from "react";
-import { useAsyncResource } from "./useAsyncResource";
-import type { MutationState } from "./types";
+import { useCallback, useEffect, useState } from "react";
+import { ledgerService, type CreateYearlyLedgerEntryInput, type UpdateYearlyLedgerEntryInput, type YearlyLedgerEntry } from "@/services/ledgerService";
 
-// An Projekt anpassen
-import { ledgerService } from "@/services/ledgerService";
-import type { LedgerEntry, CreateLedgerEntryInput, UpdateLedgerEntryInput } from "@/types/ledger";
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Ein unbekannter Fehler ist aufgetreten.";
-}
-
-function sortLedgerEntries(entries: LedgerEntry[]): LedgerEntry[] {
-  return [...entries].sort((a, b) => {
-    const dateA = new Date(a.bookingDate ?? a.date).getTime();
-    const dateB = new Date(b.bookingDate ?? b.date).getTime();
-    return dateB - dateA;
-  });
-}
-
-interface UseLedgerResult {
-  entries: LedgerEntry[];
-  loading: boolean;
-  error: string | null;
+export interface UseLedgerResult {
+  entries: YearlyLedgerEntry[];
+  isLoading: boolean;
+  error: Error | null;
   reload: () => Promise<void>;
-
-  createEntry: (input: CreateLedgerEntryInput) => Promise<void>;
-  updateEntry: (entryId: string, input: UpdateLedgerEntryInput) => Promise<void>;
-  deleteEntry: (entryId: string) => Promise<void>;
-
-  createState: MutationState;
-  updateState: MutationState;
-  deleteState: MutationState;
+  createEntry: (input: Omit<CreateYearlyLedgerEntryInput, "propertyId">) => Promise<YearlyLedgerEntry>;
+  updateEntry: (id: string, input: UpdateYearlyLedgerEntryInput) => Promise<YearlyLedgerEntry>;
+  deleteEntry: (id: string) => Promise<void>;
 }
 
-export function useLedger(propertyId?: string): UseLedgerResult {
-  const [createState, setCreateState] = useState<MutationState>({
-    loading: false,
-    error: null,
-    success: false,
-  });
+function normalizeError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
 
-  const [updateState, setUpdateState] = useState<MutationState>({
-    loading: false,
-    error: null,
-    success: false,
-  });
+  if (typeof error === "string" && error.trim()) {
+    return new Error(error);
+  }
 
-  const [deleteState, setDeleteState] = useState<MutationState>({
-    loading: false,
-    error: null,
-    success: false,
-  });
+  return new Error(fallback);
+}
 
-  const fetchLedgerEntries = useCallback(async (): Promise<LedgerEntry[]> => {
-    if (!propertyId) return [];
-    const result = await ledgerService.getByPropertyId(propertyId);
-    return sortLedgerEntries(result);
+export function useLedger(propertyId: string | null): UseLedgerResult {
+  const [entries, setEntries] = useState<YearlyLedgerEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!propertyId) {
+      setEntries([]);
+      setError(new Error("Keine propertyId vorhanden."));
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await ledgerService.getByPropertyId(propertyId);
+      setEntries(result);
+    } catch (err) {
+      setEntries([]);
+      setError(normalizeError(err, "Ledger konnte nicht geladen werden."));
+    } finally {
+      setIsLoading(false);
+    }
   }, [propertyId]);
 
-  const {
-    data,
-    loading,
-    error,
-    reload,
-  } = useAsyncResource(fetchLedgerEntries, [fetchLedgerEntries], {
-    enabled: Boolean(propertyId),
-    initialData: [],
-  });
-
-  const entries = useMemo(() => data ?? [], [data]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const createEntry = useCallback(
-    async (input: CreateLedgerEntryInput) => {
+    async (
+      input: Omit<CreateYearlyLedgerEntryInput, "propertyId">
+    ): Promise<YearlyLedgerEntry> => {
       if (!propertyId) {
         throw new Error("Keine propertyId vorhanden.");
       }
 
-      setCreateState({
-        loading: true,
-        error: null,
-        success: false,
-      });
+      setError(null);
 
       try {
-        await ledgerService.create({
-          ...input,
+        const created = await ledgerService.create({
           propertyId,
+          ...input,
         });
 
-        setCreateState({
-          loading: false,
-          error: null,
-          success: true,
-        });
+        setEntries((prev) =>
+          [...prev, created].sort((a, b) => a.year - b.year)
+        );
 
-        await reload();
-      } catch (error) {
-        setCreateState({
-          loading: false,
-          error: getErrorMessage(error),
-          success: false,
-        });
-        throw error;
+        return created;
+      } catch (err) {
+        const normalized = normalizeError(err, "Ledger-Eintrag konnte nicht erstellt werden.");
+        setError(normalized);
+        throw normalized;
       }
     },
-    [propertyId, reload]
+    [propertyId]
   );
 
   const updateEntry = useCallback(
-    async (entryId: string, input: UpdateLedgerEntryInput) => {
-      setUpdateState({
-        loading: true,
-        error: null,
-        success: false,
-      });
+    async (
+      id: string,
+      input: UpdateYearlyLedgerEntryInput
+    ): Promise<YearlyLedgerEntry> => {
+      setError(null);
 
       try {
-        await ledgerService.update(entryId, input);
+        const updated = await ledgerService.update(id, input);
 
-        setUpdateState({
-          loading: false,
-          error: null,
-          success: true,
-        });
+        setEntries((prev) =>
+          prev
+            .map((entry) => (entry.id === id ? updated : entry))
+            .sort((a, b) => a.year - b.year)
+        );
 
-        await reload();
-      } catch (error) {
-        setUpdateState({
-          loading: false,
-          error: getErrorMessage(error),
-          success: false,
-        });
-        throw error;
+        return updated;
+      } catch (err) {
+        const normalized = normalizeError(err, "Ledger-Eintrag konnte nicht aktualisiert werden.");
+        setError(normalized);
+        throw normalized;
       }
     },
-    [reload]
+    []
   );
 
-  const deleteEntry = useCallback(
-    async (entryId: string) => {
-      setDeleteState({
-        loading: true,
-        error: null,
-        success: false,
-      });
+  const deleteEntry = useCallback(async (id: string): Promise<void> => {
+    setError(null);
 
-      try {
-        await ledgerService.remove(entryId);
-
-        setDeleteState({
-          loading: false,
-          error: null,
-          success: true,
-        });
-
-        await reload();
-      } catch (error) {
-        setDeleteState({
-          loading: false,
-          error: getErrorMessage(error),
-          success: false,
-        });
-        throw error;
-      }
-    },
-    [reload]
-  );
+    try {
+      await ledgerService.remove(id);
+      setEntries((prev) => prev.filter((entry) => entry.id !== id));
+    } catch (err) {
+      const normalized = normalizeError(err, "Ledger-Eintrag konnte nicht gelöscht werden.");
+      setError(normalized);
+      throw normalized;
+    }
+  }, []);
 
   return {
     entries,
-    loading,
+    isLoading,
     error,
     reload,
     createEntry,
     updateEntry,
     deleteEntry,
-    createState,
-    updateState,
-    deleteState,
   };
 }

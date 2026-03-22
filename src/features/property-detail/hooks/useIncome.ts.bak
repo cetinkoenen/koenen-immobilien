@@ -1,0 +1,461 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { propertyIncomeService } from "../../../services/propertyIncomeService";
+import { yearlyIncomeService } from "../../../services/yearlyIncomeService";
+import { yearlyCapexService } from "../../../services/yearlyCapexService";
+
+type NullableNumber = number | null;
+type NullableString = string | null;
+
+export type PropertyIncome = {
+  id: string;
+  property_id: string;
+  rent_actual: NullableNumber;
+  rent_target: NullableNumber;
+  vacancy_rate: NullableNumber;
+  other_income: NullableNumber;
+  notes: NullableString;
+  created_at: NullableString;
+  updated_at: NullableString;
+};
+
+export type YearlyIncome = {
+  id: string;
+  property_id: string;
+  year: number;
+  gross_rent: NullableNumber;
+  net_rent: NullableNumber;
+  vacancy_cost: NullableNumber;
+  operating_expenses: NullableNumber;
+  other_income: NullableNumber;
+  notes: NullableString;
+  created_at: NullableString;
+  updated_at: NullableString;
+};
+
+export type YearlyCapex = {
+  id: string;
+  property_id: string;
+  year: number;
+  amount: NullableNumber;
+  category: NullableString;
+  description: NullableString;
+  created_at: NullableString;
+  updated_at: NullableString;
+};
+
+export type IncomeBundle = {
+  propertyIncome: PropertyIncome | null;
+  yearlyIncome: YearlyIncome[];
+  yearlyCapex: YearlyCapex[];
+};
+
+export type PropertyIncomeCreateInput = Omit<
+  PropertyIncome,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type PropertyIncomeUpdateInput = Partial<
+  Omit<PropertyIncome, "id" | "property_id" | "created_at" | "updated_at">
+>;
+
+export type YearlyIncomeCreateInput = Omit<
+  YearlyIncome,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type YearlyIncomeUpdateInput = Partial<
+  Omit<YearlyIncome, "id" | "property_id" | "created_at" | "updated_at">
+>;
+
+export type YearlyCapexCreateInput = Omit<
+  YearlyCapex,
+  "id" | "created_at" | "updated_at"
+>;
+
+export type YearlyCapexUpdateInput = Partial<
+  Omit<YearlyCapex, "id" | "property_id" | "created_at" | "updated_at">
+>;
+
+type UseIncomeResult = {
+  data: IncomeBundle;
+  isLoading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+
+  createPropertyIncome: (input: PropertyIncomeCreateInput) => Promise<PropertyIncome>;
+  updatePropertyIncome: (
+    id: string,
+    input: PropertyIncomeUpdateInput
+  ) => Promise<PropertyIncome>;
+  deletePropertyIncome: (id: string) => Promise<void>;
+
+  createYearlyIncome: (input: YearlyIncomeCreateInput) => Promise<YearlyIncome>;
+  updateYearlyIncome: (
+    id: string,
+    input: YearlyIncomeUpdateInput
+  ) => Promise<YearlyIncome>;
+  deleteYearlyIncome: (id: string) => Promise<void>;
+
+  createCapex: (input: YearlyCapexCreateInput) => Promise<YearlyCapex>;
+  updateCapex: (id: string, input: YearlyCapexUpdateInput) => Promise<YearlyCapex>;
+  deleteCapex: (id: string) => Promise<void>;
+};
+
+const isUuid = (value: string): boolean => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+};
+
+const toNumberOrNull = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const toStringOrNull = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  return str.length > 0 ? str : null;
+};
+
+const toYearOrFallback = (
+  value: unknown,
+  fallback = new Date().getFullYear()
+): number => {
+  const num = Number(value);
+  return Number.isInteger(num) && num >= 1900 && num <= 3000 ? num : fallback;
+};
+
+const normalizePropertyIncome = (row: any): PropertyIncome => ({
+  id: String(row?.id ?? ""),
+  property_id: String(row?.property_id ?? ""),
+  rent_actual: toNumberOrNull(row?.rent_actual),
+  rent_target: toNumberOrNull(row?.rent_target),
+  vacancy_rate: toNumberOrNull(row?.vacancy_rate),
+  other_income: toNumberOrNull(row?.other_income),
+  notes: toStringOrNull(row?.notes),
+  created_at: toStringOrNull(row?.created_at),
+  updated_at: toStringOrNull(row?.updated_at),
+});
+
+const normalizeYearlyIncome = (row: any): YearlyIncome => ({
+  id: String(row?.id ?? ""),
+  property_id: String(row?.property_id ?? ""),
+  year: toYearOrFallback(row?.year),
+  gross_rent: toNumberOrNull(row?.gross_rent),
+  net_rent: toNumberOrNull(row?.net_rent),
+  vacancy_cost: toNumberOrNull(row?.vacancy_cost),
+  operating_expenses: toNumberOrNull(row?.operating_expenses),
+  other_income: toNumberOrNull(row?.other_income),
+  notes: toStringOrNull(row?.notes),
+  created_at: toStringOrNull(row?.created_at),
+  updated_at: toStringOrNull(row?.updated_at),
+});
+
+const normalizeYearlyCapex = (row: any): YearlyCapex => ({
+  id: String(row?.id ?? ""),
+  property_id: String(row?.property_id ?? ""),
+  year: toYearOrFallback(row?.year),
+  amount: toNumberOrNull(row?.amount),
+  category: toStringOrNull(row?.category),
+  description: toStringOrNull(row?.description),
+  created_at: toStringOrNull(row?.created_at),
+  updated_at: toStringOrNull(row?.updated_at),
+});
+
+const EMPTY_DATA: IncomeBundle = {
+  propertyIncome: null,
+  yearlyIncome: [],
+  yearlyCapex: [],
+};
+
+export function useIncome(propertyId: string | undefined | null): UseIncomeResult {
+  const [data, setData] = useState<IncomeBundle>(EMPTY_DATA);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestIdRef = useRef(0);
+
+  const validPropertyId = useMemo(() => {
+    const value = String(propertyId ?? "").trim();
+    return isUuid(value) ? value : null;
+  }, [propertyId]);
+
+  const load = useCallback(async () => {
+    if (!validPropertyId) {
+      setData(EMPTY_DATA);
+      setError(propertyId ? "Ungültige propertyId (UUID erwartet)." : null);
+      setIsLoading(false);
+      return;
+    }
+
+    const requestId = ++requestIdRef.current;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [propertyIncomeRaw, yearlyIncomeRaw, yearlyCapexRaw] = await Promise.all([
+        propertyIncomeService.getByPropertyId(validPropertyId),
+        yearlyIncomeService.getByPropertyId(validPropertyId),
+        yearlyCapexService.getByPropertyId(validPropertyId),
+      ]);
+
+      if (requestId !== requestIdRef.current) return;
+
+      const nextData: IncomeBundle = {
+        propertyIncome: propertyIncomeRaw
+          ? normalizePropertyIncome(propertyIncomeRaw)
+          : null,
+        yearlyIncome: Array.isArray(yearlyIncomeRaw)
+          ? yearlyIncomeRaw.map(normalizeYearlyIncome).sort((a, b) => a.year - b.year)
+          : [],
+        yearlyCapex: Array.isArray(yearlyCapexRaw)
+          ? yearlyCapexRaw.map(normalizeYearlyCapex).sort((a, b) => a.year - b.year)
+          : [],
+      };
+
+      setData(nextData);
+    } catch (err: any) {
+      if (requestId !== requestIdRef.current) return;
+      setError(err?.message ?? "Fehler beim Laden der Income-Daten.");
+      setData(EMPTY_DATA);
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [propertyId, validPropertyId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const reload = useCallback(async () => {
+    await load();
+  }, [load]);
+
+  const createPropertyIncome = useCallback(
+    async (input: PropertyIncomeCreateInput): Promise<PropertyIncome> => {
+      if (!validPropertyId) {
+        throw new Error("Ungültige propertyId.");
+      }
+
+      const payload: PropertyIncomeCreateInput = {
+        property_id: validPropertyId,
+        rent_actual: toNumberOrNull(input.rent_actual),
+        rent_target: toNumberOrNull(input.rent_target),
+        vacancy_rate: toNumberOrNull(input.vacancy_rate),
+        other_income: toNumberOrNull(input.other_income),
+        notes: toStringOrNull(input.notes),
+      };
+
+      const created = await propertyIncomeService.create(payload);
+      const normalized = normalizePropertyIncome(created);
+
+      setData((prev) => ({
+        ...prev,
+        propertyIncome: normalized,
+      }));
+
+      return normalized;
+    },
+    [validPropertyId]
+  );
+
+  const updatePropertyIncome = useCallback(
+    async (id: string, input: PropertyIncomeUpdateInput): Promise<PropertyIncome> => {
+      const payload: PropertyIncomeUpdateInput = {
+        ...(input.rent_actual !== undefined
+          ? { rent_actual: toNumberOrNull(input.rent_actual) }
+          : {}),
+        ...(input.rent_target !== undefined
+          ? { rent_target: toNumberOrNull(input.rent_target) }
+          : {}),
+        ...(input.vacancy_rate !== undefined
+          ? { vacancy_rate: toNumberOrNull(input.vacancy_rate) }
+          : {}),
+        ...(input.other_income !== undefined
+          ? { other_income: toNumberOrNull(input.other_income) }
+          : {}),
+        ...(input.notes !== undefined
+          ? { notes: toStringOrNull(input.notes) }
+          : {}),
+      };
+
+      const updated = await propertyIncomeService.update(id, payload);
+      const normalized = normalizePropertyIncome(updated);
+
+      setData((prev) => ({
+        ...prev,
+        propertyIncome: normalized,
+      }));
+
+      return normalized;
+    },
+    []
+  );
+
+  const deletePropertyIncome = useCallback(async (id: string): Promise<void> => {
+    await propertyIncomeService.remove(id);
+
+    setData((prev) => ({
+      ...prev,
+      propertyIncome: prev.propertyIncome?.id === id ? null : prev.propertyIncome,
+    }));
+  }, []);
+
+  const createYearlyIncome = useCallback(
+    async (input: YearlyIncomeCreateInput): Promise<YearlyIncome> => {
+      if (!validPropertyId) {
+        throw new Error("Ungültige propertyId.");
+      }
+
+      const payload: YearlyIncomeCreateInput = {
+        property_id: validPropertyId,
+        year: toYearOrFallback(input.year),
+        gross_rent: toNumberOrNull(input.gross_rent),
+        net_rent: toNumberOrNull(input.net_rent),
+        vacancy_cost: toNumberOrNull(input.vacancy_cost),
+        operating_expenses: toNumberOrNull(input.operating_expenses),
+        other_income: toNumberOrNull(input.other_income),
+        notes: toStringOrNull(input.notes),
+      };
+
+      const created = await yearlyIncomeService.create(payload);
+      const normalized = normalizeYearlyIncome(created);
+
+      setData((prev) => ({
+        ...prev,
+        yearlyIncome: [...prev.yearlyIncome, normalized].sort((a, b) => a.year - b.year),
+      }));
+
+      return normalized;
+    },
+    [validPropertyId]
+  );
+
+  const updateYearlyIncome = useCallback(
+    async (id: string, input: YearlyIncomeUpdateInput): Promise<YearlyIncome> => {
+      const payload: YearlyIncomeUpdateInput = {
+        ...(input.year !== undefined ? { year: toYearOrFallback(input.year) } : {}),
+        ...(input.gross_rent !== undefined
+          ? { gross_rent: toNumberOrNull(input.gross_rent) }
+          : {}),
+        ...(input.net_rent !== undefined
+          ? { net_rent: toNumberOrNull(input.net_rent) }
+          : {}),
+        ...(input.vacancy_cost !== undefined
+          ? { vacancy_cost: toNumberOrNull(input.vacancy_cost) }
+          : {}),
+        ...(input.operating_expenses !== undefined
+          ? { operating_expenses: toNumberOrNull(input.operating_expenses) }
+          : {}),
+        ...(input.other_income !== undefined
+          ? { other_income: toNumberOrNull(input.other_income) }
+          : {}),
+        ...(input.notes !== undefined ? { notes: toStringOrNull(input.notes) } : {}),
+      };
+
+      const updated = await yearlyIncomeService.update(id, payload);
+      const normalized = normalizeYearlyIncome(updated);
+
+      setData((prev) => ({
+        ...prev,
+        yearlyIncome: prev.yearlyIncome
+          .map((item) => (item.id === id ? normalized : item))
+          .sort((a, b) => a.year - b.year),
+      }));
+
+      return normalized;
+    },
+    []
+  );
+
+  const deleteYearlyIncome = useCallback(async (id: string): Promise<void> => {
+    await yearlyIncomeService.remove(id);
+
+    setData((prev) => ({
+      ...prev,
+      yearlyIncome: prev.yearlyIncome.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const createCapex = useCallback(
+    async (input: YearlyCapexCreateInput): Promise<YearlyCapex> => {
+      if (!validPropertyId) {
+        throw new Error("Ungültige propertyId.");
+      }
+
+      const payload: YearlyCapexCreateInput = {
+        property_id: validPropertyId,
+        year: toYearOrFallback(input.year),
+        amount: toNumberOrNull(input.amount),
+        category: toStringOrNull(input.category),
+        description: toStringOrNull(input.description),
+      };
+
+      const created = await yearlyCapexService.create(payload);
+      const normalized = normalizeYearlyCapex(created);
+
+      setData((prev) => ({
+        ...prev,
+        yearlyCapex: [...prev.yearlyCapex, normalized].sort((a, b) => a.year - b.year),
+      }));
+
+      return normalized;
+    },
+    [validPropertyId]
+  );
+
+  const updateCapex = useCallback(
+    async (id: string, input: YearlyCapexUpdateInput): Promise<YearlyCapex> => {
+      const payload: YearlyCapexUpdateInput = {
+        ...(input.year !== undefined ? { year: toYearOrFallback(input.year) } : {}),
+        ...(input.amount !== undefined ? { amount: toNumberOrNull(input.amount) } : {}),
+        ...(input.category !== undefined
+          ? { category: toStringOrNull(input.category) }
+          : {}),
+        ...(input.description !== undefined
+          ? { description: toStringOrNull(input.description) }
+          : {}),
+      };
+
+      const updated = await yearlyCapexService.update(id, payload);
+      const normalized = normalizeYearlyCapex(updated);
+
+      setData((prev) => ({
+        ...prev,
+        yearlyCapex: prev.yearlyCapex
+          .map((item) => (item.id === id ? normalized : item))
+          .sort((a, b) => a.year - b.year),
+      }));
+
+      return normalized;
+    },
+    []
+  );
+
+  const deleteCapex = useCallback(async (id: string): Promise<void> => {
+    await yearlyCapexService.remove(id);
+
+    setData((prev) => ({
+      ...prev,
+      yearlyCapex: prev.yearlyCapex.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  return {
+    data,
+    isLoading,
+    error,
+    reload,
+    createPropertyIncome,
+    updatePropertyIncome,
+    deletePropertyIncome,
+    createYearlyIncome,
+    updateYearlyIncome,
+    deleteYearlyIncome,
+    createCapex,
+    updateCapex,
+    deleteCapex,
+  };
+}
