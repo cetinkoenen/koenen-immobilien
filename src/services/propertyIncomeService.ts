@@ -1,4 +1,3 @@
-// src/services/propertyIncomeService.ts
 import { supabase } from "@/lib/supabase";
 import type { PropertyIncome } from "@/types/propertyIncome";
 
@@ -101,6 +100,17 @@ export const propertyIncomeService = {
     }
 
     return normalizePropertyIncome(data as PropertyIncomeRow);
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase
+      .from("property_income")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
   },
 
   async upsertByPropertyId(
