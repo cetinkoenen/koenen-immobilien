@@ -1,5 +1,3 @@
-// src/services/financeService.ts
-
 import type {
   BaseFinanceMetrics,
   FinanceChartDataPoint,
@@ -14,7 +12,7 @@ import type {
 } from "@/types/finance";
 
 function sum(values: number[]): number {
-  return values.reduce((acc, value) => acc + value, 0);
+  return values.reduce((total, value) => total + value, 0);
 }
 
 function average(values: number[]): number {
@@ -37,22 +35,18 @@ function sortYearlyCapexAsc(entries: YearlyCapexEntry[]): YearlyCapexEntry[] {
   return [...entries].sort((a, b) => a.year - b.year);
 }
 
-function getLatestLedgerYear(entries: YearlyLedgerEntry[]): number | null {
-  if (entries.length === 0) {
-    return null;
-  }
+function getLastItem<T>(items: T[]): T | null {
+  return items.length > 0 ? items[items.length - 1] ?? null : null;
+}
 
-  const sorted = sortLedgerEntriesAsc(entries);
-  return sorted[sorted.length - 1]?.year ?? null;
+function getLatestLedgerYear(entries: YearlyLedgerEntry[]): number | null {
+  const latest = getLastItem(sortLedgerEntriesAsc(entries));
+  return latest?.year ?? null;
 }
 
 function getLatestMetricsYear(entries: YearlyFinanceMetrics[]): number | null {
-  if (entries.length === 0) {
-    return null;
-  }
-
-  const sorted = [...entries].sort((a, b) => a.year - b.year);
-  return sorted[sorted.length - 1]?.year ?? null;
+  const latest = getLastItem([...entries].sort((a, b) => a.year - b.year));
+  return latest?.year ?? null;
 }
 
 function getLatestRemainingBalance(entries: YearlyLedgerEntry[]): number {
@@ -60,11 +54,11 @@ function getLatestRemainingBalance(entries: YearlyLedgerEntry[]): number {
     return 0;
   }
 
-  const sorted = sortLedgerEntriesAsc(entries);
+  const sortedDesc = [...sortLedgerEntriesAsc(entries)].reverse();
 
-  const latestWithBalance = [...sorted]
-    .reverse()
-    .find((entry) => entry.balance !== null && entry.balance !== undefined);
+  const latestWithBalance = sortedDesc.find(
+    (entry) => entry.balance !== null && entry.balance !== undefined
+  );
 
   return latestWithBalance?.balance ?? 0;
 }
@@ -91,14 +85,6 @@ function getAnnualCapexFromYearlyCapex(capex?: YearlyCapexEntry | null): number 
   }
 
   return capex.amount ?? 0;
-}
-
-function getLastItem<T>(items: T[]): T | null {
-  if (items.length === 0) {
-    return null;
-  }
-
-  return items[items.length - 1] ?? null;
 }
 
 export function getRiskLevel(dscr: number | null): RiskLevel {
@@ -132,7 +118,7 @@ export function buildFallbackYearlyIncomeFromLedger(
 
   return sortLedgerEntriesAsc(ledgerEntries).map((entry) => ({
     id: `fallback-${entry.propertyId}-${entry.year}`,
-    property_id: entry.propertyId,
+    property_id: entry.propertyId ?? "",
     year: entry.year,
     annual_rent: annualRent,
     other_income: otherIncome,
@@ -174,7 +160,6 @@ export function calculateYearlyFinanceMetrics(
       : fallbackAnnualIncome;
 
     const capex = getAnnualCapexFromYearlyCapex(yearlyCapex);
-
     const interest = ledgerEntry.interest ?? 0;
     const principal = ledgerEntry.principal ?? 0;
     const debtService = interest + principal;
@@ -200,15 +185,18 @@ export function aggregateFinanceMetrics(
   ledgerEntries: YearlyLedgerEntry[] = []
 ): BaseFinanceMetrics {
   const normalizedMetrics = [...yearlyMetrics].sort((a, b) => a.year - b.year);
-
-  const totalInterest = sum(normalizedMetrics.map((entry) => entry.interest));
-  const totalPrincipal = sum(normalizedMetrics.map((entry) => entry.principal));
-  const totalCapex = sum(normalizedMetrics.map((entry) => entry.capex));
-
-  const avgInterestPerYear = average(normalizedMetrics.map((entry) => entry.interest));
-  const avgPrincipalPerYear = average(normalizedMetrics.map((entry) => entry.principal));
-
   const latestMetric = getLastItem(normalizedMetrics);
+
+  const totalInterest = sum(normalizedMetrics.map((entry) => entry.interest ?? 0));
+  const totalPrincipal = sum(normalizedMetrics.map((entry) => entry.principal ?? 0));
+  const totalCapex = sum(normalizedMetrics.map((entry) => entry.capex ?? 0));
+
+  const avgInterestPerYear = average(
+    normalizedMetrics.map((entry) => entry.interest ?? 0)
+  );
+  const avgPrincipalPerYear = average(
+    normalizedMetrics.map((entry) => entry.principal ?? 0)
+  );
 
   const annualIncome = latestMetric?.income ?? 0;
   const debtService = latestMetric?.debtService ?? 0;
@@ -225,8 +213,7 @@ export function aggregateFinanceMetrics(
 
   const latestYear =
     getLatestMetricsYear(normalizedMetrics) ??
-    getLatestLedgerYear(ledgerEntries) ??
-    null;
+    getLatestLedgerYear(ledgerEntries);
 
   const estimatedDebtFreeYear =
     latestYear !== null && estimatedRemainingYears !== null
@@ -272,16 +259,26 @@ export function simulateFinanceScenario(
   baseMetrics: BaseFinanceMetrics,
   input: SimulationInput
 ): SimulationResult {
+  const baseAnnualIncome = baseMetrics.annualIncome ?? 0;
+  const baseAvgInterestPerYear = baseMetrics.avgInterestPerYear ?? 0;
+  const baseAvgPrincipalPerYear = baseMetrics.avgPrincipalPerYear ?? 0;
+  const baseTotalCapex = baseMetrics.totalCapex ?? 0;
+  const baseCurrentRemainingBalance = baseMetrics.currentRemainingBalance ?? 0;
+  const baseEstimatedDebtFreeYear = baseMetrics.estimatedDebtFreeYear ?? null;
+  const baseEstimatedRemainingYears = baseMetrics.estimatedRemainingYears ?? null;
+  const baseCashflow = baseMetrics.cashflow ?? 0;
+  const baseDscr = baseMetrics.dscr ?? null;
+
   const annualIncome =
-    baseMetrics.annualIncome * (1 + input.rentDeltaPct / 100);
+    baseAnnualIncome * (1 + input.rentDeltaPct / 100);
 
   const avgInterestPerYear =
-    baseMetrics.avgInterestPerYear * (1 + input.interestDeltaPct / 100);
+    baseAvgInterestPerYear * (1 + input.interestDeltaPct / 100);
 
   const avgPrincipalPerYear =
-    baseMetrics.avgPrincipalPerYear * (1 + input.principalDeltaPct / 100);
+    baseAvgPrincipalPerYear * (1 + input.principalDeltaPct / 100);
 
-  const capex = baseMetrics.totalCapex;
+  const capex = baseTotalCapex;
   const debtService = avgInterestPerYear + avgPrincipalPerYear;
   const cashflow = annualIncome - debtService - capex;
   const dscr = debtService > 0 ? annualIncome / debtService : null;
@@ -289,15 +286,15 @@ export function simulateFinanceScenario(
 
   const estimatedRemainingYears =
     avgPrincipalPerYear > 0
-      ? baseMetrics.currentRemainingBalance / avgPrincipalPerYear
+      ? baseCurrentRemainingBalance / avgPrincipalPerYear
       : null;
 
   const estimatedDebtFreeYear =
-    estimatedRemainingYears !== null &&
-    baseMetrics.estimatedDebtFreeYear !== null &&
-    baseMetrics.estimatedRemainingYears !== null
-      ? baseMetrics.estimatedDebtFreeYear +
-        Math.ceil(estimatedRemainingYears - baseMetrics.estimatedRemainingYears)
+    baseEstimatedDebtFreeYear !== null &&
+    baseEstimatedRemainingYears !== null &&
+    estimatedRemainingYears !== null
+      ? baseEstimatedDebtFreeYear +
+        Math.ceil(estimatedRemainingYears - baseEstimatedRemainingYears)
       : null;
 
   return {
@@ -311,15 +308,15 @@ export function simulateFinanceScenario(
     riskLevel,
     estimatedRemainingYears,
     estimatedDebtFreeYear,
-    deltaCashflow: cashflow - baseMetrics.cashflow,
+    deltaCashflow: cashflow - baseCashflow,
     deltaDscr:
-      dscr !== null && baseMetrics.dscr !== null
-        ? dscr - baseMetrics.dscr
+      dscr !== null && baseDscr !== null
+        ? dscr - baseDscr
         : null,
     deltaRemainingYears:
       estimatedRemainingYears !== null &&
-      baseMetrics.estimatedRemainingYears !== null
-        ? estimatedRemainingYears - baseMetrics.estimatedRemainingYears
+      baseEstimatedRemainingYears !== null
+        ? estimatedRemainingYears - baseEstimatedRemainingYears
         : null,
   };
 }
