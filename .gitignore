@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.vercel
+.tmp_access_token
+*.bak
+backups/
+*.zip
+.env*.local

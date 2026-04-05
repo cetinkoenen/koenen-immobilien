@@ -1,0 +1,69 @@
+/* Root Container der gesamten App */
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Optionale Utility-Klasse für zentrierte Seitenlayouts */
+
+.app-container {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+/* Karten-Layout (optional nutzbar für Panels) */
+
+.app-card {
+  background: white;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  padding: 1.5rem;
+}
+
+/* Buttons (fallback styling falls keine Tailwind Klassen gesetzt sind) */
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Tabellen sollen sich korrekt verhalten */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  font-weight: 600;
+  text-align: left;
+}
+
+td,
+th {
+  vertical-align: middle;
+}
+
+/* Form Inputs */
+
+input,
+select {
+  font: inherit;
+}
+
+/* Bilder und Medien */
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
