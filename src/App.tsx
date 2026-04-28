@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   NavLink,
   Navigate,
@@ -9,6 +9,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
+import { Menu, X } from "lucide-react";
 
 import PropertyDetailPage from "./features/property-detail/PropertyDetailPage";
 import EntryAdd from "./pages/EntryAdd";
@@ -18,6 +19,7 @@ import Portfolio from "./pages/Portfolio";
 import Auswertung from "./pages/Auswertung";
 import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
+import Mietuebersicht from "./pages/Mietuebersicht";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
 import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
@@ -31,6 +33,9 @@ import RequireAuthMFA from "./components/RequireAuthMFA";
 import { useAuth } from "./auth/AuthProvider";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
+import logo from "./assets/koenen-logo.svg";
+import { AppDataProvider } from "./state/AppDataContext";
+import "./App.css";
 
 function NotFoundPage() {
   return (
@@ -46,11 +51,11 @@ function navLinkStyle(isActive: boolean): CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "10px 14px",
-    borderRadius: 12,
+    padding: "11px 16px",
+    borderRadius: 16,
     textDecoration: "none",
     fontWeight: 800,
-    fontSize: 14,
+    fontSize: 15,
     transition: "all 120ms ease",
     border: isActive ? "1px solid #c7d2fe" : "1px solid #cbd5e1",
     background: isActive ? "#eef2ff" : "#ffffff",
@@ -68,7 +73,7 @@ function quickLinkStyle(): CSSProperties {
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "10px 14px",
     fontWeight: 800,
     fontSize: 13,
@@ -127,13 +132,13 @@ function LogoutButton() {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 md:inline-flex">
+      <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 xl:inline-flex">
         {user?.email ?? "Eingeloggt"}
       </span>
       <button
         type="button"
         onClick={handleLogout}
-        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-slate-50"
+        className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-slate-50"
       >
         Logout
       </button>
@@ -144,7 +149,9 @@ function LogoutButton() {
 function ProtectedAppShell() {
   return (
     <RequireAuthMFA>
-      <AppShell />
+      <AppDataProvider>
+        <AppShell />
+      </AppDataProvider>
     </RequireAuthMFA>
   );
 }
@@ -152,7 +159,7 @@ function ProtectedAppShell() {
 function DashboardPage() {
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-10 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-10">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Portfolio Dashboard</h1>
         <p className="mt-4 max-w-3xl text-slate-600">
           Wähle ein Objekt aus der Objektliste oder öffne direkt die neuen Abrechnungsseiten aus
@@ -160,7 +167,7 @@ function DashboardPage() {
         </p>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-10 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-10">
         <h2 className="text-2xl font-bold text-slate-900">Schnellzugriff</h2>
         <div className="mt-8 flex flex-wrap gap-4">
           <NavLink to="/objekte" style={quickLinkStyle()}>
@@ -172,6 +179,9 @@ function DashboardPage() {
           <NavLink to="/buchungen" style={quickLinkStyle()}>
             Buchung erfassen
           </NavLink>
+          <NavLink to="/mieteruebersicht" style={quickLinkStyle()}>
+            Mieterübersicht
+          </NavLink>
           <NavLink to="/nebenkosten/tiefgarage" style={quickLinkStyle()}>
             Nebenkostenabrechnung für die TG
           </NavLink>
@@ -181,7 +191,7 @@ function DashboardPage() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-10 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-10">
         <h2 className="text-2xl font-bold text-slate-900">Neu ergänzt</h2>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -198,8 +208,8 @@ function DashboardPage() {
               Wohnungen
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Platzhalter-Seite für die nächste Vorlage – Route und Aufbau sind bereits
-              vorbereitet.
+              Neue Wohnungsabrechnung mit M²/Umlageschlüssel, HeizkostenV, CO₂-Modell und
+              Leerstandslogik.
             </p>
           </div>
         </div>
@@ -209,47 +219,102 @@ function DashboardPage() {
 }
 
 function AppShell() {
-  const navItems = [
-    { to: "/", label: "Dashboard", end: true },
-    { to: "/portfolio", label: "Portfolio" },
-    { to: "/objekte", label: "Objekte" },
-    { to: "/monate", label: "Monate" },
-    { to: "/auswertungen", label: "Auswertungen" },
-    { to: "/buchungen", label: "Buchungen" },
-  ];
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
+
+  const navItems = useMemo(
+    () => [
+      { to: "/", label: "Dashboard", end: true },
+      { to: "/portfolio", label: "Portfolio" },
+      { to: "/objekte", label: "Objekte" },
+      { to: "/monate", label: "Monate" },
+      { to: "/auswertungen", label: "Auswertungen" },
+      { to: "/buchungen", label: "Buchungen" },
+    ],
+    []
+  );
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Property App
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
+          <div className="flex items-center justify-between gap-4">
+            <NavLink to="/" className="flex min-w-0 items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <img src={logo} alt="Könen Immobilien" className="h-10 w-10 object-contain" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Property App
+                </div>
+                <div className="text-lg font-semibold leading-tight text-slate-950 sm:text-2xl">
+                  Immobilien-Finanzübersicht
+                </div>
+              </div>
+            </NavLink>
+
+            <div className="hidden items-center gap-4 lg:flex">
+              <nav className="flex flex-wrap items-center gap-2">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    style={({ isActive }) => navLinkStyle(isActive)}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <LogoutButton />
             </div>
-            <div className="text-lg font-semibold text-slate-950">
-              Immobilien-Finanzübersicht
-            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm lg:hidden"
+              aria-label={mobileMenuOpen ? "Menü schließen" : "Menü öffnen"}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
 
-          <div className="flex items-center gap-4">
-            <nav className="flex flex-wrap items-center gap-2">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  style={({ isActive }) => navLinkStyle(isActive)}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-            <LogoutButton />
-          </div>
+          {mobileMenuOpen && (
+            <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-3 shadow-sm lg:hidden">
+              <nav className="grid gap-2">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={({ isActive }) =>
+                      [
+                        "rounded-2xl border px-4 py-3 text-base font-extrabold shadow-sm transition",
+                        isActive
+                          ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                          : "border-slate-200 bg-white text-slate-900",
+                      ].join(" ")
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+
+              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                  {user?.email ?? "Eingeloggt"}
+                </div>
+                <LogoutButton />
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6">
         <Outlet />
       </main>
     </div>
@@ -303,6 +368,7 @@ export default function App() {
         <Route path="/auswertung" element={<Navigate to="/auswertungen" replace />} />
 
         <Route path="/buchungen" element={<EntryAdd />} />
+        <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/entry-add" element={<Navigate to="/buchungen" replace />} />
 
         <Route path="/nebenkosten/tiefgarage" element={<NebenkostenTiefgarage />} />

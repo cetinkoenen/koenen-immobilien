@@ -1,6 +1,7 @@
 // src/features/entries/EntryForm.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { emitFinanceEntryChanged, useAppData } from "../../state/AppDataContext";
 
 type EntryType = "income" | "expense";
 
@@ -16,6 +17,7 @@ type EntryFormProps = {
 };
 
 export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
+  const appData = useAppData();
   const [objectId, setObjectId] = useState(defaultObjectId ?? "");
   const [bookingDate, setBookingDate] = useState(new Date().toISOString().slice(0, 10));
   const [entryType, setEntryType] = useState<EntryType>("expense");
@@ -154,6 +156,8 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
       setCategoryOptions((prev) => Array.from(new Set([...prev, cat])).sort());
     }
 
+    emitFinanceEntryChanged();
+    void appData.refresh();
     onCreated?.();
   };
 

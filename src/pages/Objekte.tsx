@@ -149,6 +149,40 @@ function groupLedgerRowsByProperty(
   return grouped;
 }
 
+function buildFallbackChartData(property: PropertyCard): LoanChartPoint[] {
+  const currentBalance = property.last_balance;
+  const principalTotal = property.principal_total ?? 0;
+
+  if (currentBalance == null) {
+    return [];
+  }
+
+  // Robuster Fallback: Einige Objekte (z.B. Lilienthaler) haben zwar Summen,
+  // aber keine Ledger-Jahreszeilen. Dann zeigen wir trotzdem einen Verlauf statt
+  // einer kaputten/leeren Chart-Karte.
+  const endYear = property.last_year ?? property.last_balance_year ?? new Date().getFullYear();
+  const startYear = property.first_year ?? Math.max(2015, endYear - 10);
+  const startBalance = Math.max(currentBalance, currentBalance + principalTotal);
+
+  if (startYear === endYear) {
+    return [{ year: startYear, balance: currentBalance }];
+  }
+
+  return [
+    { year: startYear, balance: startBalance },
+    { year: endYear, balance: currentBalance },
+  ];
+}
+
+function getChartDataForProperty(
+  property: PropertyCard,
+  chartDataByPropertyId: Record<string, LoanChartPoint[]>,
+): LoanChartPoint[] {
+  const direct = chartDataByPropertyId[property.property_id] ?? [];
+  if (direct.length > 0) return direct;
+  return buildFallbackChartData(property);
+}
+
 function StatBox(props: { label: string; value: string; subvalue?: string }) {
   return (
     <div
@@ -583,7 +617,7 @@ export default function Objekte() {
             </div>
 
             <div style={{ marginTop: 24 }}>
-              <LoanChart data={chartDataByPropertyId[property.property_id] ?? []} />
+              <LoanChart data={getChartDataForProperty(property, chartDataByPropertyId)} />
             </div>
           </section>
         ))}

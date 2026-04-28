@@ -57,18 +57,23 @@ function formatDate(dateString: string) {
   }).format(date);
 }
 
+function toIsoDate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function monthRangeISO(year: number, month: number) {
   const from = new Date(year, month - 1, 1);
   const to = new Date(year, month, 1);
+  return { from: toIsoDate(from), to: toIsoDate(to) };
+}
 
-  const iso = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
-
-  return { from: iso(from), to: iso(to) };
+function yearRangeISO(year: number) {
+  const from = new Date(year, 0, 1);
+  const to = new Date(year + 1, 0, 1);
+  return { from: toIsoDate(from), to: toIsoDate(to) };
 }
 
 function parseNumberInput(raw: string): number {
@@ -347,6 +352,52 @@ export default function Monate() {
     return new Map(objects.map((o) => [o.objekt_code, o.label]));
   }, [objects]);
 
+  async function fetchEntriesForRange(from: string, to: string, code: string) {
+    let incomeQuery = supabase
+      .from("v_income_entries")
+      .select("id,objekt_code,booking_date,amount,category,note")
+      .gte("booking_date", from)
+      .lt("booking_date", to);
+
+    let expenseQuery = supabase
+      .from("v_expense_entries")
+      .select("id,objekt_code,booking_date,amount,category,note")
+      .gte("booking_date", from)
+      .lt("booking_date", to);
+
+    if (code && code !== "ALL") {
+      incomeQuery = incomeQuery.eq("objekt_code", code);
+      expenseQuery = expenseQuery.eq("objekt_code", code);
+    }
+
+    const [incRes, expRes] = await Promise.all([incomeQuery, expenseQuery]);
+
+    if (incRes.error) throw incRes.error;
+    if (expRes.error) throw expRes.error;
+
+    const income: EntryRow[] = (incRes.data ?? []).map((r: any) => ({
+      id: Number(r.id),
+      objekt_code: r.objekt_code ?? null,
+      booking_date: r.booking_date,
+      amount: Number(r.amount || 0),
+      category: r.category ?? null,
+      note: r.note ?? null,
+      entry_type: "income",
+    }));
+
+    const expense: EntryRow[] = (expRes.data ?? []).map((r: any) => ({
+      id: Number(r.id),
+      objekt_code: r.objekt_code ?? null,
+      booking_date: r.booking_date,
+      amount: Number(r.amount || 0),
+      category: r.category ?? null,
+      note: r.note ?? null,
+      entry_type: "expense",
+    }));
+
+    return [...income, ...expense];
+  }
+
   async function loadMonth() {
     setLoading(true);
     setErr(null);
@@ -369,49 +420,8 @@ export default function Monate() {
     const code = objektCode.trim();
 
     try {
-      let incomeQuery = supabase
-        .from("v_income_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
-        .gte("booking_date", from)
-        .lt("booking_date", to);
-
-      let expenseQuery = supabase
-        .from("v_expense_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
-        .gte("booking_date", from)
-        .lt("booking_date", to);
-
-      if (code && code !== "ALL") {
-        incomeQuery = incomeQuery.eq("objekt_code", code);
-        expenseQuery = expenseQuery.eq("objekt_code", code);
-      }
-
-      const [incRes, expRes] = await Promise.all([incomeQuery, expenseQuery]);
-
-      if (incRes.error) throw incRes.error;
-      if (expRes.error) throw expRes.error;
-
-      const income: EntryRow[] = (incRes.data ?? []).map((r: any) => ({
-        id: Number(r.id),
-        objekt_code: r.objekt_code ?? null,
-        booking_date: r.booking_date,
-        amount: Number(r.amount || 0),
-        category: r.category ?? null,
-        note: r.note ?? null,
-        entry_type: "income",
-      }));
-
-      const expense: EntryRow[] = (expRes.data ?? []).map((r: any) => ({
-        id: Number(r.id),
-        objekt_code: r.objekt_code ?? null,
-        booking_date: r.booking_date,
-        amount: Number(r.amount || 0),
-        category: r.category ?? null,
-        note: r.note ?? null,
-        entry_type: "expense",
-      }));
-
-      setRows([...income, ...expense]);
+      const data = await fetchEntriesForRange(from, to, code);
+      setRows(data);
     } catch (e: any) {
       console.error("loadMonth failed:", e);
       setRows([]);
@@ -724,6 +734,51 @@ export default function Monate() {
     }
   }
 
+  async function exportYearCsv() {
+    if (!Number.isFinite(year) || year < 1900 || year > 3000) {
+      alert("Bitte ein gültiges Jahr eingeben.");
+      return;
+    }
+
+    const code = objektCode.trim();
+    const { from, to } = yearRangeISO(year);
+
+    try {
+      setLoading(true);
+      const exportRowsRaw = await fetchEntriesForRange(from, to, code);
+      const exportRows = exportRowsRaw
+        .sort((a, b) => compareStrings(a.booking_date, b.booking_date, "asc"))
+        .map((r) => {
+          const objectCode = r.objekt_code ?? "";
+          const objectLabel = objectCode ? objectLabelMap.get(objectCode) ?? objectCode : "—";
+          const signedAmount = r.entry_type === "expense" ? -Math.abs(r.amount) : Math.abs(r.amount);
+
+          return {
+            Datum: formatDate(r.booking_date),
+            Objekt: objectLabel,
+            Objektcode: objectCode || "—",
+            Typ: r.entry_type === "income" ? "Einnahme" : "Ausgabe",
+            Kategorie: r.category?.trim() || "Ohne Kategorie",
+            Betrag: signedAmount.toLocaleString("de-DE", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
+            Notiz: r.note?.trim() || "",
+          };
+        });
+
+      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz"];
+      const csv = toCsv(exportRows, headers);
+      const objectPart = code && code !== "ALL" ? `${sanitizeFilenamePart(code)}_` : "alle_objekte_";
+      const filename = `jahresuebersicht_${objectPart}${year}.csv`;
+      downloadCsv(filename, csv);
+    } catch (e: any) {
+      alert(`Jahres-CSV fehlgeschlagen: ${e?.message ?? String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function exportCsv() {
     const exportRows = sortedRows.map((r) => {
       const objectCode = r.objekt_code ?? "";
@@ -762,10 +817,8 @@ export default function Monate() {
     <div style={{ display: "grid", gap: 16 }}>
       <div
         style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "flex-end",
-          flexWrap: "wrap",
+          display: "grid",
+          gap: 16,
         }}
       >
         <div>
@@ -779,106 +832,149 @@ export default function Monate() {
 
         <div
           style={{
-            marginLeft: "auto",
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
+            border: "1px solid #e5e7eb",
+            borderRadius: 18,
+            background: "white",
+            padding: 16,
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "minmax(0, 1fr)",
           }}
         >
-          <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-            Objekt
-            <select
-              value={objektCode}
-              onChange={(e) => setObjektCode(e.target.value)}
-              style={{
-                marginLeft: 8,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                fontWeight: 800,
-                minWidth: 260,
-                background: "white",
-              }}
-            >
-              <option value="ALL">Alle Objekte</option>
-              {objects.map((o) => (
-                <option key={o.objekt_code} value={o.objekt_code}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-            Jahr
-            <input
-              type="number"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={{
-                marginLeft: 8,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                fontWeight: 800,
-                width: 110,
-              }}
-            />
-          </label>
-
-          <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-            Monat
-            <select
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              style={{
-                marginLeft: 8,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                fontWeight: 800,
-                background: "white",
-              }}
-            >
-              {MONTHS.map((x) => (
-                <option key={x.m} value={x.m}>
-                  {x.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            onClick={() => void loadMonth()}
-            disabled={loading}
+          <div
             style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: loading ? "#f3f4f6" : "white",
-              fontWeight: 900,
-              cursor: loading ? "not-allowed" : "pointer",
+              display: "grid",
+              gap: 14,
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              alignItems: "end",
             }}
           >
-            Neu laden
-          </button>
+            <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, display: "grid", gap: 6 }}>
+              Objekt
+              <select
+                value={objektCode}
+                onChange={(e) => setObjektCode(e.target.value)}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  padding: "0 14px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  fontWeight: 800,
+                  background: "white",
+                }}
+              >
+                <option value="ALL">Alle Objekte</option>
+                {objects.map((o) => (
+                  <option key={o.objekt_code} value={o.objekt_code}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <button
-            onClick={exportCsv}
-            disabled={loading || sortedRows.length === 0}
+            <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, display: "grid", gap: 6 }}>
+              Jahr
+              <input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  padding: "0 14px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  fontWeight: 800,
+                  background: "white",
+                }}
+              />
+            </label>
+
+            <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, display: "grid", gap: 6 }}>
+              Monat
+              <select
+                value={month}
+                onChange={(e) => setMonth(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  padding: "0 14px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  fontWeight: 800,
+                  background: "white",
+                }}
+              >
+                {MONTHS.map((x) => (
+                  <option key={x.m} value={x.m}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div
             style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: loading || sortedRows.length === 0 ? "#f3f4f6" : "white",
-              fontWeight: 900,
-              cursor: loading || sortedRows.length === 0 ? "not-allowed" : "pointer",
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
             }}
-            title="Aktuell gefilterte und sortierte Tabelle als CSV exportieren"
           >
-            CSV exportieren
-          </button>
+            <button
+              onClick={() => void loadMonth()}
+              disabled={loading}
+              style={{
+                minHeight: 46,
+                padding: "0 18px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: loading ? "#f3f4f6" : "white",
+                fontWeight: 900,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              Neu laden
+            </button>
+
+            <button
+              onClick={exportCsv}
+              disabled={loading || sortedRows.length === 0}
+              style={{
+                minHeight: 46,
+                padding: "0 18px",
+                borderRadius: 12,
+                border: "1px solid #c7d2fe",
+                background: loading || sortedRows.length === 0 ? "#eef2ff" : "#eef2ff",
+                color: loading || sortedRows.length === 0 ? "#6366f1" : "#4338ca",
+                fontWeight: 900,
+                cursor: loading || sortedRows.length === 0 ? "not-allowed" : "pointer",
+              }}
+              title="Aktuell gefilterte und sortierte Monatstabelle als CSV exportieren"
+            >
+              Monats-CSV exportieren
+            </button>
+
+            <button
+              onClick={() => void exportYearCsv()}
+              disabled={loading}
+              style={{
+                minHeight: 46,
+                padding: "0 18px",
+                borderRadius: 12,
+                border: "1px solid #0f172a",
+                background: loading ? "#e2e8f0" : "#0f172a",
+                color: loading ? "#64748b" : "white",
+                fontWeight: 900,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+              title={objektCode === "ALL" ? "CSV für alle Objekte des gewählten Jahres exportieren" : "CSV für das gewählte Objekt im ganzen Jahr exportieren"}
+            >
+              Jahres-CSV exportieren
+            </button>
+          </div>
         </div>
       </div>
 

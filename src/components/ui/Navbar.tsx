@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import logo from "../../assets/koenen.png";
+import logo from "../../assets/koenen-logo.svg";
 
 function PillLink({ to, label }: { to: string; label: string }) {
   return (
@@ -93,8 +93,8 @@ export default function Navbar() {
             src={logo}
             alt="KÖNEN"
             style={{
-              width: 34,
-              height: 34,
+              width: 40,
+              height: 40,
               borderRadius: 10,
               objectFit: "cover",
               border: "1px solid #e5e7eb",
