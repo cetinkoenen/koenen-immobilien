@@ -133,13 +133,41 @@ function isNebenkostenExpense(entry: FinanceEntry): boolean {
   );
 }
 
+function normalizeMatchText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ß", "ss")
+    .replace(/[ä]/g, "a")
+    .replace(/[ö]/g, "o")
+    .replace(/[ü]/g, "u")
+    .replace(/strasse/g, "str")
+    .replace(/straße/g, "str")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function namesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = normalizeMatchText(a);
+  const right = normalizeMatchText(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
 function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined, propertyNameById: Record<string, string>) {
   if (!propertyId) return false;
   const id = String(propertyId);
-  if (String(entry.object_id ?? "") === id) return true;
-  const code = String(entry.objekt_code ?? "").toLowerCase();
-  const name = String(propertyNameById[id] ?? "").toLowerCase();
-  return Boolean(code && name && name.includes(code));
+  const entryObjectId = String(entry.object_id ?? "");
+  if (entryObjectId === id) return true;
+
+  const targetName = propertyNameById[id];
+  const entryObjectName = propertyNameById[entryObjectId];
+  if (namesMatch(entryObjectName, targetName)) return true;
+
+  const code = String(entry.objekt_code ?? "");
+  if (code && namesMatch(targetName, code)) return true;
+  if (code && namesMatch(entryObjectName, code)) return true;
+
+  return false;
 }
 
 function groupLedgerRows(rows: Array<{ property_id: string | null; year: unknown; balance: unknown }>) {
