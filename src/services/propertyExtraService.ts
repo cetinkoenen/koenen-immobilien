@@ -166,7 +166,7 @@ export async function savePropertyExtra(propertyId: string, extra: Partial<Prope
     email: normalized.email,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,property_id" });
-  if (error) { console.warn("property_extra_info save skipped:", error.message); return { ok: true, message: "Lokal gespeichert", error }; }
+  if (error) { console.error("property_extra_info save failed:", error.message); return { ok: false, message: "Supabase Fehler: " + error.message, error }; }
   return { ok: true, message: "Gespeichert" };
 }
 export async function savePropertyExtras(propertyId: string, extra: Partial<PropertyExtraInfo>) { return savePropertyExtra(propertyId, extra); }
