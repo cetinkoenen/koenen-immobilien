@@ -146,10 +146,10 @@ export async function fetchPropertyExtras(propertyIds?: string[]): Promise<Recor
 
 export async function savePropertyExtra(propertyId: string, extra: Partial<PropertyExtraInfo>): Promise<{ ok: boolean; message: string; error?: unknown }> {
   const normalized = { ...normalize(extra), property_id: propertyId };
-  writeLocalTenantExtras(propertyId, normalized);
+  // Clean sync: Supabase ist die einzige Quelle. Kein localStorage-Write mehr.
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
-  if (!user) return { ok: true, message: "Lokal gespeichert" };
+  if (!user) return { ok: false, message: "Nicht eingeloggt" };
   const { error } = await supabase.from("property_extra_info").upsert({
     user_id: user.id,
     property_id: propertyId,
@@ -171,11 +171,7 @@ export async function savePropertyExtra(propertyId: string, extra: Partial<Prope
 }
 export async function savePropertyExtras(propertyId: string, extra: Partial<PropertyExtraInfo>) { return savePropertyExtra(propertyId, extra); }
 export async function loadPropertyExtras(): Promise<Record<string, PropertyExtraInfo>> {
-  const local = loadLocalTenantExtras();
-  const remote = await fetchPropertyExtras();
-  const merged = { ...local, ...remote };
-  writeLocalTenantExtras(merged);
-  return merged;
+  return await fetchPropertyExtras();
 }
 export async function loadAllPropertyExtras(): Promise<Record<string, PropertyExtraInfo>> { return loadPropertyExtras(); }
 export async function loadPropertyExtra(propertyId: string): Promise<PropertyExtraInfo | null> { const all = await loadPropertyExtras(); return all[propertyId] ?? null; }
