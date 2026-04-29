@@ -100,6 +100,40 @@ function InfoPill({ label, value, tone = "neutral" }: { label: string; value: st
   return <div className={`portfolio-data-pill ${tone}`}><span>{label}</span><b>{value}</b></div>;
 }
 
+function SaveExtraBar({
+  propertyId,
+  dirty,
+  status,
+  onSave,
+}: {
+  propertyId: string;
+  dirty: boolean;
+  status?: string;
+  onSave: (propertyId: string) => void;
+}) {
+  return (
+    <div className="portfolio-save-row" style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
+      <button
+        type="button"
+        onClick={() => onSave(propertyId)}
+        style={{
+          border: "1px solid #0f172a",
+          borderRadius: 14,
+          background: dirty ? "#0f172a" : "#ffffff",
+          color: dirty ? "#ffffff" : "#0f172a",
+          padding: "10px 16px",
+          fontWeight: 900,
+          cursor: "pointer",
+          boxShadow: dirty ? "0 8px 18px rgba(15, 23, 42, 0.16)" : "none",
+        }}
+      >
+        {dirty ? "Änderungen speichern" : "Speichern"}
+      </button>
+      {status ? <small style={{ color: status.includes("Fehler") ? "#b91c1c" : "#475569", fontWeight: 700 }}>{status}</small> : null}
+    </div>
+  );
+}
+
 function safeRatio(value: number, base: number) {
   if (!base) return 0;
   return (value / base) * 100;
@@ -109,6 +143,8 @@ export default function Portfolio() {
   const navigate = useNavigate();
   const appData = useAppData();
   const [extraInfo, setExtraInfo] = useState<Record<string, ExtraInfo>>(() => loadExtra());
+  const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
+  const [extraStatus, setExtraStatus] = useState<Record<string, string>>({});
   const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
@@ -153,6 +189,18 @@ export default function Portfolio() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
+    setDirtyExtras((prev) => ({ ...prev, [propertyId]: true }));
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Ungespeicherte Änderung" }));
+  }
+
+  function saveExtra(propertyId: string) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(extraInfo));
+      setDirtyExtras((prev) => ({ ...prev, [propertyId]: false }));
+      setExtraStatus((prev) => ({ ...prev, [propertyId]: "Gespeichert" }));
+    } catch {
+      setExtraStatus((prev) => ({ ...prev, [propertyId]: "Fehler beim Speichern" }));
+    }
   }
 
   function openUpload(propertyId: string) {
@@ -272,10 +320,10 @@ export default function Portfolio() {
           </div>
 
           <div className="portfolio-info-grid refined-info">
-            <section className="portfolio-edit-box"><h3>Eckdaten</h3><div className="portfolio-input-grid three"><label>Wohnfläche<input value={extra.livingArea} onChange={(e) => updateExtra(row.property_id, "livingArea", e.target.value)} placeholder="z.B. 150 m²" /></label><label>Zimmer<input value={extra.rooms} onChange={(e) => updateExtra(row.property_id, "rooms", e.target.value)} placeholder="z.B. 4" /></label><label>Objektwert<input value={extra.marketValue} onChange={(e) => updateExtra(row.property_id, "marketValue", e.target.value)} placeholder="z.B. 350.000 €" /></label></div></section>
-            <section className="portfolio-edit-box"><h3>Ausstattung</h3><label>Ausstattung / Merkmale<input value={extra.equipment} onChange={(e) => updateExtra(row.property_id, "equipment", e.target.value)} placeholder="Einbauküche, Keller, Balkon …" /></label></section>
+            <section className="portfolio-edit-box"><h3>Eckdaten</h3><div className="portfolio-input-grid three"><label>Wohnfläche<input value={extra.livingArea} onChange={(e) => updateExtra(row.property_id, "livingArea", e.target.value)} placeholder="z.B. 150 m²" /></label><label>Zimmer<input value={extra.rooms} onChange={(e) => updateExtra(row.property_id, "rooms", e.target.value)} placeholder="z.B. 4" /></label><label>Objektwert<input value={extra.marketValue} onChange={(e) => updateExtra(row.property_id, "marketValue", e.target.value)} placeholder="z.B. 350.000 €" /></label></div><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
+            <section className="portfolio-edit-box"><h3>Ausstattung</h3><label>Ausstattung / Merkmale<input value={extra.equipment} onChange={(e) => updateExtra(row.property_id, "equipment", e.target.value)} placeholder="Einbauküche, Keller, Balkon …" /></label><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
             <section className="portfolio-edit-box expose-box"><h3>Exposé</h3><div className="expose-actions"><button type="button" onClick={() => setExposePreview({ row, extra, image })}>Ansehen</button><button type="button" onClick={() => downloadGeneratedExpose(row, extra)}>PDF erstellen</button><button type="button" onClick={() => openUpload(row.property_id)}>PDF hochladen</button>{uploadedExpose ? <a href={uploadedExpose.dataUrl} download={uploadedExpose.fileName}>Download</a> : null}</div>{uploadedExpose ? <small>Aktuell: {uploadedExpose.fileName}</small> : <small>Noch kein PDF hochgeladen. Du kannst trotzdem ein Exposé aus den aktuellen Daten erstellen.</small>}</section>
-            <section className="portfolio-edit-box wide"><h3>Mieterübersicht</h3><div className="portfolio-input-grid four"><label>Name<input value={extra.firstName} onChange={(e) => updateExtra(row.property_id, "firstName", e.target.value)} placeholder="Name" /></label><label>Nachname<input value={extra.lastName} onChange={(e) => updateExtra(row.property_id, "lastName", e.target.value)} placeholder="Nachname" /></label><label>Telefon<input value={extra.phone} onChange={(e) => updateExtra(row.property_id, "phone", e.target.value)} placeholder="Telefon" /></label><label>E-Mail<input value={extra.email} onChange={(e) => updateExtra(row.property_id, "email", e.target.value)} placeholder="E-Mail" type="email" /></label></div><div className="portfolio-input-grid three rent"><label>Kaltmiete<input value={extra.coldRent} onChange={(e) => updateExtra(row.property_id, "coldRent", e.target.value)} placeholder="z.B. 1.000,00 €" /></label><label>Betriebskosten / Nebenkosten<input value={extra.operatingCosts} onChange={(e) => updateExtra(row.property_id, "operatingCosts", e.target.value)} placeholder="z.B. 370,00 €" /></label><label>Gesamtmiete<input value={extra.totalRent} onChange={(e) => updateExtra(row.property_id, "totalRent", e.target.value)} placeholder="z.B. 1.370,00 €" /></label></div></section>
+            <section className="portfolio-edit-box wide"><h3>Mieterübersicht</h3><div className="portfolio-input-grid four"><label>Name<input value={extra.firstName} onChange={(e) => updateExtra(row.property_id, "firstName", e.target.value)} placeholder="Name" /></label><label>Nachname<input value={extra.lastName} onChange={(e) => updateExtra(row.property_id, "lastName", e.target.value)} placeholder="Nachname" /></label><label>Telefon<input value={extra.phone} onChange={(e) => updateExtra(row.property_id, "phone", e.target.value)} placeholder="Telefon" /></label><label>E-Mail<input value={extra.email} onChange={(e) => updateExtra(row.property_id, "email", e.target.value)} placeholder="E-Mail" type="email" /></label></div><div className="portfolio-input-grid three rent"><label>Kaltmiete<input value={extra.coldRent} onChange={(e) => updateExtra(row.property_id, "coldRent", e.target.value)} placeholder="z.B. 1.000,00 €" /></label><label>Betriebskosten / Nebenkosten<input value={extra.operatingCosts} onChange={(e) => updateExtra(row.property_id, "operatingCosts", e.target.value)} placeholder="z.B. 370,00 €" /></label><label>Gesamtmiete<input value={extra.totalRent} onChange={(e) => updateExtra(row.property_id, "totalRent", e.target.value)} placeholder="z.B. 1.370,00 €" /></label></div><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
           </div>
         </div>
       </article>;

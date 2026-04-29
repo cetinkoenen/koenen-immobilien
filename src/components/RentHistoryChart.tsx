@@ -455,7 +455,7 @@ export default function RentHistoryChart({
   }
 
   if (error) {
-    return <div className="text-sm text-red-600">Fehler beim Laden: {error}</div>;
+    return <div className="text-sm text-black">Fehler beim Laden: {error}</div>;
   }
 
   if (requiresAuth) {

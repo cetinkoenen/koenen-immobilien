@@ -2,21 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfolioGallery";
 import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
-import { loadPropertyExtras, savePropertyExtra, writeLocalPropertyExtras } from "../services/propertyExtraService";
+import { loadAllPropertyExtras, savePropertyExtra, writeLocalPropertyExtras, type PropertyExtraInfo } from "../../services/propertyExtraService";
 
-type ExtraInfo = {
-  livingArea: string;
-  rooms: string;
-  coldRent: string;
-  operatingCosts: string;
-  totalRent: string;
-  marketValue: string;
-  equipment: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-};
+type ExtraInfo = PropertyExtraInfo;
 
 type ExposeInfo = {
   fileName: string;
@@ -101,26 +89,36 @@ function InfoPill({ label, value, tone = "neutral" }: { label: string; value: st
   return <div className={`portfolio-data-pill ${tone}`}><span>{label}</span><b>{value}</b></div>;
 }
 
-function SaveExtraButton({ dirty, status, onSave }: { dirty: boolean; status?: string; onSave: () => void }) {
+function SaveExtraBar({
+  propertyId,
+  dirty,
+  status,
+  onSave,
+}: {
+  propertyId: string;
+  dirty: boolean;
+  status?: string;
+  onSave: (propertyId: string) => Promise<void>;
+}) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
+    <div className="portfolio-save-row" style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
       <button
         type="button"
-        onClick={onSave}
+        onClick={() => void onSave(propertyId)}
         style={{
-          border: "1px solid #cbd5e1",
+          border: "1px solid #0f172a",
           borderRadius: 14,
           background: dirty ? "#0f172a" : "#ffffff",
           color: dirty ? "#ffffff" : "#0f172a",
-          padding: "11px 16px",
+          padding: "10px 16px",
           fontWeight: 900,
-          boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
           cursor: "pointer",
+          boxShadow: dirty ? "0 8px 18px rgba(15, 23, 42, 0.16)" : "none",
         }}
       >
         {dirty ? "Änderungen speichern" : "Speichern"}
       </button>
-      {status ? <small style={{ color: status.includes("Gespeichert") ? "#047857" : "#64748b", fontWeight: 800 }}>{status}</small> : null}
+      {status ? <small style={{ color: status.includes("Fehler") ? "#b91c1c" : "#475569", fontWeight: 700 }}>{status}</small> : null}
     </div>
   );
 }
@@ -134,28 +132,37 @@ export default function Portfolio() {
   const navigate = useNavigate();
   const appData = useAppData();
   const [extraInfo, setExtraInfo] = useState<Record<string, ExtraInfo>>(() => loadExtra());
-  const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
   const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
   const [extraStatus, setExtraStatus] = useState<Record<string, string>>({});
+  const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const year = currentYear();
 
-  useEffect(() => {
-    let active = true;
-    void loadPropertyExtras().then((result) => {
-      if (!active) return;
-      setExtraInfo(result.data);
-      if (result.warning) {
-        setExtraStatus((prev) => ({ ...prev, global: result.warning ?? "" }));
-      }
-    });
-    return () => { active = false; };
-  }, []);
-
   const rows = appData.portfolioRows;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRemoteExtras() {
+      const remote = await loadAllPropertyExtras();
+      if (cancelled || Object.keys(remote).length === 0) return;
+
+      setExtraInfo((prev) => {
+        const next = { ...prev, ...remote };
+        writeLocalPropertyExtras(next);
+        return next;
+      });
+    }
+
+    void loadRemoteExtras();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totals = useMemo(() => rows.reduce((acc, row) => {
     const extra = extraInfo[row.property_id] ?? emptyExtra;
@@ -193,15 +200,24 @@ export default function Portfolio() {
       return next;
     });
     setDirtyExtras((prev) => ({ ...prev, [propertyId]: true }));
-    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Noch nicht gespeichert" }));
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Ungespeicherte Änderungen" }));
   }
 
   async function saveExtra(propertyId: string) {
     const extra = extraInfo[propertyId] ?? emptyExtra;
     setExtraStatus((prev) => ({ ...prev, [propertyId]: "Speichert…" }));
-    const result = await savePropertyExtra(propertyId, extra);
-    setExtraStatus((prev) => ({ ...prev, [propertyId]: result.message }));
-    if (result.ok) setDirtyExtras((prev) => ({ ...prev, [propertyId]: false }));
+
+    try {
+      await savePropertyExtra(propertyId, extra);
+      setDirtyExtras((prev) => ({ ...prev, [propertyId]: false }));
+      setExtraStatus((prev) => ({ ...prev, [propertyId]: "Gespeichert" }));
+    } catch (error) {
+      console.error(error);
+      setExtraStatus((prev) => ({
+        ...prev,
+        [propertyId]: "Fehler beim Speichern. Bitte Supabase-Verbindung und SQL-Tabelle prüfen.",
+      }));
+    }
   }
 
   function openUpload(propertyId: string) {
@@ -321,10 +337,10 @@ export default function Portfolio() {
           </div>
 
           <div className="portfolio-info-grid refined-info">
-            <section className="portfolio-edit-box"><h3>Eckdaten</h3><div className="portfolio-input-grid three"><label>Wohnfläche<input value={extra.livingArea} onChange={(e) => updateExtra(row.property_id, "livingArea", e.target.value)} placeholder="z.B. 150 m²" /></label><label>Zimmer<input value={extra.rooms} onChange={(e) => updateExtra(row.property_id, "rooms", e.target.value)} placeholder="z.B. 4" /></label><label>Objektwert<input value={extra.marketValue} onChange={(e) => updateExtra(row.property_id, "marketValue", e.target.value)} placeholder="z.B. 350.000 €" /></label></div><SaveExtraButton dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={() => void saveExtra(row.property_id)} /></section>
-            <section className="portfolio-edit-box"><h3>Ausstattung</h3><label>Ausstattung / Merkmale<input value={extra.equipment} onChange={(e) => updateExtra(row.property_id, "equipment", e.target.value)} placeholder="Einbauküche, Keller, Balkon …" /></label><SaveExtraButton dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={() => void saveExtra(row.property_id)} /></section>
+            <section className="portfolio-edit-box"><h3>Eckdaten</h3><div className="portfolio-input-grid three"><label>Wohnfläche<input value={extra.livingArea} onChange={(e) => updateExtra(row.property_id, "livingArea", e.target.value)} placeholder="z.B. 150 m²" /></label><label>Zimmer<input value={extra.rooms} onChange={(e) => updateExtra(row.property_id, "rooms", e.target.value)} placeholder="z.B. 4" /></label><label>Objektwert<input value={extra.marketValue} onChange={(e) => updateExtra(row.property_id, "marketValue", e.target.value)} placeholder="z.B. 350.000 €" /></label></div><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
+            <section className="portfolio-edit-box"><h3>Ausstattung</h3><label>Ausstattung / Merkmale<input value={extra.equipment} onChange={(e) => updateExtra(row.property_id, "equipment", e.target.value)} placeholder="Einbauküche, Keller, Balkon …" /></label><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
             <section className="portfolio-edit-box expose-box"><h3>Exposé</h3><div className="expose-actions"><button type="button" onClick={() => setExposePreview({ row, extra, image })}>Ansehen</button><button type="button" onClick={() => downloadGeneratedExpose(row, extra)}>PDF erstellen</button><button type="button" onClick={() => openUpload(row.property_id)}>PDF hochladen</button>{uploadedExpose ? <a href={uploadedExpose.dataUrl} download={uploadedExpose.fileName}>Download</a> : null}</div>{uploadedExpose ? <small>Aktuell: {uploadedExpose.fileName}</small> : <small>Noch kein PDF hochgeladen. Du kannst trotzdem ein Exposé aus den aktuellen Daten erstellen.</small>}</section>
-            <section className="portfolio-edit-box wide"><h3>Mieterübersicht</h3><div className="portfolio-input-grid four"><label>Name<input value={extra.firstName} onChange={(e) => updateExtra(row.property_id, "firstName", e.target.value)} placeholder="Name" /></label><label>Nachname<input value={extra.lastName} onChange={(e) => updateExtra(row.property_id, "lastName", e.target.value)} placeholder="Nachname" /></label><label>Telefon<input value={extra.phone} onChange={(e) => updateExtra(row.property_id, "phone", e.target.value)} placeholder="Telefon" /></label><label>E-Mail<input value={extra.email} onChange={(e) => updateExtra(row.property_id, "email", e.target.value)} placeholder="E-Mail" type="email" /></label></div><div className="portfolio-input-grid three rent"><label>Kaltmiete<input value={extra.coldRent} onChange={(e) => updateExtra(row.property_id, "coldRent", e.target.value)} placeholder="z.B. 1.000,00 €" /></label><label>Betriebskosten / Nebenkosten<input value={extra.operatingCosts} onChange={(e) => updateExtra(row.property_id, "operatingCosts", e.target.value)} placeholder="z.B. 370,00 €" /></label><label>Gesamtmiete<input value={extra.totalRent} onChange={(e) => updateExtra(row.property_id, "totalRent", e.target.value)} placeholder="z.B. 1.370,00 €" /></label></div><SaveExtraButton dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={() => void saveExtra(row.property_id)} /></section>
+            <section className="portfolio-edit-box wide"><h3>Mieterübersicht</h3><div className="portfolio-input-grid four"><label>Name<input value={extra.firstName} onChange={(e) => updateExtra(row.property_id, "firstName", e.target.value)} placeholder="Name" /></label><label>Nachname<input value={extra.lastName} onChange={(e) => updateExtra(row.property_id, "lastName", e.target.value)} placeholder="Nachname" /></label><label>Telefon<input value={extra.phone} onChange={(e) => updateExtra(row.property_id, "phone", e.target.value)} placeholder="Telefon" /></label><label>E-Mail<input value={extra.email} onChange={(e) => updateExtra(row.property_id, "email", e.target.value)} placeholder="E-Mail" type="email" /></label></div><div className="portfolio-input-grid three rent"><label>Kaltmiete<input value={extra.coldRent} onChange={(e) => updateExtra(row.property_id, "coldRent", e.target.value)} placeholder="z.B. 1.000,00 €" /></label><label>Betriebskosten / Nebenkosten<input value={extra.operatingCosts} onChange={(e) => updateExtra(row.property_id, "operatingCosts", e.target.value)} placeholder="z.B. 370,00 €" /></label><label>Gesamtmiete<input value={extra.totalRent} onChange={(e) => updateExtra(row.property_id, "totalRent", e.target.value)} placeholder="z.B. 1.370,00 €" /></label></div><SaveExtraBar propertyId={row.property_id} dirty={!!dirtyExtras[row.property_id]} status={extraStatus[row.property_id]} onSave={saveExtra} /></section>
           </div>
         </div>
       </article>;
