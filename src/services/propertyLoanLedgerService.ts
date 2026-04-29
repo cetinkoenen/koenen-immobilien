@@ -335,7 +335,8 @@ export async function resolveLoanIdForProperty(
     .from(PROPERTY_LOANS_TABLE)
     .select("id, created_at")
     .eq("property_id", safePropertyId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     devError("resolveLoanIdForProperty.error", {
@@ -350,30 +351,30 @@ export async function resolveLoanIdForProperty(
     );
   }
 
-  const rows = (data ?? []) as PropertyLoanRowDb[];
+  const existingLoanId = ((data ?? []) as PropertyLoanRowDb[])[0]?.id;
+  if (existingLoanId) return assertNonEmptyString(existingLoanId, "loan.id");
 
-  if (rows.length === 0) {
-    devError("resolveLoanIdForProperty.noLoan", {
+  const { data: created, error: createError } = await supabase
+    .from(PROPERTY_LOANS_TABLE)
+    .insert({ property_id: safePropertyId })
+    .select("id")
+    .limit(1);
+
+  if (createError) {
+    devError("resolveLoanIdForProperty.createError", {
       propertyId: safePropertyId,
-      rowCount: 0,
+      table: PROPERTY_LOANS_TABLE,
+      error: toSupabaseLikeError(createError),
     });
 
-    throw new Error("Zu dieser Immobilie wurde kein Darlehen gefunden.");
-  }
-
-  if (rows.length > 1) {
-    devError("resolveLoanIdForProperty.multipleLoans", {
-      propertyId: safePropertyId,
-      rowCount: rows.length,
-      loanIds: rows.map((row) => row.id),
-    });
-
-    throw new Error(
-      "Zu dieser Immobilie existieren mehrere Darlehen. Die automatische Auswahl von loan_id ist aktuell nicht eindeutig.",
+    throw buildDetailedLedgerError(
+      createError,
+      "Für diese Immobilie konnte kein Darlehen angelegt werden.",
     );
   }
 
-  return assertNonEmptyString(rows[0].id, "loan.id");
+  const createdLoanId = ((created ?? []) as PropertyLoanRowDb[])[0]?.id;
+  return assertNonEmptyString(createdLoanId, "loan.id");
 }
 
 export async function insertPropertyLoanLedgerRow(
@@ -385,7 +386,7 @@ export async function insertPropertyLoanLedgerRow(
 
   const { data, error } = await supabase
     .from(LEDGER_TABLE)
-    .insert({
+    .upsert({
       property_id: safePropertyId,
       loan_id: loanId,
       year: values.year,
@@ -393,7 +394,7 @@ export async function insertPropertyLoanLedgerRow(
       principal: values.principal,
       balance: values.balance,
       source: values.source,
-    })
+    }, { onConflict: "property_id,year" })
     .select(LEDGER_SELECT);
 
   if (error) {
