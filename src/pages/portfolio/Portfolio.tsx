@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfolioGallery";
-import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
+import { portfolioGalleryItems, type PortfolioGalleryItem } from "../../data/portfolioGallery";
+import { useAppData, type PortfolioLoanRow } from "../../state/AppDataContext";
 import { loadAllPropertyExtras, savePropertyExtra, writeLocalPropertyExtras, type PropertyExtraInfo } from "../../services/propertyExtraService";
 
 type ExtraInfo = PropertyExtraInfo;

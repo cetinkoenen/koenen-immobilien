@@ -18,3 +18,14 @@ export async function resolvePropertyContext(propertyId: string) {
     property: property ?? null,
   };
 }
+
+export type ResolvedPropertyContext = {
+  propertyId: string;
+  property: any;
+  incomePropertyId?: string;
+  ledgerPropertyId?: string;
+  portfolioPropertyId?: string;
+  corePropertyId?: string;
+  displayName?: string;
+  address?: string;
+};
