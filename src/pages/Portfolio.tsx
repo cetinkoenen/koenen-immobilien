@@ -1,21 +1,10 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfolioGallery";
 import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
+import { loadAllPropertyExtras, savePropertyExtra, writeLocalPropertyExtras, type PropertyExtraInfo } from "../services/propertyExtraService";
 
-type ExtraInfo = {
-  livingArea: string;
-  rooms: string;
-  coldRent: string;
-  operatingCosts: string;
-  totalRent: string;
-  marketValue: string;
-  equipment: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-};
+type ExtraInfo = PropertyExtraInfo;
 
 type ExposeInfo = {
   fileName: string;
@@ -109,13 +98,13 @@ function SaveExtraBar({
   propertyId: string;
   dirty: boolean;
   status?: string;
-  onSave: (propertyId: string) => void;
+  onSave: (propertyId: string) => Promise<void>;
 }) {
   return (
     <div className="portfolio-save-row" style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
       <button
         type="button"
-        onClick={() => onSave(propertyId)}
+        onClick={() => void onSave(propertyId)}
         style={{
           border: "1px solid #0f172a",
           borderRadius: 14,
@@ -154,6 +143,27 @@ export default function Portfolio() {
 
   const rows = appData.portfolioRows;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRemoteExtras() {
+      const remote = await loadAllPropertyExtras();
+      if (cancelled || Object.keys(remote).length === 0) return;
+
+      setExtraInfo((prev) => {
+        const next = { ...prev, ...remote };
+        writeLocalPropertyExtras(next);
+        return next;
+      });
+    }
+
+    void loadRemoteExtras();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const totals = useMemo(() => rows.reduce((acc, row) => {
     const extra = extraInfo[row.property_id] ?? emptyExtra;
     const income = appData.getIncomeEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
@@ -186,20 +196,27 @@ export default function Portfolio() {
   function updateExtra(propertyId: string, field: keyof ExtraInfo, value: string) {
     setExtraInfo((prev) => {
       const next = { ...prev, [propertyId]: { ...(prev[propertyId] ?? emptyExtra), [field]: value } };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      writeLocalPropertyExtras(next);
       return next;
     });
     setDirtyExtras((prev) => ({ ...prev, [propertyId]: true }));
-    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Ungespeicherte Änderung" }));
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Ungespeicherte Änderungen" }));
   }
 
-  function saveExtra(propertyId: string) {
+  async function saveExtra(propertyId: string) {
+    const extra = extraInfo[propertyId] ?? emptyExtra;
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Speichert…" }));
+
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(extraInfo));
+      await savePropertyExtra(propertyId, extra);
       setDirtyExtras((prev) => ({ ...prev, [propertyId]: false }));
       setExtraStatus((prev) => ({ ...prev, [propertyId]: "Gespeichert" }));
-    } catch {
-      setExtraStatus((prev) => ({ ...prev, [propertyId]: "Fehler beim Speichern" }));
+    } catch (error) {
+      console.error(error);
+      setExtraStatus((prev) => ({
+        ...prev,
+        [propertyId]: "Fehler beim Speichern. Bitte Supabase-Verbindung und SQL-Tabelle prüfen.",
+      }));
     }
   }
 
