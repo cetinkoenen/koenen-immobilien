@@ -166,8 +166,9 @@ export default function Portfolio() {
 
   const totals = useMemo(() => rows.reduce((acc, row) => {
     const extra = extraInfo[row.property_id] ?? emptyExtra;
-    const income = appData.getIncomeEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
-    const expenses = appData.getExpenseEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
+    const financeSummary = appData.getYearlyFinanceSummary(row.property_id, year);
+    const income = financeSummary?.einnahmen ?? appData.getIncomeEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
+    const expenses = financeSummary?.ausgaben ?? appData.getExpenseEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
     const net = income - expenses;
     const value = parseMoney(extra.marketValue) || row.last_balance || 0;
     return {
@@ -294,9 +295,10 @@ export default function Portfolio() {
       const image = getImage(row.property_name);
       const uploadedExpose = exposes[row.property_id];
       const progress = Math.max(0, Math.min(100, row.repaid_percent));
-      const income = appData.getIncomeEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
-      const expenses = appData.getExpenseEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
-      const rentIncome = appData.getRentEntriesForProperty(row.property_id, `${year}-01-01`, `${year}-12-31`).reduce((sum, entry) => sum + entry.amount, 0);
+      const financeSummary = appData.getYearlyFinanceSummary(row.property_id, year);
+      const income = financeSummary?.einnahmen ?? appData.getIncomeEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
+      const expenses = financeSummary?.ausgaben ?? appData.getExpenseEntriesForProperty(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
+      const rentIncome = financeSummary?.mieteingaenge ?? appData.getRentEntriesForProperty(row.property_id, `${year}-01-01`, `${year}-12-31`).reduce((sum, entry) => sum + entry.amount, 0);
       const nebenkosten = appData.getNebenkostenExpenses(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0);
       const net = income - expenses;
       const value = parseMoney(extra.marketValue) || row.last_balance || 0;

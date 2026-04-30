@@ -12,7 +12,7 @@ import {
 } from "../services/propertyExtraService";
 
 type TenantInfo = Pick<PropertyExtraInfo, "firstName" | "lastName" | "phone" | "email">;
-type OverviewRow = { objectId: string; tenantKey: string; label: string; unitLabel?: string; referenceLabel?: string; paidAmount: number; lastBookingDate: string | null; status: "paid" | "missing" };
+type OverviewRow = { objectId: string; objectCode: string | null; tenantKey: string; label: string; unitLabel?: string; referenceLabel?: string; paidAmount: number; lastBookingDate: string | null; status: "paid" | "missing" };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
 
@@ -23,11 +23,13 @@ function toIso(date: Date) {
 function currentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const firstWeekEnd = new Date(now.getFullYear(), now.getMonth(), 7);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return {
     label: new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(start),
     start: toIso(start),
-    firstWeekEnd: toIso(firstWeekEnd),
+    end: toIso(end),
+    year: start.getFullYear(),
+    month: start.getMonth() + 1,
   };
 }
 
@@ -55,6 +57,16 @@ function normalizeReferenceText(value: string | null | undefined): string {
 
 function bookingReferenceText(booking: FinanceEntry): string {
   return `${booking.category ?? ""} ${booking.note ?? ""} ${booking.objekt_code ?? ""}`;
+}
+
+function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, start: string, end: string): boolean {
+  const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
+  const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
+  const isIncome = booking.entry_type === "income";
+  const isRent = normalizeReferenceText(booking.category).includes("miete");
+  const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= start && booking.booking_date! <= end;
+
+  return (exactIdMatch || exactCodeMatch) && isIncome && isRent && inMonth;
 }
 
 type UnitDefinition = { ref: string; title: string; matcher: (booking: FinanceEntry) => boolean };
@@ -129,8 +141,8 @@ export default function Mietuebersicht() {
   const [status, setStatus] = useState<Record<string, string>>({});
 
   const sourceObjects = useMemo(() => {
-    if (appData.objects.length) return appData.objects.map((object) => ({ id: object.id, label: object.label }));
-    return appData.portfolioRows.map((row) => ({ id: row.property_id, label: row.property_name }));
+    if (appData.objects.length) return appData.objects.map((object) => ({ id: object.id, code: object.code, label: object.label }));
+    return appData.portfolioRows.map((row, index) => ({ id: row.property_id, code: `Objekt_${index + 1}`, label: row.property_name }));
   }, [appData.objects, appData.portfolioRows]);
 
   useEffect(() => {
@@ -183,17 +195,26 @@ export default function Mietuebersicht() {
   const rows = useMemo<OverviewRow[]>(
     () =>
       sourceObjects.flatMap((object) => {
-        const rentBookings = appData.getRentEntriesForProperty(object.id, month.start, month.firstWeekEnd);
+        const strictRentBookings = appData.entries.filter((booking) =>
+          isStrictRentBookingForObject(booking, object.id, object.code, month.start, month.end)
+        );
         const units = getUnitDefinitions(object.label);
+        // WICHTIG: Für die Mieterübersicht darf nie eine Monats-Gesamtsumme als Objektwert verwendet werden.
+        // Deshalb werden Buchungen hier ausschließlich per exakt passender object_id oder exakt passendem objekt_code gefiltert.
+        const monthlySummaryById = appData.getMonthlyRentSummary(object.id, month.year, month.month);
+        const monthlySummaryByCode = appData.getMonthlyRentSummaryByObjectCode(object.code, month.year, month.month);
+        const monthlySummary = monthlySummaryById ?? monthlySummaryByCode;
 
         return units.map((unit) => {
-          const unitBookings = rentBookings.filter(unit.matcher);
-          const paidAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+          const unitBookings = strictRentBookings.filter(unit.matcher);
+          const bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+          const paidAmount = units.length === 1 ? (monthlySummary ?? bookingAmount) : bookingAmount;
           const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
           const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
 
           return {
             objectId: object.id,
+            objectCode: object.code,
             tenantKey,
             label: object.label,
             unitLabel: units.length > 1 ? unit.title : undefined,
@@ -204,7 +225,7 @@ export default function Mietuebersicht() {
           };
         });
       }),
-    [sourceObjects, appData, month.start, month.firstWeekEnd]
+    [sourceObjects, appData, month.start, month.end, month.year, month.month]
   );
 
   const stats = useMemo(() => {
@@ -231,7 +252,7 @@ export default function Mietuebersicht() {
           <div className="tenant-card-head">
             <div>
               <h2>Mieteingänge {month.label}</h2>
-              <p>Prüfung: 01. bis 07. des Monats</p>
+              <p>Prüfung: kompletter Monat</p>
             </div>
             <strong>{formatCurrency(stats.amount)}</strong>
           </div>

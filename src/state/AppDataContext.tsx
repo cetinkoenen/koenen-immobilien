@@ -18,6 +18,26 @@ export type FinanceEntry = {
   note: string | null;
 };
 
+
+export type MonthlyRentSummaryRow = {
+  object_id: string;
+  objekt_code: string | null;
+  user_id: string | null;
+  jahr: number;
+  monat: number;
+  mieteingang_summe: number;
+};
+
+export type YearlyFinanceSummaryRow = {
+  object_id: string;
+  objekt_code: string | null;
+  user_id: string | null;
+  jahr: number;
+  einnahmen: number;
+  ausgaben: number;
+  mieteingaenge: number;
+};
+
 export type PortfolioLoanRow = {
   property_id: string;
   portfolio_property_id: string | null;
@@ -56,6 +76,8 @@ export type AppDataContextValue = {
   error: string | null;
   objects: AppObject[];
   entries: FinanceEntry[];
+  monthlyRentSummaries: MonthlyRentSummaryRow[];
+  yearlyFinanceSummaries: YearlyFinanceSummaryRow[];
   portfolioRows: PortfolioLoanRow[];
   loanRows: LoanDashboardRow[];
   loanChartByPropertyId: Record<string, LoanChartPoint[]>;
@@ -67,10 +89,14 @@ export type AppDataContextValue = {
   getIncomeEntriesForProperty: (propertyId: string | null | undefined, year?: number) => FinanceEntry[];
   getNetCashflow: (propertyId: string | null | undefined, year?: number) => number;
   getNebenkostenExpenses: (propertyId: string | null | undefined, year?: number) => FinanceEntry[];
+  getMonthlyRentSummary: (propertyId: string | null | undefined, year: number, month: number) => number | null;
+  getMonthlyRentSummaryByObjectCode: (objectCode: string | null | undefined, year: number, month: number) => number | null;
+  getYearlyFinanceSummary: (propertyId: string | null | undefined, year: number) => YearlyFinanceSummaryRow | null;
+  getYearlyFinanceSummaryByObjectCode: (objectCode: string | null | undefined, year: number) => YearlyFinanceSummaryRow | null;
 };
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
-const APP_DATA_CACHE_KEY = "koenen:app-data-cache:v1";
+const APP_DATA_CACHE_KEY = "koenen:app-data-cache:v2";
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -201,6 +227,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [objects, setObjects] = useState<AppObject[]>([]);
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
+  const [monthlyRentSummaries, setMonthlyRentSummaries] = useState<MonthlyRentSummaryRow[]>([]);
+  const [yearlyFinanceSummaries, setYearlyFinanceSummaries] = useState<YearlyFinanceSummaryRow[]>([]);
   const [portfolioRows, setPortfolioRows] = useState<PortfolioLoanRow[]>([]);
   const [loanRows, setLoanRows] = useState<LoanDashboardRow[]>([]);
   const [loanChartByPropertyId, setLoanChartByPropertyId] = useState<Record<string, LoanChartPoint[]>>({});
@@ -209,14 +237,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [objectsRes, entriesRes, portfolioRes, loanRes] = await Promise.all([
+      const [objectsRes, entriesRes, monthlyRentRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label").order("label", { ascending: true }),
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note").order("booking_date", { ascending: false }).limit(5000),
+        supabase.from("v_mieteingaenge_monat").select("object_id,objekt_code,user_id,jahr,monat,mieteingang_summe"),
+        supabase.from("v_objekt_finanz_summary_jahr").select("object_id,objekt_code,user_id,jahr,einnahmen,ausgaben,mieteingaenge"),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
       ]);
 
-      const firstError = objectsRes.error || entriesRes.error || portfolioRes.error || loanRes.error;
+      const firstError = objectsRes.error || entriesRes.error || monthlyRentRes.error || yearlyFinanceRes.error || portfolioRes.error || loanRes.error;
       if (firstError) throw firstError;
 
       const mappedObjects = ((objectsRes.data ?? []) as any[])
@@ -237,6 +267,29 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         category: row.category ?? null,
         note: row.note ?? null,
       }));
+
+      const mappedMonthlyRentSummaries = ((monthlyRentRes.data ?? []) as any[])
+        .filter((row) => row.object_id)
+        .map((row) => ({
+          object_id: String(row.object_id),
+          objekt_code: row.objekt_code ?? null,
+          user_id: row.user_id ?? null,
+          jahr: toNumber(row.jahr),
+          monat: toNumber(row.monat),
+          mieteingang_summe: toNumber(row.mieteingang_summe),
+        }));
+
+      const mappedYearlyFinanceSummaries = ((yearlyFinanceRes.data ?? []) as any[])
+        .filter((row) => row.object_id)
+        .map((row) => ({
+          object_id: String(row.object_id),
+          objekt_code: row.objekt_code ?? null,
+          user_id: row.user_id ?? null,
+          jahr: toNumber(row.jahr),
+          einnahmen: toNumber(row.einnahmen),
+          ausgaben: toNumber(row.ausgaben),
+          mieteingaenge: toNumber(row.mieteingaenge),
+        }));
 
       const mappedPortfolio = ((portfolioRes.data ?? []) as any[])
         .map((row) => ({
@@ -290,12 +343,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       setObjects(mappedObjects);
       setEntries(mappedEntries);
+      setMonthlyRentSummaries(mappedMonthlyRentSummaries);
+      setYearlyFinanceSummaries(mappedYearlyFinanceSummaries);
       setPortfolioRows(mappedPortfolio);
       setLoanRows(mappedLoans);
       setLoanChartByPropertyId(charts);
       window.localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify({
         objects: mappedObjects,
         entries: mappedEntries,
+        monthlyRentSummaries: mappedMonthlyRentSummaries,
+        yearlyFinanceSummaries: mappedYearlyFinanceSummaries,
         portfolioRows: mappedPortfolio,
         loanRows: mappedLoans,
         loanChartByPropertyId: charts,
@@ -308,6 +365,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           const cached = JSON.parse(raw);
           setObjects(cached.objects ?? []);
           setEntries(cached.entries ?? []);
+          setMonthlyRentSummaries(cached.monthlyRentSummaries ?? []);
+          setYearlyFinanceSummaries(cached.yearlyFinanceSummaries ?? []);
           setPortfolioRows(cached.portfolioRows ?? []);
           setLoanRows(cached.loanRows ?? []);
           setLoanChartByPropertyId(cached.loanChartByPropertyId ?? {});
@@ -354,12 +413,35 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return income - expense;
     };
     const getNebenkostenExpenses = (propertyId: string | null | undefined, year?: number) => getExpenseEntriesForProperty(propertyId, year).filter(isNebenkostenExpense);
+    const getMonthlyRentSummary = (propertyId: string | null | undefined, year: number, month: number) => {
+      if (!propertyId) return null;
+      const id = String(propertyId);
+      const row = monthlyRentSummaries.find((summary) => summary.object_id === id && summary.jahr === year && summary.monat === month);
+      return row ? row.mieteingang_summe : null;
+    };
+    const getMonthlyRentSummaryByObjectCode = (objectCode: string | null | undefined, year: number, month: number) => {
+      if (!objectCode) return null;
+      const code = normalizeMatchText(objectCode);
+      const row = monthlyRentSummaries.find((summary) => normalizeMatchText(summary.objekt_code) === code && summary.jahr === year && summary.monat === month);
+      return row ? row.mieteingang_summe : null;
+    };
+    const getYearlyFinanceSummary = (propertyId: string | null | undefined, year: number) => {
+      if (!propertyId) return null;
+      return yearlyFinanceSummaries.find((summary) => summary.object_id === String(propertyId) && summary.jahr === year) ?? null;
+    };
+    const getYearlyFinanceSummaryByObjectCode = (objectCode: string | null | undefined, year: number) => {
+      if (!objectCode) return null;
+      const code = normalizeMatchText(objectCode);
+      return yearlyFinanceSummaries.find((summary) => normalizeMatchText(summary.objekt_code) === code && summary.jahr === year) ?? null;
+    };
 
     return {
       loading,
       error,
       objects,
       entries,
+      monthlyRentSummaries,
+      yearlyFinanceSummaries,
       portfolioRows,
       loanRows,
       loanChartByPropertyId,
@@ -371,8 +453,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       getIncomeEntriesForProperty,
       getNetCashflow,
       getNebenkostenExpenses,
+      getMonthlyRentSummary,
+      getMonthlyRentSummaryByObjectCode,
+      getYearlyFinanceSummary,
+      getYearlyFinanceSummaryByObjectCode,
     };
-  }, [loading, error, objects, entries, portfolioRows, loanRows, loanChartByPropertyId, load, propertyNameById]);
+  }, [loading, error, objects, entries, monthlyRentSummaries, yearlyFinanceSummaries, portfolioRows, loanRows, loanChartByPropertyId, load, propertyNameById]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
