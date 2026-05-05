@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
+import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;
@@ -602,6 +603,8 @@ export default function Monate() {
       return;
     }
 
+    window.localStorage.removeItem("koenen:app-data-cache:v2");
+    emitFinanceEntryChanged();
     await loadMonth();
   }
 
@@ -638,6 +641,8 @@ export default function Monate() {
       if (error) throw error;
 
       setSelectedKeys([]);
+      window.localStorage.removeItem("koenen:app-data-cache:v2");
+      emitFinanceEntryChanged();
       await loadMonth();
     } catch (e: any) {
       alert(`Batch Delete fehlgeschlagen: ${e?.message ?? String(e)}`);
@@ -726,6 +731,8 @@ export default function Monate() {
 
       setEditOpen(false);
       setEditRow(null);
+      window.localStorage.removeItem("koenen:app-data-cache:v2");
+      emitFinanceEntryChanged();
       await loadMonth();
     } catch (e: any) {
       alert(`Speichern fehlgeschlagen: ${e?.message ?? String(e)}`);
