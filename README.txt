@@ -1,11 +1,11 @@
-Kopiere diese Dateien genau in dein Projekt und überschreibe vorhandene Dateien:
+Einbau:
+1. App.tsx nach src/App.tsx kopieren/ersetzen.
+2. CookieConsent.tsx nach src/components/CookieConsent.tsx kopieren/ersetzen.
+3. npm run build ausführen.
 
-src/pages/Portfolio.tsx
-src/pages/Mietuebersicht.tsx
-src/services/propertyExtraService.ts
-src/lib/supabaseClient.js
-
-Danach im Projektordner:
-npm run dev
-
-Wenn Vite schon läuft: zuerst CTRL+C, dann npm run dev.
+Premium DSGVO:
+- kleiner Cookie-Banner unten
+- Akzeptieren / Ablehnen / Einstellungen
+- Kategorien: notwendig, Analyse, Marketing
+- Widerruf möglich über window.dispatchEvent(new Event("open-cookie-settings")) oder Datenschutzseite
+- Consent-Hooks: hasAnalyticsConsent(), hasMarketingConsent()

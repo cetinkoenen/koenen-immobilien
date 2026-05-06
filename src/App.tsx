@@ -185,7 +185,7 @@ function DatenschutzPage() {
         <div className="mt-8 space-y-7 text-sm leading-7 text-slate-700 sm:text-base">
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Verantwortliche Stelle</h2>
-            <p className="mt-2">Cetin & Nihal Könen<br />E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:Info.koenen@gmail.com">Info.koenen@gmail.com</a><br />Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+491747010216">+49 174 70 10 216</a></p>
+            <p className="mt-2">Cetin Könen<br />Hohenloher Str. 78/1<br />74243 Langenbrettach<br />E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:info.koenen@gmail.com">info.koenen@gmail.com</a><br />Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+4917624330637">+49 176 243 30 637</a></p>
           </section>
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Cookies</h2>
@@ -230,21 +230,22 @@ function ImpressumPage() {
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Angaben gemäß § 5 DDG</h2>
             <p className="mt-2">
-              Cetin & Nihal Könen<br />
-              [Adresse ergänzen]<br />
+              Cetin Könen<br />
+              Hohenloher Str. 78/1<br />
+              74243 Langenbrettach<br />
               Deutschland
             </p>
           </section>
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Kontakt</h2>
             <p className="mt-2">
-              E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:Info.koenen@gmail.com">Info.koenen@gmail.com</a><br />
-              Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+491747010216">+49 174 70 10 216</a>
+              E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:info.koenen@gmail.com">info.koenen@gmail.com</a><br />
+              Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+4917624330637">+49 176 243 30 637</a>
             </p>
           </section>
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Verantwortlich für den Inhalt</h2>
-            <p className="mt-2">Cetin & Nihal Könen<br />[Adresse ergänzen]</p>
+            <p className="mt-2">Cetin Könen<br />Hohenloher Str. 78/1<br />74243 Langenbrettach</p>
           </section>
           <section>
             <h2 className="text-xl font-black text-[#0b2a44]">Haftung für Inhalte</h2>

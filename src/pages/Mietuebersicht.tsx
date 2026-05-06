@@ -25,13 +25,31 @@ function currentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const previousMonthEndWindowStart = new Date(now.getFullYear(), now.getMonth() - 1, 25);
   return {
     label: new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(start),
     start: toIso(start),
     end: toIso(end),
+    previousMonthEndWindowStart: toIso(previousMonthEndWindowStart),
     year: start.getFullYear(),
     month: start.getMonth() + 1,
   };
+}
+
+function isDateInRange(value: string | null | undefined, start: string, end: string): boolean {
+  return Boolean(value) && value! >= start && value! <= end;
+}
+
+function shiftIsoDateByMonths(value: string, months: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return toIso(new Date(year, month - 1 + months, day));
+}
+
+function bookingDayOfMonth(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const day = Number(value.slice(8, 10));
+  return Number.isFinite(day) ? day : null;
 }
 
 function formatCurrency(value: number) {
@@ -103,6 +121,47 @@ function isLikelyRentOrObjectIncome(booking: FinanceEntry): boolean {
   return isRentLikeText(`${booking.category ?? ""} ${booking.note ?? ""}`);
 }
 
+
+function isClearlyExcludedFromRent(booking: FinanceEntry): boolean {
+  const text = normalizeReferenceText(bookingReferenceText(booking));
+  return (
+    text.includes("nebenkosten") ||
+    text.includes("nk") ||
+    text.includes("betriebskosten") ||
+    text.includes("kaution") ||
+    text.includes("erstattung") ||
+    text.includes("rueckzahlung") ||
+    text.includes("ruckzahlung") ||
+    text.includes("darlehen") ||
+    text.includes("loan") ||
+    text.includes("zinsen") ||
+    text.includes("versicherung") ||
+    text.includes("steuer")
+  );
+}
+
+function hasStrictRentText(booking: FinanceEntry): boolean {
+  if (isClearlyExcludedFromRent(booking)) return false;
+  const text = normalizeReferenceText(`${booking.category ?? ""} ${booking.note ?? ""}`);
+  return (
+    text.includes("miete") ||
+    text.includes("mieteingang") ||
+    text.includes("kaltmiete") ||
+    text.includes("warmmiete") ||
+    text.includes("monatsmiete") ||
+    text.includes("wohnungsmiete") ||
+    text.includes("pacht")
+  );
+}
+
+function matchesTenantName(booking: FinanceEntry, tenant: TenantInfo): boolean {
+  if (isClearlyExcludedFromRent(booking)) return false;
+  const tenantTokens = referenceTokens(`${tenant.firstName} ${tenant.lastName}`);
+  if (!tenantTokens.length) return false;
+  const text = normalizeReferenceText(bookingReferenceText(booking));
+  return tenantTokens.some((token) => text.includes(token));
+}
+
 function directObjectMatch(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined): boolean {
   const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
   const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
@@ -113,11 +172,10 @@ function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, o
   const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
   const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
   const isIncome = booking.entry_type === "income";
-  const rentText = normalizeReferenceText(`${booking.category ?? ""} ${booking.note ?? ""}`);
-  const isRent = rentText.includes("miete") || rentText.includes("mieteingang") || rentText.includes("kaltmiete") || rentText.includes("warmmiete") || rentText.includes("pacht");
-  const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= start && booking.booking_date! <= end;
+  const effectiveDate = attributedRentDateForUnit(booking, "", "");
+  const inMonth = isDateInRange(effectiveDate, start, end);
 
-  return (exactIdMatch || exactCodeMatch) && isIncome && isRent && inMonth;
+  return (exactIdMatch || exactCodeMatch) && isIncome && hasStrictRentText(booking) && inMonth;
 }
 
 
@@ -144,16 +202,15 @@ function bookingMatchesObject(booking: FinanceEntry, objectId: string, objectCod
 
 
 function isPositiveIncomeInMonthForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
-  const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= start && booking.booking_date! <= end;
-  if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0) return false;
+  const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
+  const inMonth = isDateInRange(effectiveDate, start, end);
+  if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
 
-  // Wenn Buchungen sauber mit Objekt-ID oder Objekt-Code gespeichert sind, zählt jeder positive
-  // Eingang im Monat als Mieteingang für dieses Objekt. Dadurch werden auch Buchungen ohne
-  // perfekte Kategorie korrekt erkannt.
-  if (directObjectMatch(booking, objectId, objectCode)) return true;
+  // Priorität für echte Miet-Referenzen aus Monate/Buchungen. Dadurch wird ein Eingang
+  // ab dem 25. mit Referenz "Miete" sauber als Folgemonatsmiete erkannt.
+  if (hasStrictRentText(booking) && directObjectMatch(booking, objectId, objectCode)) return true;
 
-  // Bei unsauberen Altbuchungen ohne Objekt-ID erlauben wir Fuzzy-Matching nur mit Miete-Text,
-  // damit Beträge nicht versehentlich falschen Objekten zugeordnet werden.
+  // Fallback für ältere Buchungen ohne saubere Kategorie: nur wenn objektbezogen und rentenähnlich.
   return isLikelyRentOrObjectIncome(booking) && bookingMatchesObject(booking, objectId, objectCode, objectLabel);
 }
 
@@ -210,6 +267,82 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
   return [{ ref: "hauptmiete", title: "Miete", matcher: () => true }];
 }
 
+function isFuertherObject(objectLabel: string): boolean {
+  const normalizedLabel = normalizeReferenceText(objectLabel);
+  return normalizedLabel.includes("further") || normalizedLabel.includes("fuerther");
+}
+
+
+
+function isFuertherWohnungUnit(objectLabel: string, unitRef: string): boolean {
+  return isFuertherObject(objectLabel) && unitRef === "wohnung";
+}
+
+function isGarageLikeBooking(booking: FinanceEntry): boolean {
+  const text = normalizeReferenceText(bookingReferenceText(booking));
+  return text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz");
+}
+
+function attributedRentDateForUnit(booking: FinanceEntry, _objectLabel: string, _unitRef: string): string | null {
+  if (!booking.booking_date) return null;
+
+  // Dauerregel für die Verknüpfung Monate/Buchungen -> Mieterübersicht:
+  // Wenn ab dem 25. Monatstag ein Zahlungseingang mit Referenz/Kategorie "Miete" gebucht wird,
+  // zählt dieser Eingang automatisch als Miete für den Folgemonat.
+  // Beispiel: 672,33 € am 30.04. mit Referenz "Miete" zählt als Mai-Miete.
+  const day = bookingDayOfMonth(booking.booking_date);
+  if (day !== null && day >= 25 && hasStrictRentText(booking)) {
+    return shiftIsoDateByMonths(booking.booking_date, 1);
+  }
+
+  return booking.booking_date;
+}
+
+function rentAmountKey(amount: number): string {
+  return String(Math.round(Math.abs(amount) * 100));
+}
+
+function pickMostLikelySingleRentBooking(currentCandidates: FinanceEntry[], historicalCandidates: FinanceEntry[]): FinanceEntry[] {
+  if (currentCandidates.length <= 1) return currentCandidates;
+
+  // Miete für eine Einheit soll in der Mieterübersicht nicht als Summe mehrerer
+  // Bankbuchungen erscheinen. Wenn im Buchungsfenster mehrere mögliche Treffer
+  // existieren, nehmen wir den wiederkehrenden Monatsbetrag bzw. den besten
+  // Einzel-Treffer. So werden z. B. zusätzliche Zahlungen am Monatsende nicht
+  // in die Fürther-Wohnung-Miete hineinsummiert.
+  const amountFrequency = new Map<string, number>();
+  for (const booking of historicalCandidates) {
+    if (booking.amount <= 0) continue;
+    const key = rentAmountKey(booking.amount);
+    amountFrequency.set(key, (amountFrequency.get(key) ?? 0) + 1);
+  }
+
+  const recurringKeys = [...amountFrequency.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key]) => key);
+
+  for (const key of recurringKeys) {
+    const matching = currentCandidates.filter((booking) => rentAmountKey(booking.amount) === key);
+    if (matching.length) {
+      return [matching.sort((a, b) => String(b.booking_date ?? '').localeCompare(String(a.booking_date ?? '')))[0]];
+    }
+  }
+
+  const strictRentCandidates = currentCandidates.filter(hasStrictRentText);
+  const source = strictRentCandidates.length ? strictRentCandidates : currentCandidates;
+
+  // Letzter Zahlungseingang gewinnt; bei mehreren Buchungen am gleichen Tag nehmen
+  // wir den kleineren plausiblen Betrag, damit Nebenzahlungen nicht addiert werden.
+  const latestDate = source
+    .map((booking) => booking.booking_date)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  const latest = latestDate ? source.filter((booking) => booking.booking_date === latestDate) : source;
+  return [latest.sort((a, b) => a.amount - b.amount)[0]];
+}
+
 function toTenantInfo(extra: Partial<PropertyExtraInfo> | undefined): TenantInfo {
   return {
     firstName: extra?.firstName ?? "",
@@ -258,7 +391,7 @@ export default function Mietuebersicht() {
         .from("finance_entry")
         .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note")
         .eq("entry_type", "income")
-        .gte("booking_date", month.start)
+        .gte("booking_date", month.previousMonthEndWindowStart)
         .lte("booking_date", month.end)
         .order("booking_date", { ascending: false });
 
@@ -291,7 +424,7 @@ export default function Mietuebersicht() {
       window.removeEventListener("koenen:finance-entry-changed", handler);
       window.removeEventListener("focus", handler);
     };
-  }, [month.start, month.end]);
+  }, [month.previousMonthEndWindowStart, month.end]);
 
   useEffect(() => {
     const ids = sourceObjects.map((object) => object.id).filter(Boolean);
@@ -360,14 +493,36 @@ export default function Mietuebersicht() {
           const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
           let unitBookings = relevantBookings.filter(unit.matcher);
 
+          if (isFuertherWohnungUnit(object.label, unit.ref)) {
+            const matchesFuertherWohnungRent = (booking: FinanceEntry, requireCurrentMonth: boolean) => {
+              if (booking.entry_type !== "income" || booking.amount <= 0) return false;
+              if (isGarageLikeBooking(booking)) return false;
+              if (isClearlyExcludedFromRent(booking)) return false;
+
+              const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
+              if (requireCurrentMonth && !isDateInRange(effectiveDate, month.start, month.end)) return false;
+
+              const isRentPayment = hasStrictRentText(booking) || matchesTenantName(booking, tenantForMatch);
+              if (!isRentPayment) return false;
+
+              if (directObjectMatch(booking, object.id, object.code)) return true;
+              return bookingMatchesObject(booking, object.id, object.code, object.label);
+            };
+
+            const currentCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, true));
+            const historicalCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, false));
+            unitBookings = pickMostLikelySingleRentBooking(currentCandidates, historicalCandidates);
+          }
+
           // Zusätzlicher Fallback: Viele Bankbuchungen enthalten im Verwendungszweck nur den Namen
           // des Mieters, aber keine saubere Objekt-ID. Dann ordnen wir den Zahlungseingang über
           // Vor-/Nachname zu, statt die Einheit fälschlich als „FEHLT" zu markieren.
           if (unitBookings.length === 0 && (tenantForMatch.firstName || tenantForMatch.lastName)) {
             const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
             unitBookings = allKnownBookings.filter((booking) => {
-              const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= month.start && booking.booking_date! <= month.end;
-              if (!inMonth || !isLikelyRentOrObjectIncome(booking)) return false;
+              const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
+              const inMonth = isDateInRange(effectiveDate, month.start, month.end);
+              if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
               const text = normalizeReferenceText(bookingReferenceText(booking));
               return tenantTokens.some((token) => text.includes(token));
             });

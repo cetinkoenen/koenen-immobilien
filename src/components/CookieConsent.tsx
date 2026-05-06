@@ -1,18 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
-type CookieChoice = {
+type CookieConsentValue = {
   necessary: true;
   analytics: boolean;
   marketing: boolean;
   savedAt: string;
+  version: "v2";
 };
 
-const STORAGE_KEY = "koenen_cookie_consent_v1";
+const STORAGE_KEY = "koenen_cookie_consent_v2";
 
-export function getCookieConsent(): CookieChoice | null {
+export function getCookieConsent(): CookieConsentValue | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CookieChoice) : null;
+    return raw ? (JSON.parse(raw) as CookieConsentValue) : null;
   } catch {
     return null;
   }
@@ -20,6 +21,10 @@ export function getCookieConsent(): CookieChoice | null {
 
 export function hasAnalyticsConsent(): boolean {
   return Boolean(getCookieConsent()?.analytics);
+}
+
+export function hasMarketingConsent(): boolean {
+  return Boolean(getCookieConsent()?.marketing);
 }
 
 export function openCookieSettings() {
@@ -36,26 +41,30 @@ export default function CookieConsent() {
     const saved = getCookieConsent();
     if (!saved) {
       setVisible(true);
-      return;
+    } else {
+      setAnalytics(saved.analytics);
+      setMarketing(saved.marketing);
     }
-    setAnalytics(saved.analytics);
-    setMarketing(saved.marketing);
 
-    const open = () => {
+    const openSettings = () => {
+      const current = getCookieConsent();
+      setAnalytics(Boolean(current?.analytics));
+      setMarketing(Boolean(current?.marketing));
       setVisible(true);
       setSettingsOpen(true);
     };
 
-    window.addEventListener("open-cookie-settings", open);
-    return () => window.removeEventListener("open-cookie-settings", open);
+    window.addEventListener("open-cookie-settings", openSettings);
+    return () => window.removeEventListener("open-cookie-settings", openSettings);
   }, []);
 
-  const save = (choice: { analytics: boolean; marketing: boolean }) => {
-    const payload: CookieChoice = {
+  const saveConsent = (choice: { analytics: boolean; marketing: boolean }) => {
+    const payload: CookieConsentValue = {
       necessary: true,
       analytics: choice.analytics,
       marketing: choice.marketing,
       savedAt: new Date().toISOString(),
+      version: "v2",
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -63,79 +72,87 @@ export default function CookieConsent() {
     setMarketing(choice.marketing);
     setVisible(false);
     setSettingsOpen(false);
-
-    window.dispatchEvent(new CustomEvent("cookie-consent-updated", { detail: payload }));
+    window.dispatchEvent(new CustomEvent("koenen-cookie-consent-updated", { detail: payload }));
   };
 
   if (!visible) return null;
 
   return (
     <>
-      <div style={styles.banner} role="dialog" aria-label="Cookie Hinweis">
-        <div style={styles.text}>
-          Diese Webseite verwendet notwendige Cookies. Optionale Cookies helfen uns, die Nutzung zu verbessern.
-          <a href="/datenschutz" style={styles.link}> Datenschutzerklärung</a>
+      <div style={styles.banner} role="dialog" aria-label="Cookie Hinweis" aria-live="polite">
+        <div style={styles.bannerText}>
+          Wir verwenden notwendige Cookies. Optionale Cookies für Analyse oder Marketing werden nur mit Zustimmung genutzt.{" "}
+          <a href="/datenschutz" style={styles.bannerLink}>Datenschutz</a>
         </div>
 
-        <div style={styles.actions}>
-          <button type="button" style={styles.secondaryButton} onClick={() => save({ analytics: false, marketing: false })}>
+        <div style={styles.bannerActions}>
+          <button type="button" style={styles.secondaryButton} onClick={() => saveConsent({ analytics: false, marketing: false })}>
             Ablehnen
           </button>
           <button type="button" style={styles.secondaryButton} onClick={() => setSettingsOpen(true)}>
             Einstellungen
           </button>
-          <button type="button" style={styles.primaryButton} onClick={() => save({ analytics: true, marketing: true })}>
+          <button type="button" style={styles.primaryButton} onClick={() => saveConsent({ analytics: true, marketing: true })}>
             Akzeptieren
           </button>
         </div>
       </div>
 
       {settingsOpen && (
-        <div style={styles.overlay}>
-          <div style={styles.modal} role="dialog" aria-label="Cookie Einstellungen">
+        <div style={styles.overlay} role="presentation">
+          <div style={styles.modal} role="dialog" aria-modal="true" aria-label="Cookie Einstellungen">
             <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>Cookie-Einstellungen</h2>
-              <button type="button" style={styles.closeButton} onClick={() => setSettingsOpen(false)}>×</button>
+              <div>
+                <p style={styles.eyebrow}>DSGVO Einstellungen</p>
+                <h2 style={styles.modalTitle}>Cookie-Einstellungen</h2>
+              </div>
+              <button type="button" style={styles.closeButton} onClick={() => setSettingsOpen(false)} aria-label="Schließen">
+                ×
+              </button>
             </div>
 
             <p style={styles.modalText}>
-              Sie können selbst entscheiden, welche optionalen Cookies verwendet werden dürfen.
-              Notwendige Cookies sind für Login, Sicherheit und Grundfunktionen erforderlich.
+              Sie können optionale Cookies jederzeit akzeptieren, ablehnen oder Ihre Auswahl ändern.
+              Notwendige Cookies bleiben aktiv, damit die Webseite und der geschützte Bereich funktionieren.
             </p>
 
-            <CookieRow
+            <CookieOption
               title="Notwendige Cookies"
-              description="Erforderlich für Betrieb, Sicherheit und Login."
+              description="Erforderlich für Sicherheit, Login, MFA und Grundfunktionen."
               checked
               disabled
-              onChange={() => {}}
+              onChange={() => undefined}
             />
 
-            <CookieRow
+            <CookieOption
               title="Analyse-Cookies"
-              description="Helfen, die Nutzung der Webseite zu verstehen und zu verbessern."
+              description="Helfen, die Nutzung der Webseite anonymisiert zu verstehen und zu verbessern."
               checked={analytics}
               onChange={setAnalytics}
             />
 
-            <CookieRow
+            <CookieOption
               title="Marketing-Cookies"
-              description="Derzeit nicht aktiv. Vorbereitung für mögliche spätere Dienste."
+              description="Derzeit nicht aktiv. Vorbereitung für mögliche spätere externe Marketing-Dienste."
               checked={marketing}
               onChange={setMarketing}
             />
 
             <div style={styles.modalActions}>
-              <button type="button" style={styles.secondaryButton} onClick={() => save({ analytics: false, marketing: false })}>
+              <button type="button" style={styles.lightButton} onClick={() => saveConsent({ analytics: false, marketing: false })}>
                 Alle ablehnen
               </button>
-              <button type="button" style={styles.secondaryButton} onClick={() => save({ analytics, marketing })}>
+              <button type="button" style={styles.lightButton} onClick={() => saveConsent({ analytics, marketing })}>
                 Auswahl speichern
               </button>
-              <button type="button" style={styles.primaryButton} onClick={() => save({ analytics: true, marketing: true })}>
+              <button type="button" style={styles.goldButton} onClick={() => saveConsent({ analytics: true, marketing: true })}>
                 Alle akzeptieren
               </button>
             </div>
+
+            <p style={styles.legalHint}>
+              Weitere Informationen finden Sie in der <a href="/datenschutz" style={styles.modalLink}>Datenschutzerklärung</a>.
+            </p>
           </div>
         </div>
       )}
@@ -143,7 +160,7 @@ export default function CookieConsent() {
   );
 }
 
-function CookieRow({
+function CookieOption({
   title,
   description,
   checked,
@@ -157,73 +174,77 @@ function CookieRow({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label style={styles.cookieRow}>
-      <span>
-        <strong>{title}</strong>
-        <span style={styles.cookieDescription}>{description}</span>
+    <label style={{ ...styles.optionRow, opacity: disabled ? 0.78 : 1 }}>
+      <span style={styles.optionTextWrap}>
+        <strong style={styles.optionTitle}>{title}</strong>
+        <span style={styles.optionDescription}>{description}</span>
       </span>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
+        style={styles.checkbox}
       />
     </label>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   banner: {
     position: "fixed",
     left: "50%",
     bottom: 12,
     transform: "translateX(-50%)",
-    width: "min(92vw, 620px)",
+    width: "min(92vw, 680px)",
     background: "#26313f",
     color: "#ffffff",
-    borderRadius: 12,
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.22)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    borderRadius: 14,
+    boxShadow: "0 12px 34px rgba(15, 23, 42, 0.24)",
     padding: "10px 12px",
     zIndex: 9999,
     display: "flex",
     gap: 10,
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+  },
+  bannerText: {
+    flex: "1 1 300px",
     fontSize: 12,
     lineHeight: 1.35,
   },
-  text: {
-    flex: 1,
-    minWidth: 220,
-  },
-  link: {
-    color: "#dbeafe",
+  bannerLink: {
+    color: "#f4dfb4",
     textDecoration: "underline",
+    fontWeight: 800,
     whiteSpace: "nowrap",
   },
-  actions: {
+  bannerActions: {
     display: "flex",
     gap: 6,
-    flexWrap: "wrap",
+    alignItems: "center",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
   },
   primaryButton: {
     border: 0,
-    borderRadius: 8,
+    borderRadius: 9,
     padding: "7px 10px",
     background: "#d9c7a3",
     color: "#10233a",
-    fontWeight: 700,
+    fontWeight: 850,
     cursor: "pointer",
     fontSize: 12,
   },
   secondaryButton: {
-    border: "1px solid rgba(255,255,255,0.22)",
-    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.24)",
+    borderRadius: 9,
     padding: "7px 10px",
     background: "rgba(255,255,255,0.08)",
     color: "#ffffff",
-    fontWeight: 650,
+    fontWeight: 800,
     cursor: "pointer",
     fontSize: 12,
   },
@@ -238,53 +259,81 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 16,
   },
   modal: {
-    width: "min(92vw, 520px)",
+    width: "min(94vw, 560px)",
     background: "#fffaf2",
     color: "#10233a",
-    borderRadius: 18,
-    boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)",
+    borderRadius: 22,
+    border: "1px solid #eadfcc",
+    boxShadow: "0 26px 80px rgba(15, 23, 42, 0.28)",
     padding: 18,
   },
   modalHeader: {
     display: "flex",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    alignItems: "center",
     gap: 12,
   },
-  modalTitle: {
+  eyebrow: {
     margin: 0,
-    fontSize: 20,
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+    color: "#8a642f",
+  },
+  modalTitle: {
+    margin: "3px 0 0",
+    fontSize: 22,
+    lineHeight: 1.15,
+    fontWeight: 900,
   },
   closeButton: {
     border: 0,
     background: "transparent",
-    fontSize: 28,
+    color: "#10233a",
     cursor: "pointer",
+    fontSize: 30,
     lineHeight: 1,
+    padding: 0,
   },
   modalText: {
+    margin: "12px 0 14px",
+    color: "#526173",
     fontSize: 13,
-    color: "#48566a",
-    lineHeight: 1.45,
-    margin: "10px 0 14px",
+    lineHeight: 1.5,
   },
-  cookieRow: {
+  optionRow: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 14,
     border: "1px solid #eadfcc",
     background: "#ffffff",
-    borderRadius: 12,
-    padding: "10px 12px",
+    borderRadius: 14,
+    padding: "11px 12px",
     marginBottom: 8,
-    fontSize: 13,
+    cursor: "pointer",
   },
-  cookieDescription: {
+  optionTextWrap: {
     display: "block",
-    color: "#657389",
-    fontSize: 12,
+  },
+  optionTitle: {
+    display: "block",
+    fontSize: 13,
+    color: "#10233a",
+  },
+  optionDescription: {
+    display: "block",
     marginTop: 3,
+    color: "#637186",
+    fontSize: 12,
+    lineHeight: 1.35,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    accentColor: "#1f4e79",
+    flexShrink: 0,
   },
   modalActions: {
     display: "flex",
@@ -292,5 +341,36 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     gap: 8,
     marginTop: 14,
+  },
+  lightButton: {
+    border: "1px solid #d8cbb7",
+    background: "#ffffff",
+    color: "#10233a",
+    borderRadius: 10,
+    padding: "8px 11px",
+    fontSize: 12,
+    fontWeight: 850,
+    cursor: "pointer",
+  },
+  goldButton: {
+    border: 0,
+    background: "#d9c7a3",
+    color: "#10233a",
+    borderRadius: 10,
+    padding: "8px 11px",
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  legalHint: {
+    margin: "12px 0 0",
+    color: "#637186",
+    fontSize: 12,
+    lineHeight: 1.4,
+  },
+  modalLink: {
+    color: "#1f4e79",
+    fontWeight: 900,
+    textDecoration: "underline",
   },
 };
