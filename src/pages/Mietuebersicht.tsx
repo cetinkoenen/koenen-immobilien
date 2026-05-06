@@ -73,7 +73,7 @@ function streetTokens(value: string | null | undefined): string[] {
 function referenceTokens(value: string | null | undefined): string[] {
   return normalizeReferenceText(value)
     .split(" ")
-    .filter((token) => token.length >= 3 && !["objekt", "wohnung", "miete", "euro", "eur", "und", "der", "die", "das"].includes(token));
+    .filter((token) => token.length >= 3 && !["objekt", "object", "wohnung", "miete", "miet", "euro", "eur", "und", "der", "die", "das", "str", "strasse", "straße"].includes(token));
 }
 
 function enoughTokenOverlap(left: string | null | undefined, right: string | null | undefined): boolean {
@@ -84,11 +84,8 @@ function enoughTokenOverlap(left: string | null | undefined, right: string | nul
   return overlap.length >= Math.min(2, Math.min(a.length, b.length));
 }
 
-function isLikelyRentOrObjectIncome(booking: FinanceEntry): boolean {
-  if (booking.entry_type !== "income" || booking.amount <= 0) return false;
-  const text = normalizeReferenceText(`${booking.category ?? ""} ${booking.note ?? ""}`);
-  // Manche Mieteingänge werden in Buchungen nur als Einnahme erfasst, ohne Kategorie „Miete".
-  // Deshalb zählen positive Eingänge zum Objekt auch dann, wenn die Kategorie leer/anders ist.
+function isRentLikeText(value: string | null | undefined): boolean {
+  const text = normalizeReferenceText(value);
   return (
     text.length === 0 ||
     text.includes("miete") ||
@@ -96,11 +93,20 @@ function isLikelyRentOrObjectIncome(booking: FinanceEntry): boolean {
     text.includes("kaltmiete") ||
     text.includes("warmmiete") ||
     text.includes("pacht") ||
-    text.includes("rate") ||
     text.includes("zahlung") ||
-    text.includes("eingang") ||
-    true
+    text.includes("eingang")
   );
+}
+
+function isLikelyRentOrObjectIncome(booking: FinanceEntry): boolean {
+  if (booking.entry_type !== "income" || booking.amount <= 0) return false;
+  return isRentLikeText(`${booking.category ?? ""} ${booking.note ?? ""}`);
+}
+
+function directObjectMatch(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined): boolean {
+  const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
+  const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
+  return exactIdMatch || exactCodeMatch;
 }
 
 function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, start: string, end: string): boolean {
@@ -116,9 +122,7 @@ function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, o
 
 
 function bookingMatchesObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string): boolean {
-  const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
-  const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
-  if (exactIdMatch || exactCodeMatch) return true;
+  if (directObjectMatch(booking, objectId, objectCode)) return true;
 
   const refText = normalizeReferenceText(bookingReferenceText(booking));
   const labelText = normalizeReferenceText(objectLabel);
@@ -141,7 +145,16 @@ function bookingMatchesObject(booking: FinanceEntry, objectId: string, objectCod
 
 function isPositiveIncomeInMonthForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
   const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= start && booking.booking_date! <= end;
-  return inMonth && isLikelyRentOrObjectIncome(booking) && bookingMatchesObject(booking, objectId, objectCode, objectLabel);
+  if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0) return false;
+
+  // Wenn Buchungen sauber mit Objekt-ID oder Objekt-Code gespeichert sind, zählt jeder positive
+  // Eingang im Monat als Mieteingang für dieses Objekt. Dadurch werden auch Buchungen ohne
+  // perfekte Kategorie korrekt erkannt.
+  if (directObjectMatch(booking, objectId, objectCode)) return true;
+
+  // Bei unsauberen Altbuchungen ohne Objekt-ID erlauben wir Fuzzy-Matching nur mit Miete-Text,
+  // damit Beträge nicht versehentlich falschen Objekten zugeordnet werden.
+  return isLikelyRentOrObjectIncome(booking) && bookingMatchesObject(booking, objectId, objectCode, objectLabel);
 }
 
 type UnitDefinition = { ref: string; title: string; matcher: (booking: FinanceEntry) => boolean };
@@ -342,13 +355,6 @@ export default function Mietuebersicht() {
         );
         const relevantBookings = strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings;
         const units = getUnitDefinitions(object.label);
-        // Die Übersicht erkennt jetzt auch Mai-2026-Zahlungen, wenn die Buchung zwar als Eingang
-        // zum Objekt erfasst wurde, aber Kategorie/Notiz nicht exakt „Miete“ enthält oder die
-        // Supabase-Monatsview noch 0 zurückgibt. Die bestehenden Daten werden nicht verändert.
-        const monthlySummaryById = appData.getMonthlyRentSummary(object.id, month.year, month.month);
-        const monthlySummaryByCode = appData.getMonthlyRentSummaryByObjectCode(object.code, month.year, month.month);
-        const monthlySummary = monthlySummaryById ?? monthlySummaryByCode;
-
         return units.map((unit) => {
           const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
           const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
@@ -360,7 +366,8 @@ export default function Mietuebersicht() {
           if (unitBookings.length === 0 && (tenantForMatch.firstName || tenantForMatch.lastName)) {
             const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
             unitBookings = allKnownBookings.filter((booking) => {
-              if (!isLikelyRentOrObjectIncome(booking)) return false;
+              const inMonth = Boolean(booking.booking_date) && booking.booking_date! >= month.start && booking.booking_date! <= month.end;
+              if (!inMonth || !isLikelyRentOrObjectIncome(booking)) return false;
               const text = normalizeReferenceText(bookingReferenceText(booking));
               return tenantTokens.some((token) => text.includes(token));
             });
@@ -375,7 +382,7 @@ export default function Mietuebersicht() {
             });
           }
           const bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
-          const paidAmount = units.length === 1 ? Math.max(monthlySummary ?? 0, bookingAmount) : bookingAmount;
+          const paidAmount = bookingAmount;
           const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
 
           return {
@@ -391,7 +398,7 @@ export default function Mietuebersicht() {
           };
         });
       }),
-    [sourceObjects, appData, monthBookings, tenantInfo, month.start, month.end, month.year, month.month]
+    [sourceObjects, appData, monthBookings, tenantInfo, month.start, month.end]
   );
 
   const stats = useMemo(() => {
