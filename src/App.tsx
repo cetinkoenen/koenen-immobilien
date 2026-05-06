@@ -190,6 +190,7 @@ function navLinkStyle(isActive: boolean): CSSProperties {
   };
 }
 
+
 function PropertyContextNotice() {
   const location = useLocation();
   const { propertyId } = useParams<{ propertyId: string }>();
@@ -316,7 +317,7 @@ function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
 
-  const navItems = useMemo(
+  const navItems = useMemo<Array<{ to: string; label: string; end?: boolean }>>(
     () => [
       { to: "/portfolio", label: "Portfolio" },
       { to: "/objekte", label: "Objekte" },
@@ -354,6 +355,7 @@ function AppShell() {
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    end={item.end}
                     style={({ isActive }) => navLinkStyle(isActive)}
                   >
                     {item.label}
@@ -381,6 +383,7 @@ function AppShell() {
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    end={item.end}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
                       [

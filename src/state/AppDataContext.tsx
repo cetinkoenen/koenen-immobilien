@@ -196,6 +196,61 @@ function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined
   return false;
 }
 
+
+
+function getEntryYearMonth(value: string | null): { year: number; month: number } | null {
+  if (!value || value.length < 7) return null;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return { year, month };
+}
+
+function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[]): MonthlyRentSummaryRow[] {
+  const map = new Map<string, MonthlyRentSummaryRow>();
+  for (const entry of entries) {
+    if (!entry.object_id || !isRentEntry(entry)) continue;
+    const ym = getEntryYearMonth(entry.booking_date);
+    if (!ym) continue;
+    const key = `${entry.object_id}|${entry.objekt_code ?? ""}|${ym.year}|${ym.month}`;
+    const existing = map.get(key) ?? {
+      object_id: String(entry.object_id),
+      objekt_code: entry.objekt_code ?? null,
+      user_id: null,
+      jahr: ym.year,
+      monat: ym.month,
+      mieteingang_summe: 0,
+    };
+    existing.mieteingang_summe += entry.amount;
+    map.set(key, existing);
+  }
+  return Array.from(map.values());
+}
+
+function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[]): YearlyFinanceSummaryRow[] {
+  const map = new Map<string, YearlyFinanceSummaryRow>();
+  for (const entry of entries) {
+    if (!entry.object_id) continue;
+    const ym = getEntryYearMonth(entry.booking_date);
+    if (!ym) continue;
+    const key = `${entry.object_id}|${entry.objekt_code ?? ""}|${ym.year}`;
+    const existing = map.get(key) ?? {
+      object_id: String(entry.object_id),
+      objekt_code: entry.objekt_code ?? null,
+      user_id: null,
+      jahr: ym.year,
+      einnahmen: 0,
+      ausgaben: 0,
+      mieteingaenge: 0,
+    };
+    if (entry.entry_type === "income") existing.einnahmen += entry.amount;
+    if (entry.entry_type === "expense") existing.ausgaben += entry.amount;
+    if (isRentEntry(entry)) existing.mieteingaenge += entry.amount;
+    map.set(key, existing);
+  }
+  return Array.from(map.values());
+}
+
 function groupLedgerRows(rows: Array<{ property_id: string | null; year: unknown; balance: unknown }>) {
   const grouped: Record<string, LoanChartPoint[]> = {};
   for (const row of rows) {
@@ -246,8 +301,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
       ]);
 
-      const firstError = objectsRes.error || entriesRes.error || monthlyRentRes.error || yearlyFinanceRes.error || portfolioRes.error || loanRes.error;
-      if (firstError) throw firstError;
+      // Die Datenbank-Views für Monats-/Jahresauswertungen können je nach Supabase-RLS
+      // gesperrt sein. Das darf NICHT die komplette App blockieren.
+      // Objekt-, Buchungs- und Portfolio-Daten bleiben Pflicht; die Summaries werden
+      // bei fehlender View-Berechtigung sicher aus finance_entry berechnet.
+      const firstBlockingError = objectsRes.error || entriesRes.error || portfolioRes.error || loanRes.error;
+      if (firstBlockingError) throw firstBlockingError;
 
       const mappedObjects = ((objectsRes.data ?? []) as any[])
         .filter((row) => row.value)
@@ -268,28 +327,38 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         note: row.note ?? null,
       }));
 
-      const mappedMonthlyRentSummaries = ((monthlyRentRes.data ?? []) as any[])
-        .filter((row) => row.object_id)
-        .map((row) => ({
-          object_id: String(row.object_id),
-          objekt_code: row.objekt_code ?? null,
-          user_id: row.user_id ?? null,
-          jahr: toNumber(row.jahr),
-          monat: toNumber(row.monat),
-          mieteingang_summe: toNumber(row.mieteingang_summe),
-        }));
+      const monthlyFromView = !monthlyRentRes.error
+        ? ((monthlyRentRes.data ?? []) as any[])
+            .filter((row) => row.object_id)
+            .map((row) => ({
+              object_id: String(row.object_id),
+              objekt_code: row.objekt_code ?? null,
+              user_id: row.user_id ?? null,
+              jahr: toNumber(row.jahr),
+              monat: toNumber(row.monat),
+              mieteingang_summe: toNumber(row.mieteingang_summe),
+            }))
+        : [];
 
-      const mappedYearlyFinanceSummaries = ((yearlyFinanceRes.data ?? []) as any[])
-        .filter((row) => row.object_id)
-        .map((row) => ({
-          object_id: String(row.object_id),
-          objekt_code: row.objekt_code ?? null,
-          user_id: row.user_id ?? null,
-          jahr: toNumber(row.jahr),
-          einnahmen: toNumber(row.einnahmen),
-          ausgaben: toNumber(row.ausgaben),
-          mieteingaenge: toNumber(row.mieteingaenge),
-        }));
+      const yearlyFromView = !yearlyFinanceRes.error
+        ? ((yearlyFinanceRes.data ?? []) as any[])
+            .filter((row) => row.object_id)
+            .map((row) => ({
+              object_id: String(row.object_id),
+              objekt_code: row.objekt_code ?? null,
+              user_id: row.user_id ?? null,
+              jahr: toNumber(row.jahr),
+              einnahmen: toNumber(row.einnahmen),
+              ausgaben: toNumber(row.ausgaben),
+              mieteingaenge: toNumber(row.mieteingaenge),
+            }))
+        : [];
+
+      // Fallback ist bewusst aus den Buchungen berechnet, damit Mieterübersicht
+      // und Portfolio auch funktionieren, wenn die View v_mieteingaenge_monat
+      // keine Berechtigung hat.
+      const mappedMonthlyRentSummaries = monthlyFromView.length ? monthlyFromView : buildMonthlyRentSummariesFromEntries(mappedEntries);
+      const mappedYearlyFinanceSummaries = yearlyFromView.length ? yearlyFromView : buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
       const mappedPortfolio = ((portfolioRes.data ?? []) as any[])
         .map((row) => ({
@@ -416,14 +485,26 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const getMonthlyRentSummary = (propertyId: string | null | undefined, year: number, month: number) => {
       if (!propertyId) return null;
       const id = String(propertyId);
-      const row = monthlyRentSummaries.find((summary) => summary.object_id === id && summary.jahr === year && summary.monat === month);
-      return row ? row.mieteingang_summe : null;
+      const row = monthlyRentSummaries.find((summary) => sameProperty({ object_id: summary.object_id, objekt_code: summary.objekt_code, entry_type: null, booking_date: null, amount: 0, category: null, note: null }, id, propertyNameById) && summary.jahr === year && summary.monat === month);
+      if (row) return row.mieteingang_summe;
+      const start = `${year}-${String(month).padStart(2, "0")}-01`;
+      const end = `${year}-${String(month).padStart(2, "0")}-31`;
+      const total = getRentEntriesForProperty(id, start, end).reduce((sum, entry) => sum + entry.amount, 0);
+      return total > 0 ? total : null;
     };
     const getMonthlyRentSummaryByObjectCode = (objectCode: string | null | undefined, year: number, month: number) => {
       if (!objectCode) return null;
       const code = normalizeMatchText(objectCode);
       const row = monthlyRentSummaries.find((summary) => normalizeMatchText(summary.objekt_code) === code && summary.jahr === year && summary.monat === month);
-      return row ? row.mieteingang_summe : null;
+      if (row) return row.mieteingang_summe;
+      const total = entries
+        .filter((entry) => normalizeMatchText(entry.objekt_code) === code && isRentEntry(entry))
+        .filter((entry) => {
+          const ym = getEntryYearMonth(entry.booking_date);
+          return ym?.year === year && ym?.month === month;
+        })
+        .reduce((sum, entry) => sum + entry.amount, 0);
+      return total > 0 ? total : null;
     };
     const getYearlyFinanceSummary = (propertyId: string | null | undefined, year: number) => {
       if (!propertyId) return null;
