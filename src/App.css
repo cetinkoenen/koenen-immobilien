@@ -344,3 +344,43 @@ button.portfolio-object-media.small, .portfolio-object-media.small { width: 78px
 @media(max-width: 620px) { .portfolio-page { padding-left: 12px !important; padding-right: 12px !important; } .cashflow-bars div { grid-template-columns: 1fr; gap: 5px; } .cashflow-bars b { text-align: left; } .refined-head { grid-template-columns: 64px minmax(0,1fr) !important; } button.portfolio-object-media.small, .portfolio-object-media.small { width: 64px !important; min-width: 64px !important; height: 48px !important; } .portfolio-live-grid, .refined-dashboard, .portfolio-input-grid.three { grid-template-columns: 1fr !important; } .compact-actions button { flex: 1 1 45%; } .expose-facts { grid-template-columns: 1fr; } .expose-toolbar { justify-content: flex-start; flex-wrap: wrap; } }
 @media print { body * { visibility: hidden !important; } .expose-modal, .expose-modal * { visibility: visible !important; } .expose-modal { position: static !important; inset: auto !important; display: block !important; padding: 0 !important; background: #fff !important; } .expose-modal-card { width: 100% !important; max-height: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; } .expose-toolbar { display: none !important; } .expose-print-sheet { margin: 0 !important; border: none !important; border-radius: 0 !important; } }
 .tenant-fields input:disabled{background:#f1f5f9;color:#64748b;border-color:#cbd5e1;cursor:not-allowed;opacity:1}
+
+/* Kosmetik: einheitlicher, warmer Hintergrund wie Hauptseite */
+body {
+  background: #f6f1e8 !important;
+}
+
+.tenant-page,
+.portfolio-page,
+.app-container {
+  background: transparent !important;
+}
+
+.tenant-hero,
+.portfolio-hero,
+.tenant-card,
+.tenant-summary,
+.portfolio-state,
+.portfolio-object-card,
+.portfolio-kpis > div,
+.app-card {
+  background: rgba(255,255,255,0.82) !important;
+  border-color: #e7ddcf !important;
+}
+
+input,
+select,
+textarea {
+  background-color: rgba(255,255,255,0.78) !important;
+}
+
+
+/* Final UI: ruhige Premium-Navigation und warmer App-Hintergrund */
+html, body, #root { background: #f6f1e8 !important; }
+body { color: #0f172a; }
+.app-surface, .page-surface, .tenant-page, .portfolio-page { background: #f6f1e8 !important; }
+header nav a:hover { transform: translateY(-1px); background: #ffffff !important; border-color: #cfc7b9 !important; }
+header nav { align-content: center; }
+button, a { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 1280px) { header .max-w-\[1760px\] { max-width: 100% !important; } }
+@media (max-width: 640px) { header img { object-fit: contain; } }

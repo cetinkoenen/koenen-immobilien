@@ -30,10 +30,12 @@ import Login from "./pages/Login";
 import MFA from "./pages/MFA";
 import AuthCallback from "./pages/AuthCallback";
 import RequireAuthMFA from "./components/RequireAuthMFA";
+import BackupButton from "./components/BackupButton";
+import CookieConsent from "./components/CookieConsent";
 import { useAuth } from "./auth/AuthProvider";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
-import logo from "./assets/koenen-logo.svg";
+import logo from "./assets/koenen-brand-logo.png";
 import { AppDataProvider } from "./state/AppDataContext";
 import "./App.css";
 
@@ -158,6 +160,109 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      <footer className="mx-auto flex max-w-7xl flex-col gap-3 px-5 pb-8 text-sm text-slate-500 sm:px-8 lg:px-10 md:flex-row md:items-center md:justify-between">
+        <span>© {new Date().getFullYear()} Könen Immobilien</span>
+        <div className="flex gap-4">
+          <NavLink to="/impressum" className="font-bold text-[#1f4e79] underline underline-offset-4">Impressum</NavLink>
+          <NavLink to="/datenschutz" className="font-bold text-[#1f4e79] underline underline-offset-4">Datenschutz</NavLink>
+          <button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-settings"))} className="font-bold text-[#1f4e79] underline underline-offset-4">Cookie-Einstellungen</button>
+        </div>
+      </footer>
+    </main>
+  );
+}
+
+function DatenschutzPage() {
+  return (
+    <main className="min-h-screen bg-[#f6f1e8] px-5 py-8 text-slate-950 sm:px-8">
+      <div className="mx-auto max-w-4xl rounded-[32px] border border-white/80 bg-white/85 p-6 shadow-xl shadow-slate-900/10 sm:p-10">
+        <NavLink to="/" className="text-sm font-black text-[#1f4e79] underline underline-offset-4">
+          Zurück zur Hauptseite
+        </NavLink>
+        <p className="mt-8 text-sm font-black uppercase tracking-[0.22em] text-[#8a642f]">Datenschutz</p>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-[#0b2a44] sm:text-5xl">Datenschutzerklärung</h1>
+        <div className="mt-8 space-y-7 text-sm leading-7 text-slate-700 sm:text-base">
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Verantwortliche Stelle</h2>
+            <p className="mt-2">Cetin & Nihal Könen<br />E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:Info.koenen@gmail.com">Info.koenen@gmail.com</a><br />Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+491747010216">+49 174 70 10 216</a></p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Cookies</h2>
+            <p className="mt-2">Unsere Webseite nutzt technisch notwendige Cookies bzw. lokale Speicherungen, damit die Webseite und der interne Bereich sicher funktionieren. Optionale Kategorien wie Analyse, Komfort und Marketing werden nur verwendet, wenn du diese im Cookie-Banner aktiv auswählst.</p>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("open-cookie-settings"))}
+              className="mt-4 inline-flex h-12 items-center justify-center rounded-2xl bg-[#1f4e79] px-5 text-sm font-black text-white transition hover:bg-[#2b6396]"
+            >
+              Cookie-Einstellungen öffnen
+            </button>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Zugriffsdaten und Hosting</h2>
+            <p className="mt-2">Beim Besuch der Webseite können technisch erforderliche Zugriffsdaten verarbeitet werden, etwa Datum und Uhrzeit des Aufrufs, Browserinformationen, IP-Adresse und aufgerufene Seiten. Die Verarbeitung dient dem sicheren und stabilen Betrieb der Webseite.</p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Kontaktaufnahme</h2>
+            <p className="mt-2">Wenn du uns per E-Mail oder Telefon kontaktierst, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage und für mögliche Anschlussfragen.</p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Deine Rechte</h2>
+            <p className="mt-2">Du hast nach Maßgabe der gesetzlichen Voraussetzungen Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch. Außerdem kannst du eine erteilte Einwilligung jederzeit mit Wirkung für die Zukunft ändern oder widerrufen.</p>
+          </section>
+          <p className="rounded-2xl bg-[#f6f1e8] p-4 text-xs leading-6 text-slate-600">Hinweis: Diese Vorlage ist eine technische und textliche Vorbereitung und ersetzt keine individuelle Rechtsberatung.</p>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function ImpressumPage() {
+  return (
+    <main className="min-h-screen bg-[#f6f1e8] px-5 py-8 text-slate-950 sm:px-8">
+      <div className="mx-auto max-w-4xl rounded-[32px] border border-white/80 bg-white/85 p-6 shadow-xl shadow-slate-900/10 sm:p-10">
+        <NavLink to="/" className="text-sm font-black text-[#1f4e79] underline underline-offset-4">
+          Zurück zur Hauptseite
+        </NavLink>
+        <p className="mt-8 text-sm font-black uppercase tracking-[0.22em] text-[#8a642f]">Impressum</p>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-[#0b2a44] sm:text-5xl">Impressum</h1>
+        <div className="mt-8 space-y-7 text-sm leading-7 text-slate-700 sm:text-base">
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Angaben gemäß § 5 DDG</h2>
+            <p className="mt-2">
+              Cetin & Nihal Könen<br />
+              [Adresse ergänzen]<br />
+              Deutschland
+            </p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Kontakt</h2>
+            <p className="mt-2">
+              E-Mail: <a className="font-bold text-[#1f4e79]" href="mailto:Info.koenen@gmail.com">Info.koenen@gmail.com</a><br />
+              Telefon: <a className="font-bold text-[#1f4e79]" href="tel:+491747010216">+49 174 70 10 216</a>
+            </p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Verantwortlich für den Inhalt</h2>
+            <p className="mt-2">Cetin & Nihal Könen<br />[Adresse ergänzen]</p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Haftung für Inhalte</h2>
+            <p className="mt-2">Die Inhalte dieser Webseite wurden mit größter Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität übernehmen wir keine Gewähr.</p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Haftung für Links</h2>
+            <p className="mt-2">Diese Webseite kann Links zu externen Webseiten enthalten. Auf deren Inhalte haben wir keinen Einfluss.</p>
+          </section>
+          <section>
+            <h2 className="text-xl font-black text-[#0b2a44]">Urheberrecht</h2>
+            <p className="mt-2">Die auf dieser Webseite erstellten Inhalte und Werke unterliegen dem deutschen Urheberrecht.</p>
+          </section>
+          <p className="rounded-2xl bg-[#f6f1e8] p-4 text-xs leading-6 text-slate-600">
+            Bitte vor Veröffentlichung Adresse und ggf. Rechtsform/USt-ID ergänzen. Diese Vorlage ersetzt keine individuelle Rechtsberatung.
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
@@ -176,17 +281,21 @@ function navLinkStyle(isActive: boolean): CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "11px 16px",
+    minWidth: 136,
+    height: 46,
+    padding: "0 18px",
     borderRadius: 16,
     textDecoration: "none",
-    fontWeight: 800,
-    fontSize: 15,
-    transition: "all 120ms ease",
-    border: isActive ? "1px solid #c7d2fe" : "1px solid #cbd5e1",
-    background: isActive ? "#eef2ff" : "#ffffff",
+    fontWeight: 850,
+    fontSize: 14,
+    lineHeight: 1,
+    letterSpacing: "-0.01em",
+    transition: "background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease",
+    border: isActive ? "1px solid #c8c7ff" : "1px solid #d8d2c7",
+    background: isActive ? "#eef0ff" : "rgba(255,255,255,0.78)",
     color: isActive ? "#3730a3" : "#111827",
     whiteSpace: "nowrap",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
+    boxShadow: isActive ? "0 3px 9px rgba(71, 85, 105, 0.12)" : "0 2px 6px rgba(71, 85, 105, 0.10)",
   };
 }
 
@@ -241,13 +350,13 @@ function LogoutButton() {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 xl:inline-flex">
+      <span className="hidden h-[46px] items-center rounded-2xl border border-[#d8d2c7] bg-white/65 px-4 text-sm font-semibold text-slate-600 2xl:inline-flex">
         {user?.email ?? "Eingeloggt"}
       </span>
       <button
         type="button"
         onClick={handleLogout}
-        className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-slate-50"
+        className="inline-flex h-[46px] w-[116px] items-center justify-center rounded-2xl border border-[#d8d2c7] bg-white/75 px-4 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-white"
       >
         Logout
       </button>
@@ -331,13 +440,13 @@ function AppShell() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
-          <div className="flex items-center justify-between gap-4">
-            <NavLink to="/portfolio" className="flex min-w-0 items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <img src={logo} alt="Könen Immobilien" className="h-10 w-10 object-contain" />
+    <div className="min-h-screen bg-[#f6f1e8] text-slate-950">
+      <header className="sticky top-0 z-30 border-b border-[#e7ddcf] bg-[#f6f1e8]/88 backdrop-blur-xl">
+        <div className="mx-auto max-w-[1760px] px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-5">
+            <NavLink to="/" className="flex min-w-0 items-center gap-3" title="Zur Hauptseite">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#e3d8ca] bg-[#f3eadc] shadow-sm">
+                <img src={logo} alt="Könen Immobilien" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -349,8 +458,8 @@ function AppShell() {
               </div>
             </NavLink>
 
-            <div className="hidden items-center gap-4 lg:flex">
-              <nav className="flex flex-wrap items-center gap-2">
+            <div className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex">
+              <nav className="flex max-w-[660px] flex-wrap justify-center gap-2.5">
                 {navItems.map((item) => (
                   <NavLink
                     key={item.to}
@@ -362,13 +471,14 @@ function AppShell() {
                   </NavLink>
                 ))}
               </nav>
+              <BackupButton />
               <LogoutButton />
             </div>
 
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm lg:hidden"
+              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm xl:hidden"
               aria-label={mobileMenuOpen ? "Menü schließen" : "Menü öffnen"}
               aria-expanded={mobileMenuOpen}
             >
@@ -377,7 +487,7 @@ function AppShell() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-3 shadow-sm lg:hidden">
+            <div className="mt-4 rounded-[24px] border border-[#e7ddcf] bg-white/76 p-3 shadow-sm xl:hidden">
               <nav className="grid gap-2">
                 {navItems.map((item) => (
                   <NavLink
@@ -399,10 +509,11 @@ function AppShell() {
                 ))}
               </nav>
 
-              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#e7ddcf] bg-white/80 p-3">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
                   {user?.email ?? "Eingeloggt"}
                 </div>
+                <BackupButton />
                 <LogoutButton />
               </div>
             </div>
@@ -419,7 +530,8 @@ function AppShell() {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route
         path="/login"
         element={
@@ -438,6 +550,8 @@ export default function App() {
       />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/" element={<HomePage />} />
+      <Route path="/datenschutz" element={<DatenschutzPage />} />
+      <Route path="/impressum" element={<ImpressumPage />} />
 
       <Route element={<ProtectedAppShell />}>
         <Route path="/dashboard" element={<Navigate to="/portfolio" replace />} />
@@ -475,7 +589,9 @@ export default function App() {
         <Route path="/darlehen" element={<Navigate to="/objekte" replace />} />
       </Route>
 
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+      <CookieConsent />
+    </>
   );
 }
