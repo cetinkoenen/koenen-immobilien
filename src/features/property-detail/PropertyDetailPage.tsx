@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { buildBaseFinanceMetrics } from "@/services/financeService";
+import { resolveLoanIdForProperty } from "@/services/propertyLoanLedgerService";
 import { useResolvedPropertyContext } from "./useResolvedPropertyContext";
 import { useIncome } from "./hooks/useIncome";
 import { useLedger } from "./hooks/useLedger";
@@ -688,19 +689,31 @@ export default function PropertyDetailPage(props: {
         const payload = {
           property_id: ledgerPropertyId,
           year: toSafeNumber(row.year, 0),
-          interest_payment: toSafeNumber(row.interestPayment, 0),
-          principal_payment: toSafeNumber(row.principalPayment, 0),
-          remaining_balance: toSafeNumber(row.remainingBalance, 0),
+          interest: toSafeNumber(row.interestPayment, 0),
+          principal: toSafeNumber(row.principalPayment, 0),
+          balance: toSafeNumber(row.remainingBalance, 0),
           source: row.source?.trim() || "manual",
         };
 
         if (!payload.year) continue;
 
         if (row.dbId) {
-          const { error } = await supabase.from("property_loan_ledger").update(payload).eq("id", row.dbId);
+          // property_loan_ledger benutzt in der aktuellen DB die kanonischen Spalten
+          // interest / principal / balance. Die alten UI-Namen interest_payment /
+          // principal_payment / remaining_balance verursachten beim PATCH einen 400 Bad Request.
+          const { error } = await supabase
+            .from("property_loan_ledger")
+            .update(payload)
+            .eq("id", row.dbId);
           if (error) throw error;
         } else {
-          const { error } = await supabase.from("property_loan_ledger").insert(payload);
+          const loanId = await resolveLoanIdForProperty(ledgerPropertyId);
+          const { error } = await supabase
+            .from("property_loan_ledger")
+            .upsert(
+              { ...payload, loan_id: loanId },
+              { onConflict: "property_id,year" },
+            );
           if (error) throw error;
         }
       }

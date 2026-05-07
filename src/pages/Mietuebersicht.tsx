@@ -247,21 +247,14 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
       { ref: "P254 - E008440000123", title: "Garage 3" },
     ];
 
-    return [
-      {
-        ref: "hauptmiete",
-        title: "Wohnung / Hauptmiete",
-        matcher: (booking: FinanceEntry) => {
-          const text = normalizeReferenceText(bookingReferenceText(booking));
-          return !garages.some((garage) => text.includes(normalizeReferenceText(garage.ref))) && !(text.includes("garage") || text.includes("tg") || text.includes("stellplatz"));
-        },
-      },
-      ...garages.map((garage) => ({
-        ref: garage.ref,
-        title: garage.title,
-        matcher: (booking: FinanceEntry) => normalizeReferenceText(bookingReferenceText(booking)).includes(normalizeReferenceText(garage.ref)),
-      })),
-    ];
+    // Rosensteinstraße hat laut Bestand nur 3 Garagen/Stellplätze und keine Wohnung.
+    // Daher darf in der Mieterübersicht keine zusätzliche Zeile "Wohnung / Hauptmiete"
+    // erzeugt werden; die drei Garagen behalten ihre bisherigen Matcher/Funktionen.
+    return garages.map((garage) => ({
+      ref: garage.ref,
+      title: garage.title,
+      matcher: (booking: FinanceEntry) => normalizeReferenceText(bookingReferenceText(booking)).includes(normalizeReferenceText(garage.ref)),
+    }));
   }
 
   return [{ ref: "hauptmiete", title: "Miete", matcher: () => true }];

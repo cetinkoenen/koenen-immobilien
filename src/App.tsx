@@ -146,9 +146,10 @@ function HomePage() {
         <div className="grid gap-8 rounded-[36px] bg-white p-8 shadow-xl shadow-slate-900/10 md:p-10 lg:grid-cols-[1fr_0.9fr]">
           <div>
             <div className="text-sm font-black uppercase tracking-[0.22em] text-[#8a642f]">Kontakt</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight text-[#0b2a44] sm:text-5xl">Sprechen wir über Immobilien.</h2>
+            <h2 className="mt-4 text-3xl font-black tracking-tight text-[#0b2a44] sm:text-5xl">Wir investieren in Immobilien mit Potenzial.</h2>
             <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-650">
-              Bei Bedenken oder Fragen stehe ich jederzeit zur Verfügung. Über ein Kennenlernen und eine Besichtigung freue ich mich sehr.
+              Als langfristig orientierter Immobilieninvestor sind wir kontinuierlich auf der Suche nach attraktiven Wohn- und Anlageimmobilien. Diskretion, Verlässlichkeit und eine professionelle Zusammenarbeit stehen für uns an erster Stelle.
+Wir freuen uns darauf, von Ihnen zu hören.
             </p>
           </div>
           <div className="rounded-[28px] bg-[#f6f1e8] p-6">
