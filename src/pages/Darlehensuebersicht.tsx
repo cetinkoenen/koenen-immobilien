@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import EditableLoanLedgerTable from "@/components/EditableLoanLedgerTable";
 import { useIncome } from "@/features/property-detail/hooks/useIncome";
 import { calculateYearlyFinanceMetrics } from "@/services/financeService";
-import { loadPropertyLoanLedger } from "@/services/propertyLoanLedgerService";
+import { generatePropertyLoanLedgerProjection, loadPropertyLoanLedger } from "@/services/propertyLoanLedgerService";
 import type { LoanLedgerRow } from "@/types/loanLedger";
 import { supabase } from "@/lib/supabase";
 
@@ -259,6 +259,9 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
   const [ledgerLoading, setLedgerLoading] = useState<boolean>(true);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [open, setOpen] = useState<boolean>(false);
+  const [projection, setProjection] = useState({ interestRatePercent: "3.5", annualPrincipal: "12000", years: "10" });
+  const [projectionStatus, setProjectionStatus] = useState<string | null>(null);
+  const [projectionLoading, setProjectionLoading] = useState(false);
 
   async function reloadLedger() {
     try {
@@ -272,6 +275,33 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
       setLedgerRows([]);
     } finally {
       setLedgerLoading(false);
+    }
+  }
+
+  async function createProjection() {
+    const last = ledgerRows.at(-1);
+    if (!last) {
+      setProjectionStatus("Bitte zuerst mindestens eine Darlehenszeile anlegen.");
+      return;
+    }
+    const years = Math.max(1, Math.min(80, Math.trunc(Number(projection.years) || 1)));
+    try {
+      setProjectionLoading(true);
+      setProjectionStatus(null);
+      const created = await generatePropertyLoanLedgerProjection(props.propertyId, {
+        startYear: last.year + 1,
+        endYear: last.year + years,
+        startBalance: last.balance,
+        interestRatePercent: Number(String(projection.interestRatePercent).replace(",", ".")) || 0,
+        annualPrincipal: Number(String(projection.annualPrincipal).replace(",", ".")) || last.principal || 0,
+        source: "auto_projection",
+      });
+      setProjectionStatus(`${created} Darlehensjahr(e) wurden automatisch erzeugt.`);
+      await reloadLedger();
+    } catch (error) {
+      setProjectionStatus(error instanceof Error ? error.message : "Tilgungsplan konnte nicht erzeugt werden.");
+    } finally {
+      setProjectionLoading(false);
     }
   }
 
@@ -309,6 +339,8 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
   }, [yearlyMetrics]);
 
   const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : 0;
+  const latestYear = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].year : null;
+  const yearlyWarnings = ledgerRows.some((row, index) => index > 0 && row.balance > ledgerRows[index - 1].balance + 1);
 
   return (
     <article style={styles.card}>
@@ -319,10 +351,10 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
             Editierbare Jahresübersicht mit bestehender Ledger-Logik und automatisch berechneter Finance-Tabelle.
           </div>
           <div style={styles.summaryGrid}>
-            <FinanceSummary label="Restschuld" value={formatCurrency(latestBalance)} />
-            <FinanceSummary label="Jahreszeilen" value={String(ledgerRows.length)} />
+            <FinanceSummary label="Aktuelle Restschuld" value={formatCurrency(latestBalance)} />
+            <FinanceSummary label="Quelle Portfolio" value={latestYear ? `Ledger ${latestYear}` : "—"} />
             <FinanceSummary label="Durchschn. Debt Service" value={yearlyMetrics.length > 0 ? formatCurrency(totals.debtService / yearlyMetrics.length) : "—"} />
-            <FinanceSummary label="Durchschn. Cashflow" value={yearlyMetrics.length > 0 ? formatCurrency(totals.cashflow / yearlyMetrics.length) : "—"} />
+            <FinanceSummary label="DSCR Ø" value={yearlyMetrics.length > 0 ? formatNumber(yearlyMetrics.reduce((sum, row) => sum + (row.dscr ?? 0), 0) / yearlyMetrics.length) : "—"} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -345,6 +377,19 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
 
           {!ledgerLoading && !ledgerError ? (
             <>
+              {yearlyWarnings ? <div style={{ ...styles.errorBox, marginBottom: 16 }}>Warnung: Mindestens eine Restschuld ist höher als im Vorjahr. Bitte Darlehenswerte prüfen.</div> : null}
+
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: 18, padding: 16, marginBottom: 22, background: "#f8fafc" }}>
+                <h3 style={styles.sectionTitle}>Automatischer Tilgungsplan</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                  <input style={styles.input} value={projection.interestRatePercent} onChange={(event) => setProjection((prev) => ({ ...prev, interestRatePercent: event.target.value }))} placeholder="Zinssatz %" />
+                  <input style={styles.input} value={projection.annualPrincipal} onChange={(event) => setProjection((prev) => ({ ...prev, annualPrincipal: event.target.value }))} placeholder="Tilgung pro Jahr" />
+                  <input style={styles.input} value={projection.years} onChange={(event) => setProjection((prev) => ({ ...prev, years: event.target.value }))} placeholder="Anzahl Jahre" />
+                  <button type="button" style={styles.primaryButton} disabled={projectionLoading} onClick={() => void createProjection()}>{projectionLoading ? "Erzeuge…" : "Tilgungsplan erzeugen"}</button>
+                </div>
+                {projectionStatus ? <div style={{ ...styles.mutedText, marginTop: 10, fontWeight: 800 }}>{projectionStatus}</div> : null}
+              </div>
+
               <h3 style={styles.sectionTitle}>Finance pro Jahr</h3>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>

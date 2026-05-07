@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
 import {
   deletePropertyLoanLedgerRow,
+  generatePropertyLoanLedgerProjection,
   insertPropertyLoanLedgerRow,
   parseLoanLedgerFormValues,
   rowToFormValues,
@@ -318,6 +319,16 @@ export default function EditableLoanLedgerTable({
     })
   }, [rows])
 
+  const lastRow = sortedRows[sortedRows.length - 1]
+  const [showAutoGenerator, setShowAutoGenerator] = useState(false)
+  const [autoValues, setAutoValues] = useState({
+    startYear: String((lastRow?.year ?? new Date().getFullYear()) + 1),
+    endYear: String((lastRow?.year ?? new Date().getFullYear()) + 10),
+    startBalance: String(lastRow?.balance ?? ''),
+    interestRatePercent: '3.5',
+    annualPrincipal: '',
+  })
+
   function clearMessages() {
     setFieldErrors({})
     setErrorMessage(null)
@@ -462,6 +473,42 @@ export default function EditableLoanLedgerTable({
           ? error.message
           : 'Die Zeile konnte nicht gelöscht werden.'
       )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+
+  function handleOpenAutoGenerator() {
+    const baseYear = lastRow?.year ?? new Date().getFullYear()
+    setAutoValues({
+      startYear: String(baseYear + 1),
+      endYear: String(baseYear + 10),
+      startBalance: String(lastRow?.balance ?? ''),
+      interestRatePercent: autoValues.interestRatePercent || '3.5',
+      annualPrincipal: autoValues.annualPrincipal || '',
+    })
+    setShowAutoGenerator((prev) => !prev)
+    clearMessages()
+  }
+
+  async function handleGenerateProjection() {
+    try {
+      setSaving(true)
+      clearMessages()
+      const count = await generatePropertyLoanLedgerProjection(propertyId, {
+        startYear: Number(autoValues.startYear),
+        endYear: Number(autoValues.endYear),
+        startBalance: Number(String(autoValues.startBalance).replace(',', '.')),
+        interestRatePercent: Number(String(autoValues.interestRatePercent).replace(',', '.')),
+        annualPrincipal: Number(String(autoValues.annualPrincipal).replace(',', '.')),
+        source: 'auto_projection',
+      })
+      setShowAutoGenerator(false)
+      await onChanged()
+      setErrorMessage(`Automatische Darlehensfortschreibung gespeichert: ${count} Jahr(e).`)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Automatische Darlehensfortschreibung fehlgeschlagen.')
     } finally {
       setSaving(false)
     }
@@ -638,32 +685,33 @@ export default function EditableLoanLedgerTable({
       <div style={styles.headerRow}>
         <h3 style={styles.title}>Darlehens-Ledger</h3>
 
-        <button
-          type="button"
-          onClick={handleStartAdd}
-          disabled={saving || isAddingRow || editingId !== null}
-          style={{
-            ...styles.primaryButton,
-            ...(saving || isAddingRow || editingId !== null ? styles.disabledButton : {}),
-          }}
-        >
-          Neue Zeile
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={handleOpenAutoGenerator} disabled={saving || isAddingRow || editingId !== null} style={{ ...styles.primaryButton, ...(saving || isAddingRow || editingId !== null ? styles.disabledButton : {}) }}>Auto-Fortschreibung</button>
+          <button type="button" onClick={handleStartAdd} disabled={saving || isAddingRow || editingId !== null} style={{ ...styles.primaryButton, ...(saving || isAddingRow || editingId !== null ? styles.disabledButton : {}) }}>Neue Zeile</button>
+        </div>
       </div>
 
       <div style={styles.metaBox}>
-        propertyId: {propertyId}
-        <br />
-        rows: {rows.length}
-        <br />
-        sortedRows: {sortedRows.length}
-        <br />
-        isMobile: {String(isMobile)}
-        <br />
-        isAddingRow: {String(isAddingRow)}
-        <br />
-        editingId: {editingId ?? 'null'}
+        Restschuld-Quelle für Portfolio und Objektauswertungen. Letzter Eintrag: {lastRow ? `${lastRow.year} / ${formatCurrency(lastRow.balance)}` : 'noch keiner'}.
       </div>
+
+      {showAutoGenerator ? (
+        <div style={{ ...styles.metaBox, background: '#f8fbff', borderColor: '#bfdbfe' }}>
+          <div style={{ fontWeight: 800, color: '#111827', marginBottom: 10 }}>Automatische Darlehensfortschreibung</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, minmax(0, 1fr))', gap: 10 }}>
+            {[['startYear', 'Startjahr'], ['endYear', 'Bis Jahr'], ['startBalance', 'Start-Restschuld'], ['interestRatePercent', 'Zins %'], ['annualPrincipal', 'Jährliche Tilgung']].map(([key, label]) => (
+              <label key={key} style={{ display: 'grid', gap: 4 }}>
+                <span style={styles.mobileFieldLabel}>{label}</span>
+                <input type="number" step={key.includes('Year') ? '1' : '0.01'} value={autoValues[key as keyof typeof autoValues]} onChange={(event) => setAutoValues((prev) => ({ ...prev, [key]: event.target.value }))} disabled={saving} style={styles.input} />
+              </label>
+            ))}
+          </div>
+          <div style={{ ...styles.rowActions, marginTop: 12 }}>
+            <button type="button" onClick={handleGenerateProjection} disabled={saving} style={{ ...styles.saveButton, ...(saving ? styles.disabledButton : {}) }}>Generieren & speichern</button>
+            <button type="button" onClick={() => setShowAutoGenerator(false)} disabled={saving} style={{ ...styles.neutralButton, ...(saving ? styles.disabledButton : {}) }}>Schließen</button>
+          </div>
+        </div>
+      ) : null}
 
       {errorMessage ? <div style={styles.errorBox}>{errorMessage}</div> : null}
 

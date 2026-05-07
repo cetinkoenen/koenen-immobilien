@@ -191,7 +191,7 @@ export const ledgerService = {
       .eq("property_id", safePropertyId)
       .order("year", { ascending: true });
 
-    console.log("ledgerService.getByPropertyId", {
+    if (import.meta.env.DEV) console.debug("ledgerService.getByPropertyId", {
       propertyId: safePropertyId,
       rowCount: data?.length ?? 0,
       error,
@@ -223,7 +223,7 @@ export const ledgerService = {
   async create(input: CreateYearlyLedgerEntryInput): Promise<YearlyLedgerEntry> {
     const payload = buildCreatePayload(input);
 
-    console.log("ledgerService.create.payload", payload);
+    if (import.meta.env.DEV) console.debug("ledgerService.create.payload", payload);
 
     const { data, error } = await supabase
       .from(TABLE_NAME)
@@ -246,7 +246,7 @@ export const ledgerService = {
       throw new Error("Es gibt keine Felder zum Aktualisieren.");
     }
 
-    console.log("ledgerService.update.start", {
+    if (import.meta.env.DEV) console.debug("ledgerService.update.start", {
       id: safeId,
       payload,
     });
@@ -258,7 +258,7 @@ export const ledgerService = {
       .select(SELECT_COLUMNS)
       .single();
 
-    console.log("ledgerService.update.result", {
+    if (import.meta.env.DEV) console.debug("ledgerService.update.result", {
       id: safeId,
       payload,
       data,

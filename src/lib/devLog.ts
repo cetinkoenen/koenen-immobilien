@@ -1,5 +1,5 @@
 export const devLog = (...args: any[]) => {
-  if (import.meta.env.DEV) console.log(...args);
+  if (import.meta.env.DEV) console.debug(...args);
 };
 
 export const devCount = (label: string) => {

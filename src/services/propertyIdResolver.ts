@@ -19,7 +19,7 @@ export async function resolveBestFinancePropertyId(
     .eq("id", id)
     .maybeSingle();
 
-  console.log("propertyIdResolver.portfolioById", {
+  if (import.meta.env.DEV) console.debug("propertyIdResolver.portfolioById", {
     routePropertyId: id,
     data: portfolioById.data,
     error: portfolioById.error,
@@ -36,7 +36,7 @@ export async function resolveBestFinancePropertyId(
     .eq("id", id)
     .maybeSingle();
 
-  console.log("propertyIdResolver.propertyById", {
+  if (import.meta.env.DEV) console.debug("propertyIdResolver.propertyById", {
     routePropertyId: id,
     data: propertyById.data,
     error: propertyById.error,
@@ -53,7 +53,7 @@ export async function resolveBestFinancePropertyId(
     .eq("core_property_id", id)
     .limit(1);
 
-  console.log("propertyIdResolver.portfolioByCoreId", {
+  if (import.meta.env.DEV) console.debug("propertyIdResolver.portfolioByCoreId", {
     routePropertyId: id,
     data: portfolioByCoreId.data,
     error: portfolioByCoreId.error,

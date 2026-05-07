@@ -571,6 +571,7 @@ export default function Portfolio() {
                   <div className="portfolio-mini-card">
                     <span>Restschuld</span>
                     <b>{formatCurrency(row.last_balance)}</b>
+                    <small>Quelle: Darlehensübersicht / letzter Ledger-Wert</small>
                   </div>
                   <div className="portfolio-mini-card">
                     <span>Cashflow {year}</span>

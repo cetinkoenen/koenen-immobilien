@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { recordAuditLog } from "@/services/auditLogService";
 import type {
   LoanLedgerFormValues,
   LoanLedgerRow,
@@ -54,7 +55,7 @@ type PropertyLoanRowDb = {
 
 function devLog(message: string, payload?: unknown) {
   if (!DEBUG) return;
-  console.log(`[propertyLoanLedgerService] ${message}`, payload);
+  if (import.meta.env.DEV) console.debug(`[propertyLoanLedgerService] ${message}`, payload);
 }
 
 function devError(message: string, payload?: unknown) {
@@ -511,4 +512,46 @@ export async function deletePropertyLoanLedgerRow(
       "Die Zeile konnte nicht gelöscht werden. Es wurde kein Datensatz entfernt.",
     );
   }
+}
+export type LoanProjectionInput = {
+  startYear: number;
+  endYear: number;
+  startBalance: number;
+  interestRatePercent: number;
+  annualPrincipal: number;
+  source?: string | null;
+};
+
+export function buildLoanProjectionRows(input: LoanProjectionInput): SaveLoanLedgerPayload[] {
+  const startYear = Math.trunc(toNumber(input.startYear, Number.NaN));
+  const endYear = Math.trunc(toNumber(input.endYear, Number.NaN));
+  const rate = toNumber(input.interestRatePercent, 0) / 100;
+  const annualPrincipal = Math.max(0, toNumber(input.annualPrincipal, 0));
+  let balance = Math.max(0, toNumber(input.startBalance, 0));
+  if (!Number.isFinite(startYear) || !Number.isFinite(endYear) || endYear < startYear) throw new Error("Bitte gültigen Start- und Endjahr-Bereich eingeben.");
+  if (!Number.isFinite(balance) || balance <= 0) throw new Error("Bitte gültige Start-Restschuld eingeben.");
+  if (!Number.isFinite(annualPrincipal) || annualPrincipal <= 0) throw new Error("Bitte gültige jährliche Tilgung eingeben.");
+  if (endYear - startYear > 80) throw new Error("Bitte maximal 80 Jahre auf einmal generieren.");
+  const rows: SaveLoanLedgerPayload[] = [];
+  for (let year = startYear; year <= endYear; year += 1) {
+    const interest = Math.round(balance * rate * 100) / 100;
+    const principal = Math.min(balance, annualPrincipal);
+    balance = Math.max(0, Math.round((balance - principal) * 100) / 100);
+    rows.push({ year, interest, principal: Math.round(principal * 100) / 100, balance, source: input.source ?? "auto_projection" });
+    if (balance <= 0) break;
+  }
+  return rows;
+}
+
+export async function generatePropertyLoanLedgerProjection(propertyId: string, input: LoanProjectionInput): Promise<number> {
+  const rows = buildLoanProjectionRows(input);
+  for (const row of rows) await insertPropertyLoanLedgerRow(propertyId, row);
+  await recordAuditLog({
+    action: "loan_projection_generated",
+    property_id: propertyId,
+    label: "Tilgungsplan automatisch erzeugt",
+    new_value: rows,
+    meta: { startYear: input.startYear, endYear: input.endYear, interestRatePercent: input.interestRatePercent },
+  });
+  return rows.length;
 }

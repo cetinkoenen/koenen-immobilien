@@ -153,7 +153,7 @@ export const yearlyCapexService = {
       .eq("property_id", safePropertyId)
       .order("year", { ascending: true });
 
-    console.log("yearlyCapexService.getByPropertyId", {
+    if (import.meta.env.DEV) console.debug("yearlyCapexService.getByPropertyId", {
       table: TABLE_NAME,
       propertyId: safePropertyId,
       rowCount: data?.length ?? 0,

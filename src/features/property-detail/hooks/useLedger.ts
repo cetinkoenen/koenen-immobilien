@@ -84,7 +84,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
       setError(null);
       setIsLoading(false);
 
-      console.log("useLedger.load.skip", {
+      if (import.meta.env.DEV) console.debug("useLedger.load.skip", {
         reason: "missing-propertyId",
       });
 
@@ -94,7 +94,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
     setIsLoading(true);
     setError(null);
 
-    console.log("useLedger.load.start", {
+    if (import.meta.env.DEV) console.debug("useLedger.load.start", {
       propertyId,
       requestId: currentRequestId,
     });
@@ -103,7 +103,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
       const result = await ledgerService.getByPropertyId(propertyId);
 
       if (!mountedRef.current || currentRequestId !== requestIdRef.current) {
-        console.log("useLedger.load.stale", {
+        if (import.meta.env.DEV) console.debug("useLedger.load.stale", {
           propertyId,
           requestId: currentRequestId,
         });
@@ -113,7 +113,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
       setLedgerEntries(sortLedgerEntries(result));
       setError(null);
 
-      console.log("useLedger.load.success", {
+      if (import.meta.env.DEV) console.debug("useLedger.load.success", {
         propertyId,
         requestId: currentRequestId,
         ledgerCount: result.length,
@@ -173,7 +173,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
           setLedgerEntries((prev) => sortLedgerEntries([...prev, created]));
         }
 
-        console.log("useLedger.createLedgerEntry.success", {
+        if (import.meta.env.DEV) console.debug("useLedger.createLedgerEntry.success", {
           propertyId,
           id: created.id,
           year: created.year,
@@ -217,7 +217,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
           );
         }
 
-        console.log("useLedger.updateLedgerEntry.success", {
+        if (import.meta.env.DEV) console.debug("useLedger.updateLedgerEntry.success", {
           propertyId,
           id,
           year: updated.year,
@@ -254,7 +254,7 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
           setLedgerEntries((prev) => prev.filter((entry) => entry.id !== id));
         }
 
-        console.log("useLedger.removeLedgerEntry.success", {
+        if (import.meta.env.DEV) console.debug("useLedger.removeLedgerEntry.success", {
           propertyId,
           id,
         });

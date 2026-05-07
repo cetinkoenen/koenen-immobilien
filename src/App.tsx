@@ -20,6 +20,7 @@ import Auswertung from "./pages/Auswertung";
 import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
+import Datenpruefung from "./pages/Datenpruefung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
 import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
@@ -437,6 +438,7 @@ function AppShell() {
       { to: "/buchungen", label: "Buchungen" },
       { to: "/mieteruebersicht", label: "Mieterübersicht" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
+      { to: "/datenpruefung", label: "Datenprüfung" },
     ],
     []
   );
@@ -523,7 +525,7 @@ function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6">
+      <main className="mx-auto max-w-[1760px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
         <Outlet />
       </main>
     </div>
@@ -583,6 +585,8 @@ export default function App() {
         <Route path="/buchungen" element={<EntryAdd />} />
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/entry-add" element={<Navigate to="/buchungen" replace />} />
+
+        <Route path="/datenpruefung" element={<Datenpruefung />} />
 
         <Route path="/nebenkosten" element={<NebenkostenIndexPage />} />
         <Route path="/nebenkosten/tiefgarage" element={<NebenkostenTiefgarage />} />

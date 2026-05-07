@@ -722,25 +722,25 @@ export default function PortfolioRenting(props: Props) {
   }, [loadRenting, outlet.mapLoading, resolveLoading]);
 
   useEffect(() => {
-    console.log("DEBUG PortfolioRenting IDs");
-    console.log("Route-ID:", routePropertyId);
-    console.log("Portfolio-ID:", portfolioPropertyId);
-    console.log("Core-ID:", corePropertyId);
-    console.log("Extracted Outlet UUIDs:", extractedOutletIds);
-    console.log("Extracted Prop UUIDs:", extractedPropIds);
-    console.log("Outlet Keys:", outletKeys);
-    console.log("Outlet Snapshot:", outlet);
-    console.log("Base Candidate IDs:", baseCandidateIds);
-    console.log("Resolved Properties:", resolvedProperties);
-    console.log("Rental Counts By Property ID:", rentalCountsByPropertyId);
-    console.log("Resolved Property With Rentals ID:", resolvedPropertyWithRentalsId);
-    console.log("Effective Rental Property ID:", effectiveRentalPropertyId);
-    console.log("Read Candidate IDs:", readCandidateIds);
-    console.log("Preferred Write ID:", preferredWriteId);
-    console.log("Readonly wegen fehlender kanonischer Portfolio-ID:", isReadonlyBecauseNoCanonicalProperty);
-    console.log("Matched Rental ID:", matchedPropertyId);
-    console.log("Chart portfolioPropertyId:", chartPortfolioPropertyId);
-    console.log("Chart fallback IDs:", chartFallbackIds);
+    if (import.meta.env.DEV) console.debug("DEBUG PortfolioRenting IDs");
+    if (import.meta.env.DEV) console.debug("Route-ID:", routePropertyId);
+    if (import.meta.env.DEV) console.debug("Portfolio-ID:", portfolioPropertyId);
+    if (import.meta.env.DEV) console.debug("Core-ID:", corePropertyId);
+    if (import.meta.env.DEV) console.debug("Extracted Outlet UUIDs:", extractedOutletIds);
+    if (import.meta.env.DEV) console.debug("Extracted Prop UUIDs:", extractedPropIds);
+    if (import.meta.env.DEV) console.debug("Outlet Keys:", outletKeys);
+    if (import.meta.env.DEV) console.debug("Outlet Snapshot:", outlet);
+    if (import.meta.env.DEV) console.debug("Base Candidate IDs:", baseCandidateIds);
+    if (import.meta.env.DEV) console.debug("Resolved Properties:", resolvedProperties);
+    if (import.meta.env.DEV) console.debug("Rental Counts By Property ID:", rentalCountsByPropertyId);
+    if (import.meta.env.DEV) console.debug("Resolved Property With Rentals ID:", resolvedPropertyWithRentalsId);
+    if (import.meta.env.DEV) console.debug("Effective Rental Property ID:", effectiveRentalPropertyId);
+    if (import.meta.env.DEV) console.debug("Read Candidate IDs:", readCandidateIds);
+    if (import.meta.env.DEV) console.debug("Preferred Write ID:", preferredWriteId);
+    if (import.meta.env.DEV) console.debug("Readonly wegen fehlender kanonischer Portfolio-ID:", isReadonlyBecauseNoCanonicalProperty);
+    if (import.meta.env.DEV) console.debug("Matched Rental ID:", matchedPropertyId);
+    if (import.meta.env.DEV) console.debug("Chart portfolioPropertyId:", chartPortfolioPropertyId);
+    if (import.meta.env.DEV) console.debug("Chart fallback IDs:", chartFallbackIds);
   }, [
     routePropertyId,
     portfolioPropertyId,

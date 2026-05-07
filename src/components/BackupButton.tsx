@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CloudDownload } from "lucide-react";
+import * as XLSX from "xlsx";
+import { recordAuditLog } from "@/services/auditLogService";
 
 const BACKUP_TABLES = [
   "finance_entry",
@@ -71,17 +73,16 @@ export default function BackupButton() {
         }
       }
 
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json;charset=utf-8",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `koenen_backup_${formatBackupTimestamp(new Date())}.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([payload.meta]), "Backup Info");
+      for (const [tableName, rows] of Object.entries(payload.tables)) {
+        const sheetRows = rows.length ? rows : [{ Hinweis: "Keine Daten oder keine Leseberechtigung" }];
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheetRows), tableName.slice(0, 31));
+      }
+      const warnings = Object.entries(payload.warnings).map(([table, warning]) => ({ table, warning }));
+      if (warnings.length) XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(warnings), "Warnungen");
+      XLSX.writeFile(workbook, `koenen_backup_${formatBackupTimestamp(new Date())}.xlsx`);
+      await recordAuditLog({ action: "backup_created", label: "Excel-Backup erstellt", meta: { tables: Object.keys(payload.tables).length, warnings: Object.keys(payload.warnings).length } });
 
       const warningCount = Object.keys(payload.warnings).length;
       if (warningCount > 0) {
@@ -101,8 +102,8 @@ export default function BackupButton() {
       onClick={handleBackup}
       disabled={isLoading}
       className="inline-flex h-[46px] w-[54px] shrink-0 items-center justify-center rounded-2xl border border-[#d8d2c7] bg-white/65 text-[#73b3a4] shadow-sm transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-      title={isLoading ? "Backup läuft…" : "Backup erstellen"}
-      aria-label={isLoading ? "Backup läuft" : "Backup erstellen"}
+      title={isLoading ? "Backup läuft…" : "Excel-Backup erstellen"}
+      aria-label={isLoading ? "Backup läuft" : "Excel-Backup erstellen"}
     >
       <CloudDownload size={30} strokeWidth={2.4} />
     </button>

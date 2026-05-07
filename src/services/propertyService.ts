@@ -182,7 +182,7 @@ async function fetchByExactId(
     .eq("id", propertyId)
     .maybeSingle();
 
-  console.log("propertyService.fetchByExactId", {
+  if (import.meta.env.DEV) console.debug("propertyService.fetchByExactId", {
     table,
     propertyId,
     found: !!data,
@@ -215,7 +215,7 @@ async function fetchByLooseId(
       .eq(column, propertyId)
       .maybeSingle();
 
-    console.log("propertyService.fetchByLooseId.string", {
+    if (import.meta.env.DEV) console.debug("propertyService.fetchByLooseId.string", {
       table,
       column,
       propertyId,
@@ -236,7 +236,7 @@ async function fetchByLooseId(
         .eq(column, numericId)
         .maybeSingle();
 
-      console.log("propertyService.fetchByLooseId.numeric", {
+      if (import.meta.env.DEV) console.debug("propertyService.fetchByLooseId.numeric", {
         table,
         column,
         propertyId,
@@ -311,7 +311,7 @@ export async function getFirstProperty(): Promise<Property | null> {
       .select("*")
       .limit(1);
 
-    console.log("propertyService.getFirstProperty", {
+    if (import.meta.env.DEV) console.debug("propertyService.getFirstProperty", {
       table,
       rowCount: Array.isArray(data) ? data.length : 0,
       error,
@@ -336,7 +336,7 @@ export async function getFirstPropertyWithData(): Promise<Property | null> {
   for (const candidateId of candidateIds) {
     const property = await findPropertyAcrossTables(candidateId);
 
-    console.log("propertyService.getFirstPropertyWithData.candidate", {
+    if (import.meta.env.DEV) console.debug("propertyService.getFirstPropertyWithData.candidate", {
       candidateId,
       found: !!property,
     });

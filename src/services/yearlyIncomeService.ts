@@ -173,7 +173,7 @@ export const yearlyIncomeService = {
   async getByPropertyId(propertyId: string): Promise<YearlyIncomeEntry[]> {
     const safePropertyId = assertNonEmptyString(propertyId, "propertyId");
 
-    console.log("[yearlyIncomeService.getByPropertyId] start", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.getByPropertyId] start", {
       propertyId: safePropertyId,
     });
 
@@ -183,7 +183,7 @@ export const yearlyIncomeService = {
       .eq("property_id", safePropertyId)
       .order("year", { ascending: true });
 
-    console.log("[yearlyIncomeService.getByPropertyId] result", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.getByPropertyId] result", {
       propertyId: safePropertyId,
       rowCount: data?.length ?? 0,
       data,
@@ -202,7 +202,7 @@ export const yearlyIncomeService = {
     const startYear = input.startYear ?? 2024;
     const yearCount = input.yearCount ?? 10;
 
-    console.warn("[yearlyIncomeService.generateForProperty] calling RPC", {
+    if (import.meta.env.DEV) console.warn("[yearlyIncomeService.generateForProperty] calling RPC", {
       propertyId,
       startYear,
       yearCount,
@@ -214,7 +214,7 @@ export const yearlyIncomeService = {
       p_year_count: yearCount,
     });
 
-    console.log("[yearlyIncomeService.generateForProperty] RPC result", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.generateForProperty] RPC result", {
       propertyId,
       data,
       error,
@@ -234,21 +234,21 @@ export const yearlyIncomeService = {
   ): Promise<YearlyIncomeEntry[]> {
     const safePropertyId = assertNonEmptyString(propertyId, "propertyId");
 
-    console.log("[yearlyIncomeService.ensureGeneratedForProperty] start", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.ensureGeneratedForProperty] start", {
       propertyId: safePropertyId,
       options,
     });
 
     const existingRows = await this.getByPropertyId(safePropertyId);
 
-    console.log("[yearlyIncomeService.ensureGeneratedForProperty] existing rows", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.ensureGeneratedForProperty] existing rows", {
       propertyId: safePropertyId,
       existingCount: existingRows.length,
       existingRows,
     });
 
     if (existingRows.length > 0) {
-      console.log("[yearlyIncomeService.ensureGeneratedForProperty] skip generation", {
+      if (import.meta.env.DEV) console.debug("[yearlyIncomeService.ensureGeneratedForProperty] skip generation", {
         propertyId: safePropertyId,
         existingCount: existingRows.length,
       });
@@ -262,13 +262,13 @@ export const yearlyIncomeService = {
       yearCount: options?.yearCount ?? 10,
     });
 
-    console.log("[yearlyIncomeService.ensureGeneratedForProperty] reloading after RPC", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.ensureGeneratedForProperty] reloading after RPC", {
       propertyId: safePropertyId,
     });
 
     const reloadedRows = await this.getByPropertyId(safePropertyId);
 
-    console.log("[yearlyIncomeService.ensureGeneratedForProperty] reloaded rows", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.ensureGeneratedForProperty] reloaded rows", {
       propertyId: safePropertyId,
       reloadedCount: reloadedRows.length,
       reloadedRows,
@@ -280,7 +280,7 @@ export const yearlyIncomeService = {
   async create(input: CreateYearlyIncomeEntryInput): Promise<YearlyIncomeEntry> {
     const payload = buildCreatePayload(input);
 
-    console.log("[yearlyIncomeService.create] start", { payload });
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.create] start", { payload });
 
     const { data, error } = await supabase
       .from(TABLE_NAME)
@@ -288,7 +288,7 @@ export const yearlyIncomeService = {
       .select(SELECT_COLUMNS)
       .single();
 
-    console.log("[yearlyIncomeService.create] result", { data, error });
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.create] result", { data, error });
 
     if (error) {
       throwQueryError("create", error);
@@ -301,7 +301,7 @@ export const yearlyIncomeService = {
     const safeId = assertNonEmptyString(id, "id");
     const payload = buildUpdatePayload(input);
 
-    console.log("[yearlyIncomeService.update] start", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.update] start", {
       id: safeId,
       payload,
     });
@@ -313,7 +313,7 @@ export const yearlyIncomeService = {
       .select(SELECT_COLUMNS)
       .single();
 
-    console.log("[yearlyIncomeService.update] result", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.update] result", {
       id: safeId,
       data,
       error,
@@ -329,11 +329,11 @@ export const yearlyIncomeService = {
   async remove(id: string): Promise<void> {
     const safeId = assertNonEmptyString(id, "id");
 
-    console.log("[yearlyIncomeService.remove] start", { id: safeId });
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.remove] start", { id: safeId });
 
     const { error } = await supabase.from(TABLE_NAME).delete().eq("id", safeId);
 
-    console.log("[yearlyIncomeService.remove] result", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.remove] result", {
       id: safeId,
       error,
     });
@@ -361,7 +361,7 @@ export const yearlyIncomeService = {
       updated_at: new Date().toISOString(),
     };
 
-    console.log("[yearlyIncomeService.upsertByPropertyIdAndYear] start", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.upsertByPropertyIdAndYear] start", {
       payload,
     });
 
@@ -373,7 +373,7 @@ export const yearlyIncomeService = {
       .select(SELECT_COLUMNS)
       .single();
 
-    console.log("[yearlyIncomeService.upsertByPropertyIdAndYear] result", {
+    if (import.meta.env.DEV) console.debug("[yearlyIncomeService.upsertByPropertyIdAndYear] result", {
       payload,
       data,
       error,

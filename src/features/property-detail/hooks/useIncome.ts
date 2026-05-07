@@ -138,7 +138,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
 
-    console.log("[useIncome] load start", { propertyId, hasPropertyId, requestId });
+    if (import.meta.env.DEV) console.debug("[useIncome] load start", { propertyId, hasPropertyId, requestId });
 
     if (!hasPropertyId) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -149,7 +149,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
       setError(null);
       setIsLoading(false);
 
-      console.log("[useIncome] no propertyId -> reset state");
+      if (import.meta.env.DEV) console.debug("[useIncome] no propertyId -> reset state");
       return;
     }
 
@@ -166,7 +166,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
           yearlyCapexService.getByPropertyId(propertyId),
         ]);
 
-      console.log("[useIncome] raw Promise results", {
+      if (import.meta.env.DEV) console.debug("[useIncome] raw Promise results", {
         propertyId,
         propertyIncomeResult,
         yearlyIncomeResult,
@@ -174,7 +174,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) {
-        console.log("[useIncome] abort after raw load because request is stale", {
+        if (import.meta.env.DEV) console.debug("[useIncome] abort after raw load because request is stale", {
           propertyId,
           requestId,
           currentRequestId: requestIdRef.current,
@@ -224,7 +224,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
         );
       }
 
-      console.log("[useIncome] normalized service values", {
+      if (import.meta.env.DEV) console.debug("[useIncome] normalized service values", {
         propertyId,
         propertyIncome: nextPropertyIncome,
         yearlyIncomeCount: nextYearlyIncome.length,
@@ -250,7 +250,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
           );
 
           if (!mountedRef.current || requestId !== requestIdRef.current) {
-            console.log("[useIncome] abort after regeneration because request is stale", {
+            if (import.meta.env.DEV) console.debug("[useIncome] abort after regeneration because request is stale", {
               propertyId,
               requestId,
               currentRequestId: requestIdRef.current,
@@ -260,7 +260,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
 
           nextYearlyIncome = sortYearlyIncome(regeneratedYearlyIncome);
 
-          console.log("[useIncome] regenerated yearly income", {
+          if (import.meta.env.DEV) console.debug("[useIncome] regenerated yearly income", {
             propertyId,
             regeneratedCount: nextYearlyIncome.length,
             regeneratedYearlyIncome: nextYearlyIncome,
@@ -275,7 +275,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
         }
       }
 
-      console.log("[useIncome] committing state", {
+      if (import.meta.env.DEV) console.debug("[useIncome] committing state", {
         propertyId,
         propertyIncomeExists: !!nextPropertyIncome,
         yearlyIncomeCount: nextYearlyIncome.length,
@@ -336,7 +336,7 @@ export function useIncome(propertyIdInput?: string | null): UseIncomeResult {
           yearCount: 10,
         });
 
-        console.log("[useIncome] upsertPropertyIncome success", {
+        if (import.meta.env.DEV) console.debug("[useIncome] upsertPropertyIncome success", {
           propertyId,
           saved,
           syncedYearlyIncomeCount: syncedYearlyIncome.length,

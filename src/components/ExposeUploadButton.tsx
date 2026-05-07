@@ -16,7 +16,7 @@ export default function ExposeUploadButton({
   const openFilePicker = () => {
     if (isUploading) return;
 
-    console.log("[ExposeUploadButton] openFilePicker", { propertyId });
+    if (import.meta.env.DEV) console.debug("[ExposeUploadButton] openFilePicker", { propertyId });
     fileInputRef.current?.click();
   };
 
@@ -43,7 +43,7 @@ export default function ExposeUploadButton({
     setIsUploading(true);
 
     try {
-      console.log("[ExposeUploadButton] upload start", {
+      if (import.meta.env.DEV) console.debug("[ExposeUploadButton] upload start", {
         propertyId,
         fileName: file.name,
         fileType: file.type,
@@ -52,7 +52,7 @@ export default function ExposeUploadButton({
 
       const result = await uploadExpose(propertyId, file);
 
-      console.log("[ExposeUploadButton] upload success", result);
+      if (import.meta.env.DEV) console.debug("[ExposeUploadButton] upload success", result);
 
       if (onUploadSuccess) {
         await onUploadSuccess();

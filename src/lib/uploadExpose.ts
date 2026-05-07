@@ -49,7 +49,7 @@ export async function uploadExpose(
   const normalizedPropertyId = propertyId.trim();
   const filePath = `${normalizedPropertyId}/expose.pdf`;
 
-  console.log("[uploadExpose] start", {
+  if (import.meta.env.DEV) console.debug("[uploadExpose] start", {
     propertyId: normalizedPropertyId,
     fileName: file.name,
     fileType: file.type,
@@ -70,7 +70,7 @@ export async function uploadExpose(
     throw new Error(`Storage-Upload fehlgeschlagen: ${uploadError.message}`);
   }
 
-  console.log("[uploadExpose] storage upload success", { filePath });
+  if (import.meta.env.DEV) console.debug("[uploadExpose] storage upload success", { filePath });
 
   // 2. DB aktualisieren
   const { data: updatedRows, error: updateError } = await supabase
@@ -96,7 +96,7 @@ export async function uploadExpose(
     );
   }
 
-  console.log("[uploadExpose] db update success", updatedRows[0]);
+  if (import.meta.env.DEV) console.debug("[uploadExpose] db update success", updatedRows[0]);
 
   // 3. Public URL erzeugen
   const {
@@ -108,7 +108,7 @@ export async function uploadExpose(
     throw new Error("Public URL konnte nicht erzeugt werden.");
   }
 
-  console.log("[uploadExpose] done", {
+  if (import.meta.env.DEV) console.debug("[uploadExpose] done", {
     propertyId: normalizedPropertyId,
     filePath,
     publicUrl,

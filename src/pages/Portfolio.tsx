@@ -482,7 +482,7 @@ export default function Portfolio() {
                 </div>
 
                 <div className="portfolio-dashboard-grid refined-dashboard">
-                  <div className="portfolio-mini-card"><span>Restschuld</span><b>{formatCurrency(row.last_balance)}</b></div>
+                  <div className="portfolio-mini-card"><span>Restschuld</span><b>{formatCurrency(row.last_balance)}</b><small>Quelle: Darlehensübersicht / letzter Ledger-Wert</small></div>
                   <div className="portfolio-mini-card"><span>Cashflow {year}</span><b className={net >= 0 ? "positive" : "negative"}>{formatCurrency(net)}</b></div>
                   <div className="portfolio-mini-card"><span>Netto-Rendite</span><b>{formatPercent(objectYield)}</b></div>
                   <div className="portfolio-mini-card"><span>Rückzahlung</span><b>{formatPercent(row.repaid_percent)}</b><div className="portfolio-progress"><i style={{ width: `${progress}%` }} /></div></div>

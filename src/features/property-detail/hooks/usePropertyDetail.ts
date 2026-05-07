@@ -85,7 +85,7 @@ export function usePropertyDetail<T = unknown>(
       setError(null);
       setIsLoading(false);
 
-      console.log("usePropertyDetail.load.skip", {
+      if (import.meta.env.DEV) console.debug("usePropertyDetail.load.skip", {
         reason: "missing-propertyId",
       });
 
@@ -95,7 +95,7 @@ export function usePropertyDetail<T = unknown>(
     setIsLoading(true);
     setError(null);
 
-    console.log("usePropertyDetail.load.start", {
+    if (import.meta.env.DEV) console.debug("usePropertyDetail.load.start", {
       propertyId,
       requestId: currentRequestId,
     });
@@ -105,7 +105,7 @@ export function usePropertyDetail<T = unknown>(
       const response = await getPropertyById(propertyId);
 
       if (!mountedRef.current || currentRequestId !== requestIdRef.current) {
-        console.log("usePropertyDetail.load.stale", {
+        if (import.meta.env.DEV) console.debug("usePropertyDetail.load.stale", {
           propertyId,
           requestId: currentRequestId,
         });
@@ -117,7 +117,7 @@ export function usePropertyDetail<T = unknown>(
       setData(normalized);
       setError(null);
 
-      console.log("usePropertyDetail.load.success", {
+      if (import.meta.env.DEV) console.debug("usePropertyDetail.load.success", {
         propertyId,
         requestId: currentRequestId,
         found: Boolean(normalized),
