@@ -155,7 +155,7 @@ function HomePage() {
             <div className="text-xl font-black text-[#0b2a44]">Cetin & Nihal Könen</div>
             <div className="mt-5 space-y-4">
               <a className="flex items-center gap-3 rounded-2xl bg-white p-4 font-bold text-slate-800" href="mailto:Info.koenen@gmail.com"><Mail size={19} /> Info.koenen@gmail.com</a>
-              <a className="flex items-center gap-3 rounded-2xl bg-white p-4 font-bold text-slate-800" href="tel:+491747010216"><Phone size={19} /> +49 174 70 10 216</a>
+              <a className="flex items-center gap-3 rounded-2xl bg-white p-4 font-bold text-slate-800" href="tel:+4917623430637"><Phone size={19} /> +49 176 243 30 637</a>
             </div>
           </div>
         </div>
