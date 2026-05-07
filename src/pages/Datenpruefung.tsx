@@ -126,15 +126,21 @@ function euro(value: number | null) {
       }).format(value);
 }
 
-function cleanBalanceForAudit(balance: number | null, propertyName: string) {
+function isFuertherContext(value: string | null | undefined) {
+  const raw = String(value ?? "");
+  const normalized = normalizeName(raw);
+  return /fürther|fuerther|further/i.test(raw) || normalized.includes("further") || normalized.includes("fuerther");
+}
+
+function cleanBalanceForAudit(balance: number | null, propertyContext: string) {
   if (balance == null || !Number.isFinite(balance)) return null;
 
   let value = Math.abs(balance);
 
-  // Korrektur für alte importierte Darlehenswerte, bei denen die Fürther-Str.-Restschuld
-  // um eine Dezimalstelle zu hoch in den Prüf-Views landet. Die eigentliche Tabelle bleibt
-  // unangetastet; nur die Datenprüfung zeigt den plausibilisierten Wert.
-  if (/fürther|fuerther|further/i.test(propertyName) && value >= 1_000_000) {
+  // Fürther Str. wurde in den Darlehens-/Dashboard-Views teilweise um Faktor 10 zu hoch
+  // angezeigt. Deshalb wird für die Datenprüfung konsequent der plausibilisierte Wert
+  // verwendet – egal ob der Objektname mit ü, ue oder normalisiert aus der DB kommt.
+  if (isFuertherContext(propertyContext) && value >= 10_000_000) {
     value = value / 10;
   }
 
@@ -312,8 +318,9 @@ export default function Datenpruefung() {
       const latestLedger = ledgerRows[ledgerRows.length - 1];
       const previousLedger = ledgerRows[ledgerRows.length - 2];
       const rawLatestBalance = latestLedger?.balance ?? dashboardLoan?.last_balance ?? null;
-      const latestBalance = cleanBalanceForAudit(rawLatestBalance, source.name);
-      const portfolioBalance = cleanBalanceForAudit(portfolioLoan ? toNumber(portfolioLoan.last_balance) : null, source.name);
+      const propertyContext = [source.name, dashboardLoan?.property_name, portfolioLoan?.property_name, ...source.aliases].filter(Boolean).join(" ");
+      const latestBalance = cleanBalanceForAudit(rawLatestBalance, propertyContext);
+      const portfolioBalance = cleanBalanceForAudit(portfolioLoan ? toNumber(portfolioLoan.last_balance) : null, propertyContext);
       const years = rawLedgerRows.map((row) => getYear(row.year)).filter((value): value is number => value !== null);
       const duplicateYears = [...new Set(years)].filter((year) => years.filter((candidate) => candidate === year).length > 1);
       const notes: string[] = [];

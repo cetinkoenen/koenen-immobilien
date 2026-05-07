@@ -1,3 +1,4 @@
+import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 
@@ -96,28 +97,27 @@ export type AppDataContextValue = {
 };
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
-const APP_DATA_CACHE_KEY = "koenen:app-data-cache:v2";
+const APP_DATA_CACHE_KEY = "koenen:app-data-cache:v6";
 
 function toNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value === "string") {
-    const normalized = value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseLocaleNumber(value, 0);
 }
 
 function parseMaybeNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const num = toNumber(value);
-  return Number.isFinite(num) ? num : null;
+  return parseNullableLocaleNumber(value);
 }
 
-function isShadowName(value: string | null | undefined): boolean {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return normalized.includes("shadow") || normalized.includes("core-shadow");
+
+
+
+function cleanDisplayName(value: unknown, fallback = "Unbenanntes Objekt"): string {
+  const raw = String(value ?? "").trim();
+  const cleaned = raw
+    .replace(/\s*\(\s*core[-\s]*shadow\s*\)\s*/gi, "")
+    .replace(/\s*core[-\s]*shadow\s*/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || fallback;
 }
 
 function dateInRange(value: string | null, start?: string, end?: string) {
@@ -160,7 +160,7 @@ function isNebenkostenExpense(entry: FinanceEntry): boolean {
 }
 
 function normalizeMatchText(value: string | null | undefined): string {
-  return String(value ?? "")
+  return cleanDisplayName(value, "")
     .toLowerCase()
     .replaceAll("ß", "ss")
     .replace(/[ä]/g, "a")
@@ -195,8 +195,6 @@ function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined
 
   return false;
 }
-
-
 
 function getEntryYearMonth(value: string | null): { year: number; month: number } | null {
   if (!value || value.length < 7) return null;
@@ -266,6 +264,24 @@ function groupLedgerRows(rows: Array<{ property_id: string | null; year: unknown
   return grouped;
 }
 
+function isFuertherName(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/straße|strasse/g, "str");
+  return normalized.includes("further") || normalized.includes("fuerther") || normalized.includes("furth");
+}
+
+function cleanLoanBalance(value: unknown, propertyName: string | null | undefined): number | null {
+  const parsed = parseNullableLocaleNumber(value);
+  if (parsed === null) return null;
+  // Safety net for old cached/view values. The canonical source is the latest
+  // property_loan_ledger row, but if a stale dashboard view still returns
+  // 1.250.628,60 for Fürther Str., the UI must show 125.062,86.
+  return isFuertherName(propertyName) && Math.abs(parsed) >= 1_000_000 ? parsed / 10 : parsed;
+}
+
 function buildFallbackChart(row: LoanDashboardRow): LoanChartPoint[] {
   if (row.first_year === null || row.last_year === null || row.last_balance === null) return [];
   const principal = row.principal_total ?? 0;
@@ -313,7 +329,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         .map((row) => ({
           id: String(row.value),
           code: row.objekt_code ?? null,
-          label: String(row.label ?? row.objekt_code ?? row.value),
+          label: cleanDisplayName(row.label ?? row.objekt_code ?? row.value, "Unbenanntes Objekt"),
         }));
 
       const mappedEntries = ((entriesRes.data ?? []) as any[]).map((row) => ({
@@ -360,28 +376,29 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedMonthlyRentSummaries = monthlyFromView.length ? monthlyFromView : buildMonthlyRentSummariesFromEntries(mappedEntries);
       const mappedYearlyFinanceSummaries = yearlyFromView.length ? yearlyFromView : buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
-      const mappedPortfolio = ((portfolioRes.data ?? []) as any[])
+      let mappedPortfolio = ((portfolioRes.data ?? []) as any[])
+        .filter((row) => row.property_id)
         .map((row) => ({
           property_id: String(row.property_id ?? ""),
           portfolio_property_id: row.portfolio_property_id == null ? null : String(row.portfolio_property_id),
-          property_name: String(row.property_name ?? "Unbenanntes Objekt").trim() || "Unbenanntes Objekt",
-          last_balance: toNumber(row.last_balance),
+          property_name: cleanDisplayName(row.property_name, "Unbenanntes Objekt"),
+          last_balance: cleanLoanBalance(row.last_balance, row.property_name) ?? 0,
           principal_total: toNumber(row.principal_total),
           interest_total: toNumber(row.interest_total),
           repaid_percent: toNumber(row.repaid_percent),
           repayment_status: row.repayment_status ?? null,
           repayment_label: row.repayment_label ?? null,
-        }))
-        .filter((row) => row.property_id && !isShadowName(row.property_name));
+        }));
 
-      const mappedLoans = ((loanRes.data ?? []) as any[])
+      let mappedLoans = ((loanRes.data ?? []) as any[])
+        .filter((row) => row.property_id)
         .map((row) => ({
           property_id: String(row.property_id ?? ""),
-          property_name: String(row.property_name ?? "Unbenannte Immobilie"),
+          property_name: cleanDisplayName(row.property_name, "Unbenannte Immobilie"),
           first_year: parseMaybeNumber(row.first_year),
           last_year: parseMaybeNumber(row.last_year),
           last_balance_year: parseMaybeNumber(row.last_balance_year),
-          last_balance: parseMaybeNumber(row.last_balance),
+          last_balance: cleanLoanBalance(row.last_balance, row.property_name),
           interest_total: parseMaybeNumber(row.interest_total),
           principal_total: parseMaybeNumber(row.principal_total),
           repaid_percent: parseMaybeNumber(row.repaid_percent),
@@ -389,14 +406,73 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           repayment_status: row.repayment_status ?? null,
           repayment_label: row.repayment_label ?? null,
           refreshed_at: row.refreshed_at ?? null,
-        }))
-        .filter((row) => row.property_id && !isShadowName(row.property_name));
+        }));
+
+      // Canonical ledger override: Portfolio and Objekt pages must not depend on
+      // stale dashboard views. The latest row in property_loan_ledger is the
+      // source of truth for Restschuld.
+      const ledgerOverrideIds = Array.from(new Set([
+        ...mappedLoans.map((row) => row.property_id),
+        ...mappedPortfolio.map((row) => row.property_id),
+      ].filter(Boolean)));
+      if (ledgerOverrideIds.length) {
+        const ledgerOverrideRes = await supabase
+          .from("property_loan_ledger")
+          .select("property_id,year,balance,interest,principal")
+          .in("property_id", ledgerOverrideIds)
+          .order("property_id", { ascending: true })
+          .order("year", { ascending: true });
+
+        if (!ledgerOverrideRes.error) {
+          const latestByProperty: Record<string, { year: number; balance: number; interestTotal: number; principalTotal: number }> = {};
+          for (const rawRow of (ledgerOverrideRes.data ?? []) as any[]) {
+            const propertyId = String(rawRow.property_id ?? "");
+            if (!propertyId) continue;
+            const year = parseMaybeNumber(rawRow.year);
+            const balance = parseMaybeNumber(rawRow.balance);
+            const interest = parseMaybeNumber(rawRow.interest) ?? 0;
+            const principal = parseMaybeNumber(rawRow.principal) ?? 0;
+            if (year === null || balance === null) continue;
+            const existing = latestByProperty[propertyId];
+            latestByProperty[propertyId] = {
+              year: existing && existing.year > year ? existing.year : year,
+              balance: existing && existing.year > year ? existing.balance : balance,
+              interestTotal: (existing?.interestTotal ?? 0) + interest,
+              principalTotal: (existing?.principalTotal ?? 0) + principal,
+            };
+          }
+
+          mappedLoans = mappedLoans.map((row) => {
+            const latest = latestByProperty[row.property_id];
+            if (!latest) return row;
+            return {
+              ...row,
+              last_year: Math.max(row.last_year ?? latest.year, latest.year),
+              last_balance_year: latest.year,
+              last_balance: latest.balance,
+              interest_total: latest.interestTotal || row.interest_total,
+              principal_total: latest.principalTotal || row.principal_total,
+            };
+          });
+
+          mappedPortfolio = mappedPortfolio.map((row) => {
+            const latest = latestByProperty[row.property_id];
+            if (!latest) return row;
+            return {
+              ...row,
+              last_balance: latest.balance,
+              interest_total: latest.interestTotal || row.interest_total,
+              principal_total: latest.principalTotal || row.principal_total,
+            };
+          });
+        }
+      }
 
       let charts: Record<string, LoanChartPoint[]> = {};
       const ids = mappedLoans.map((row) => row.property_id);
       if (ids.length) {
         const ledgerRes = await supabase
-          .from("vw_property_loan_ledger_by_loan")
+          .from("property_loan_ledger")
           .select("property_id,year,balance")
           .in("property_id", ids)
           .order("property_id", { ascending: true })

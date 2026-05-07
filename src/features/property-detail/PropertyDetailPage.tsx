@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { buildBaseFinanceMetrics } from "@/services/financeService";
+import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 import { resolveLoanIdForProperty } from "@/services/propertyLoanLedgerService";
 import { useResolvedPropertyContext } from "./useResolvedPropertyContext";
 import { useIncome } from "./hooks/useIncome";
@@ -56,29 +57,37 @@ function makeClientId() {
 }
 
 function toSafeNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string") {
-    const normalized = value
-      .trim()
-      .replace(/\s+/g, "")
-      .replace(/\./g, "")
-      .replace(",", ".")
-      .replace(/[^\d.-]/g, "");
-
-    if (!normalized) return fallback;
-
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-
-  return fallback;
+  return parseLocaleNumber(value, fallback);
 }
 
+
 function toNullableNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = toSafeNumber(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseNullableLocaleNumber(value);
+}
+
+
+
+function isFuertherContext(value: string | null | undefined): boolean {
+  const raw = String(value ?? "");
+  const normalized = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/straße|strasse/g, "str");
+  return normalized.includes("further") || normalized.includes("fuerther") || normalized.includes("further str") || normalized.includes("furth");
+}
+
+function cleanRemainingBalanceForProperty(value: unknown, propertyContext: string): number {
+  const parsed = parseLocaleNumber(value, 0);
+  if (!Number.isFinite(parsed)) return 0;
+
+  // Historischer Datenfehler: Fürther Str. wurde durch falsches Entfernen des Dezimalpunkts
+  // teilweise um Faktor 10 zu hoch angezeigt/gespeichert, z. B. 1250628.6 -> 12506286.
+  if (isFuertherContext(propertyContext) && Math.abs(parsed) >= 1_000_000) {
+    return parsed / 10;
+  }
+
+  return parsed;
 }
 
 function toSafeString(value: unknown, fallback = ""): string {
@@ -128,6 +137,15 @@ function getRiskTone(riskLevel: "green" | "yellow" | "red" | undefined): string 
   return "border-slate-200 bg-slate-50";
 }
 
+function cleanDisplayName(value: unknown, fallback = "Objekt"): string {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
+}
+
 function normalizeProperty(input: unknown): PropertyDetailLike | null {
   if (!input || typeof input !== "object") return null;
 
@@ -141,12 +159,12 @@ function normalizeProperty(input: unknown): PropertyDetailLike | null {
       | string
       | number
       | null,
-    name: toSafeString(row.name ?? row.objektname ?? row.object_name, ""),
-    title: toSafeString(row.title ?? row.bezeichnung, ""),
-    city: toSafeString(row.city ?? row.stadt, ""),
-    location: toSafeString(row.location ?? row.ort, ""),
-    address: toSafeString(row.address ?? row.adresse, ""),
-    street: toSafeString(row.street ?? row.strasse ?? row.straße, ""),
+    name: cleanDisplayName(row.name ?? row.objektname ?? row.object_name, ""),
+    title: cleanDisplayName(row.title ?? row.bezeichnung, ""),
+    city: cleanDisplayName(row.city ?? row.stadt, ""),
+    location: cleanDisplayName(row.location ?? row.ort, ""),
+    address: cleanDisplayName(row.address ?? row.adresse, ""),
+    street: cleanDisplayName(row.street ?? row.strasse ?? row.straße, ""),
     purchasePrice: (row.purchasePrice ?? row.purchase_price ?? row.kaufpreis) as
       | number
       | string
@@ -503,6 +521,15 @@ export default function PropertyDetailPage(props: {
     [propertyIncome, yearlyIncome, yearlyCapex],
   );
 
+  const propertyContextText = [
+    resolvedContext?.displayName,
+    resolvedContext?.address,
+    property?.name,
+    property?.title,
+    property?.address,
+    property?.street,
+  ].filter(Boolean).join(" ");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -550,11 +577,12 @@ export default function PropertyDetailPage(props: {
                   (row as Record<string, unknown>).principal ??
                   "",
               ),
-              remainingBalance: toSafeString(
+              remainingBalance: String(cleanRemainingBalanceForProperty(
                 (row as Record<string, unknown>).remaining_balance ??
                   (row as Record<string, unknown>).balance ??
                   "",
-              ),
+                propertyContextText,
+              )),
               source: toSafeString((row as Record<string, unknown>).source ?? "manual", "manual"),
             }))
           : [];
@@ -574,7 +602,7 @@ export default function PropertyDetailPage(props: {
     return () => {
       cancelled = true;
     };
-  }, [ledgerPropertyId]);
+  }, [ledgerPropertyId, propertyContextText]);
 
   const derivedLedgerForFinance = useMemo<YearlyLedgerEntry[]>(() => {
     if (editableLedgerRows.length === 0) return ledger;
@@ -584,12 +612,12 @@ export default function PropertyDetailPage(props: {
         year: Number(row.year),
         interestPayment: toSafeNumber(row.interestPayment),
         principalPayment: toSafeNumber(row.principalPayment),
-        remainingBalance: toSafeNumber(row.remainingBalance),
+        remainingBalance: cleanRemainingBalanceForProperty(row.remainingBalance, propertyContextText),
         source: row.source || "manual",
       }))
       .filter((row) => Number.isFinite(Number(row.year)))
       .sort((a, b) => Number(a.year) - Number(b.year));
-  }, [editableLedgerRows, ledger]);
+  }, [editableLedgerRows, ledger, propertyContextText]);
 
   const finance = useMemo(() => {
     return buildBaseFinanceMetrics({
@@ -604,23 +632,27 @@ export default function PropertyDetailPage(props: {
     resolverLoading || propertyLoading || incomeLoading || ledgerLoading || editableLedgerLoading;
   const firstError = resolverError ?? propertyError ?? incomeError ?? ledgerError ?? editableLedgerError;
 
-  const title =
+  const title = cleanDisplayName(
     [
       resolvedContext?.displayName,
       property?.name,
       property?.title,
       property?.address,
       property?.street,
-    ].find((value) => value && String(value).trim().length > 0) || "Objekt";
+    ].find((value) => value && String(value).trim().length > 0),
+    "Objekt",
+  );
 
-  const resolvedLocation =
+  const resolvedLocation = cleanDisplayName(
     [
       resolvedContext?.address,
       property?.city,
       property?.location,
       property?.address,
       property?.street,
-    ].find((value) => value && String(value).trim().length > 0) || "–";
+    ].find((value) => value && String(value).trim().length > 0),
+    "–",
+  );
 
   const purchasePrice =
     toNullableNumber(property?.purchasePrice ?? property?.purchase_price ?? property?.kaufpreis) ?? 0;
@@ -742,11 +774,12 @@ export default function PropertyDetailPage(props: {
                   (row as Record<string, unknown>).principal ??
                   "",
               ),
-              remainingBalance: toSafeString(
+              remainingBalance: String(cleanRemainingBalanceForProperty(
                 (row as Record<string, unknown>).remaining_balance ??
                   (row as Record<string, unknown>).balance ??
                   "",
-              ),
+                propertyContextText,
+              )),
               source: toSafeString((row as Record<string, unknown>).source ?? "manual", "manual"),
             }))
           : [],

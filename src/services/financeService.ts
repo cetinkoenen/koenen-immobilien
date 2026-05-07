@@ -10,23 +10,17 @@ import type {
   YearlyLedgerEntry,
 } from "@/types/finance";
 import { getRiskLevel } from "@/types/finance";
+import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 
 function toSafeNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string") {
-    const normalized = value.replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-
-  return fallback;
+  return parseLocaleNumber(value, fallback);
 }
+
 
 function toSafeNullableNumber(value: unknown): number | null {
-  const parsed = toSafeNumber(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseNullableLocaleNumber(value);
 }
+
 
 function normalizeYear(value: unknown): number {
   return Math.trunc(toSafeNumber(value, 0));

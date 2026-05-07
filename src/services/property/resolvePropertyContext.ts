@@ -4,11 +4,39 @@ function toSafeString(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function pickDisplayName(row: Record<string, unknown> | null | undefined): string | undefined {
+function cleanDisplayName(value: string | undefined): string | undefined {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || undefined;
+}
+
+function isShadowName(value: string | undefined): boolean {
+  return String(value ?? "").toLowerCase().includes("shadow");
+}
+
+function normalizeNameForMatch(value: string | undefined): string {
+  return String(cleanDisplayName(value) ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ß", "ss")
+    .replace(/strasse|straße/g, "str")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function pickRawDisplayName(row: Record<string, unknown> | null | undefined): string | undefined {
   if (!row) return undefined;
   return [row.name, row.title, row.property_name, row.object_name, row.address, row.street]
     .map(toSafeString)
     .find(Boolean);
+}
+
+function pickDisplayName(row: Record<string, unknown> | null | undefined): string | undefined {
+  return cleanDisplayName(pickRawDisplayName(row));
 }
 
 function pickAddress(row: Record<string, unknown> | null | undefined): string | undefined {
@@ -53,8 +81,30 @@ export async function resolvePropertyContext(propertyId: string) {
   if (portfolioById.error) console.warn("resolvePropertyContext portfolio id error:", portfolioById.error.message);
   if (portfolioByCoreId.error) console.warn("resolvePropertyContext portfolio core error:", portfolioByCoreId.error.message);
 
-  const portfolio = (portfolioById.data ?? portfolioByCoreId.data ?? null) as Record<string, unknown> | null;
-  const property = (propertyById.data ?? null) as Record<string, unknown> | null;
+  let portfolio = (portfolioById.data ?? portfolioByCoreId.data ?? null) as Record<string, unknown> | null;
+  let property = (propertyById.data ?? null) as Record<string, unknown> | null;
+
+  // Shadow-/Core-Spiegelobjekte dürfen im UI nicht als echte Objekte erscheinen.
+  // Falls eine alte Route direkt auf ein Shadow-Objekt zeigt, versuchen wir ein
+  // kanonisches Portfolio-/Property-Objekt mit demselben bereinigten Namen zu finden.
+  const routeDisplayName = pickRawDisplayName(portfolio) ?? pickRawDisplayName(property);
+  if (isShadowName(routeDisplayName)) {
+    const needle = normalizeNameForMatch(routeDisplayName);
+    const [allPortfolio, allProperties] = await Promise.all([
+      supabase.from("portfolio_properties").select("*").limit(500),
+      supabase.from("properties").select("*").limit(500),
+    ]);
+
+    const portfolioMatch = Array.isArray(allPortfolio.data)
+      ? (allPortfolio.data as Record<string, unknown>[]).find((row) => !isShadowName(pickRawDisplayName(row)) && normalizeNameForMatch(pickRawDisplayName(row)) === needle)
+      : null;
+    const propertyMatch = Array.isArray(allProperties.data)
+      ? (allProperties.data as Record<string, unknown>[]).find((row) => !isShadowName(pickRawDisplayName(row)) && normalizeNameForMatch(pickRawDisplayName(row)) === needle)
+      : null;
+
+    portfolio = portfolioMatch ?? portfolio;
+    property = propertyMatch ?? property;
+  }
   const corePropertyId = toSafeString(portfolio?.core_property_id) || toSafeString(property?.id);
   const portfolioPropertyId = toSafeString(portfolio?.id);
 
@@ -73,8 +123,8 @@ export async function resolvePropertyContext(propertyId: string) {
     ledgerPropertyId: ledgerPropertyId || routeId,
     portfolioPropertyId: portfolioPropertyId || undefined,
     corePropertyId: corePropertyId || undefined,
-    displayName: pickDisplayName(portfolio) ?? pickDisplayName(property),
-    address: pickAddress(portfolio) ?? pickAddress(property),
+    displayName: cleanDisplayName(pickDisplayName(portfolio) ?? pickDisplayName(property)),
+    address: cleanDisplayName(pickAddress(portfolio) ?? pickAddress(property)),
   };
 }
 

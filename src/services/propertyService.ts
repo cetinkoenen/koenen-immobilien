@@ -37,6 +37,43 @@ type PropertyTableName = "properties" | "portfolio_properties";
 
 const PROPERTY_TABLES: PropertyTableName[] = ["properties", "portfolio_properties"];
 
+function isShadowName(value: string | null | undefined): boolean {
+  return String(value ?? "").toLowerCase().includes("shadow");
+}
+
+function cleanDisplayName(value: string | null | undefined, fallback: string | null = null): string | null {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
+}
+
+function normalizeNameForMatch(value: string | null | undefined): string {
+  return cleanDisplayName(value, "")!
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ß", "ss")
+    .replace(/strasse|straße/g, "str")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getBestNameFromRow(row: RawPropertyRow | null | undefined): string | null {
+  if (!row) return null;
+  return (
+    toNullableString(row.name) ??
+    toNullableString(row.objektname) ??
+    toNullableString(row.object_name) ??
+    toNullableString(row.title) ??
+    toNullableString(row.bezeichnung) ??
+    toNullableString(row.address) ??
+    toNullableString(row.street)
+  );
+}
+
 function isInvalidUuidSyntaxError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
 
@@ -125,16 +162,19 @@ function normalizePropertyRow(
     city ??
     address;
 
-  const name =
+  const rawName =
     toNullableString(row.name) ??
     toNullableString(row.objektname) ??
     toNullableString(row.object_name);
 
-  const title =
+  const rawTitle =
     toNullableString(row.title) ??
     toNullableString(row.bezeichnung) ??
-    name ??
+    rawName ??
     toNullableString(row.objektname);
+
+  const name = cleanDisplayName(rawName, rawName);
+  const title = cleanDisplayName(rawTitle, rawTitle ?? name);
 
   const legacyId =
     (row.property_id ?? row.objekt_id ?? row.legacy_id ?? null) as string | number | null;
@@ -254,17 +294,52 @@ async function fetchByLooseId(
   return null;
 }
 
+async function findCanonicalForShadowProperty(shadow: Property): Promise<Property | null> {
+  const shadowName = shadow.name ?? shadow.title ?? shadow.address ?? shadow.street;
+  const needle = normalizeNameForMatch(shadowName);
+  if (!needle) return null;
+
+  for (const table of PROPERTY_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .limit(500);
+
+    if (error || !Array.isArray(data)) continue;
+
+    for (const row of data as RawPropertyRow[]) {
+      const candidateName = getBestNameFromRow(row);
+      if (isShadowName(candidateName)) continue;
+      if (normalizeNameForMatch(candidateName) === needle) {
+        return normalizePropertyRow(row, table);
+      }
+    }
+  }
+
+  return null;
+}
+
 async function findPropertyAcrossTables(
   propertyId: string,
 ): Promise<Property | null> {
   for (const table of PROPERTY_TABLES) {
     const property = await fetchByExactId(table, propertyId);
-    if (property) return property;
+    if (property) {
+      if (isShadowName(property.name ?? property.title)) {
+        return (await findCanonicalForShadowProperty(property)) ?? property;
+      }
+      return property;
+    }
   }
 
   for (const table of PROPERTY_TABLES) {
     const property = await fetchByLooseId(table, propertyId);
-    if (property) return property;
+    if (property) {
+      if (isShadowName(property.name ?? property.title)) {
+        return (await findCanonicalForShadowProperty(property)) ?? property;
+      }
+      return property;
+    }
   }
 
   return null;

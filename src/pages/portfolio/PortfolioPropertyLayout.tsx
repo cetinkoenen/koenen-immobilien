@@ -18,6 +18,16 @@ export type PortfolioOutletContext = {
   mapErr: string | null;
 };
 
+
+function cleanDisplayName(value: string | null | undefined, fallback = "Objektakte"): string {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
+}
+
 type PortfolioResolverRow = {
   property_id: string | null;
   portfolio_property_id: string | null;
@@ -103,7 +113,7 @@ async function fetchPortfolioPropertyById(id: string): Promise<PortfolioProperty
 
   return {
     id: normalizeUuid(data.id) ?? data.id,
-    name: data.name ?? null,
+    name: cleanDisplayName(data.name ?? null, "Objektakte"),
     core_property_id: normalizeUuid(data.core_property_id ?? "") ?? null,
   };
 }
@@ -148,7 +158,7 @@ async function resolveCanonicalPortfolioProperty(
   // 4) Fallback-Rückgabe, falls View-Datensatz existiert, aber portfolio_properties-Select nichts liefert
   return {
     id: canonicalPortfolioId,
-    name: data?.property_name ?? null,
+    name: cleanDisplayName(data?.property_name ?? null, "Objektakte"),
     core_property_id: normalizeUuid(String(data?.property_id ?? "").trim()) ?? null,
   };
 }
@@ -347,7 +357,7 @@ export default function PortfolioPropertyLayout() {
 
         setPortfolioPropertyId(portfolioProperty.id);
         setCorePropertyId(portfolioProperty.core_property_id ?? null);
-        setPropertyName(portfolioProperty.name ?? null);
+        setPropertyName(cleanDisplayName(portfolioProperty.name ?? null, "Objektakte"));
         setMapLoading(false);
       } catch (error) {
         if (!cancelled) {

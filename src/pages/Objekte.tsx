@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import LoanChart from "../components/LoanChart";
 import { supabase } from "../lib/supabase";
+import { parseNullableLocaleNumber } from "../utils/numberParser";
 
 const DEBUG = import.meta.env.DEV;
 
@@ -49,27 +50,18 @@ type LoanChartPoint = {
 };
 
 function parseNumber(value: unknown): number | null {
-  if (value == null) return null;
-
-  if (Array.isArray(value)) {
-    return parseNumber(value[0]);
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  if (typeof value === "string") {
-    const normalized = value.replace(",", ".").trim();
-    if (!normalized) return null;
-
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseNullableLocaleNumber(value);
 }
+
+function cleanDisplayName(value: string | null | undefined, fallback = "Unbenannte Immobilie"): string {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
+}
+
 
 function formatCurrency(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -103,11 +95,6 @@ function formatYearRange(
   if (startYear != null) return `${startYear} – ?`;
   if (endYear != null) return `? – ${endYear}`;
   return "—";
-}
-
-function isShadowName(value: string | null | undefined): boolean {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return normalized.includes("shadow") || normalized.includes("core-shadow");
 }
 
 function formatRefresh(value: string | null): string {
@@ -274,9 +261,10 @@ export default function Objekte() {
       }
 
       const mapped: PropertyCard[] = ((data ?? []) as PropertyDashboardRow[])
+        .filter((row) => row.property_id)
         .map((row) => ({
           property_id: row.property_id,
-          property_name: row.property_name ?? "Unbenannte Immobilie",
+          property_name: cleanDisplayName(row.property_name, "Unbenannte Immobilie"),
           first_year: parseNumber(row.first_year),
           last_year: parseNumber(row.last_year),
           last_balance_year: parseNumber(row.last_balance_year),
@@ -288,8 +276,7 @@ export default function Objekte() {
           repayment_status: row.repayment_status ?? null,
           repayment_label: row.repayment_label ?? null,
           refreshed_at: row.refreshed_at ?? null,
-        }))
-        .filter((row) => !isShadowName(row.property_name));
+        }));
 
       return mapped;
     }
@@ -298,7 +285,7 @@ export default function Objekte() {
       if (propertyIds.length === 0) return {};
 
       const { data, error } = await supabase
-        .from("vw_property_loan_ledger_by_loan")
+        .from("property_loan_ledger")
         .select("property_id, year, balance")
         .in("property_id", propertyIds)
         .order("property_id", { ascending: true })
@@ -332,6 +319,17 @@ export default function Objekte() {
 
           if (cancelled) return;
 
+          setProperties((current) => current.map((property) => {
+            const rows = groupedCharts[property.property_id] ?? [];
+            const latest = rows.at(-1);
+            if (!latest) return property;
+            return {
+              ...property,
+              last_year: Math.max(property.last_year ?? latest.year, latest.year),
+              last_balance_year: latest.year,
+              last_balance: latest.balance,
+            };
+          }));
           setChartDataByPropertyId(groupedCharts);
         } catch (chartError) {
           if (cancelled) return;

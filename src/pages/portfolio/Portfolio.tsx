@@ -1,3 +1,4 @@
+import { parseLocaleNumber } from "@/utils/numberParser";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "../../data/portfolioGallery";
@@ -70,14 +71,7 @@ function formatPercent(value: number): string {
 }
 
 function parseMoney(value: string): number {
-  if (!value) return 0;
-  const normalized = value
-    .replace(/€/g, "")
-    .replace(/\s/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseLocaleNumber(value, 0);
 }
 
 function toNumber(value: number | string | null | undefined): number {

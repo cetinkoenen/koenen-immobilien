@@ -222,9 +222,13 @@ function toNumber(value: number | string | null | undefined): number {
 }
 
 
-function isShadowName(value: string | null | undefined): boolean {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return normalized.includes("shadow") || normalized.includes("core-shadow");
+function cleanDisplayName(value: string | null | undefined, fallback = "Unbenanntes Objekt"): string {
+  const cleaned = String(value ?? "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
 }
 
 function formatCurrency(value: number) {
@@ -467,12 +471,11 @@ export default function Darlehensuebersicht() {
       const nextRows = ((data ?? []) as PropertyRow[])
         .map((row) => ({
           propertyId: String(row.property_id ?? ""),
-          propertyName: row.property_name?.trim() || "Unbenanntes Objekt",
+          propertyName: cleanDisplayName(row.property_name, "Unbenanntes Objekt"),
           lastBalance: toNumber(row.last_balance),
           principalTotal: toNumber(row.principal_total),
           interestTotal: toNumber(row.interest_total),
-        }))
-        .filter((row) => !isShadowName(row.propertyName));
+        }));
 
       setRows(nextRows);
     } catch (loadError) {
