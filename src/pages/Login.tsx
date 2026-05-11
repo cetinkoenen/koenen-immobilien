@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
 
 function getFromPath(locationState: unknown): string {
-  const from = (locationState as { from?: { pathname?: string } | string } | null)?.from;
+  const from = (
+    locationState as { from?: { pathname?: string } | string } | null
+  )?.from;
 
   if (typeof from === "string" && from.startsWith("/")) {
     return from;
@@ -25,7 +27,7 @@ function getFromPath(locationState: unknown): string {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loading: authLoading, session } = useAuth();
+  const { loading: authLoading } = useAuth();
 
   const from = getFromPath(location.state);
 
@@ -34,6 +36,30 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  async function getAalLevel(): Promise<"aal1" | "aal2" | null> {
+    const { data, error } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (error) throw error;
+
+    if (data?.currentLevel === "aal1" || data?.currentLevel === "aal2") {
+      return data.currentLevel;
+    }
+
+    return null;
+  }
+
+  async function routeAfterLogin() {
+    const level = await getAalLevel();
+
+    if (level === "aal2") {
+      navigate(from, { replace: true });
+      return;
+    }
+
+    navigate("/mfa", { replace: true, state: { from } });
+  }
 
   async function handleSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,7 +78,7 @@ export default function Login() {
         return;
       }
 
-      navigate(from || "/dashboard", { replace: true });
+      await routeAfterLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fehlgeschlagen.");
     } finally {
@@ -77,15 +103,17 @@ export default function Login() {
       }
 
       if (data.session) {
-        navigate("/dashboard", { replace: true });
+        await routeAfterLogin();
         return;
       }
 
       setInfo(
-        "Registrierung erfolgreich. Bitte prüfe ggf. deine E-Mails und logge dich danach ein."
+        "Registrierung erfolgreich. Bitte prüfe ggf. deine E-Mails und logge dich danach ein.",
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registrierung fehlgeschlagen.");
+      setError(
+        err instanceof Error ? err.message : "Registrierung fehlgeschlagen.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -99,7 +127,9 @@ export default function Login() {
       await supabase.auth.signOut();
       localStorage.clear();
       sessionStorage.clear();
-      setInfo("Session wurde zurückgesetzt. Du solltest jetzt die Login-Seite sehen.");
+      setInfo(
+        "Session wurde zurückgesetzt. Du solltest jetzt die Login-Seite sehen.",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout fehlgeschlagen.");
     }
@@ -107,10 +137,6 @@ export default function Login() {
 
   if (authLoading) {
     return <div style={{ padding: "2rem" }}>Lade…</div>;
-  }
-
-  if (!authLoading && session) {
-    return <Navigate to="/dashboard" replace />;
   }
 
   return (
@@ -240,7 +266,14 @@ export default function Login() {
             {submitting ? "Einloggen…" : "Einloggen"}
           </button>
 
-          <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "#6b7280",
+              textAlign: "center",
+            }}
+          >
             Privater Zugang. Keine gewerbliche Nutzung.
           </p>
         </form>
