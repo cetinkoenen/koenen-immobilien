@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
@@ -19,7 +19,7 @@ function getFromPath(locationState: unknown): string {
     return from.pathname;
   }
 
-  return "/objekte";
+  return "/dashboard";
 }
 
 export default function Login() {
@@ -34,68 +34,6 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [checkingMfa, setCheckingMfa] = useState(true);
-
-  async function getAalLevel(): Promise<"aal1" | "aal2" | null> {
-    const { data, error } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-
-    if (error) throw error;
-
-    if (data?.currentLevel === "aal1" || data?.currentLevel === "aal2") {
-      return data.currentLevel;
-    }
-
-    return null;
-  }
-
-  async function routeAfterLogin() {
-    const level = await getAalLevel();
-
-    if (level === "aal2") {
-      navigate(from, { replace: true });
-      return;
-    }
-
-    navigate("/mfa", { replace: true, state: { from } });
-  }
-
-  useEffect(() => {
-    let active = true;
-
-    async function checkExistingSession() {
-      if (authLoading) return;
-
-      if (!session) {
-        if (active) setCheckingMfa(false);
-        return;
-      }
-
-      try {
-        const level = await getAalLevel();
-
-        if (!active) return;
-
-        if (level === "aal2") {
-          navigate(from, { replace: true });
-          return;
-        }
-
-        navigate("/mfa", { replace: true, state: { from } });
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "MFA-Prüfung fehlgeschlagen.");
-      } finally {
-        if (active) setCheckingMfa(false);
-      }
-    }
-
-    void checkExistingSession();
-
-    return () => {
-      active = false;
-    };
-  }, [authLoading, session, navigate, from]);
 
   async function handleSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -114,7 +52,7 @@ export default function Login() {
         return;
       }
 
-      await routeAfterLogin();
+      navigate(from || "/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fehlgeschlagen.");
     } finally {
@@ -139,7 +77,7 @@ export default function Login() {
       }
 
       if (data.session) {
-        await routeAfterLogin();
+        navigate("/dashboard", { replace: true });
         return;
       }
 
@@ -167,12 +105,12 @@ export default function Login() {
     }
   }
 
-  if (authLoading || checkingMfa) {
+  if (authLoading) {
     return <div style={{ padding: "2rem" }}>Lade…</div>;
   }
 
   if (!authLoading && session) {
-    return <Navigate to="/mfa" replace state={{ from }} />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return (
@@ -301,6 +239,10 @@ export default function Login() {
           >
             {submitting ? "Einloggen…" : "Einloggen"}
           </button>
+
+          <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+            Privater Zugang. Keine gewerbliche Nutzung.
+          </p>
         </form>
 
         <button
