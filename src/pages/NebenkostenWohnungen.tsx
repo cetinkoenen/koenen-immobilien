@@ -10,6 +10,8 @@ type CostRow = { id: string; label: string; amount: number; allocation: Allocati
 type HeatingSettings = { totalHeatingCost: number; totalWarmWaterCost: number; totalCo2Cost: number; totalConsumptionKwh: number; emissionFactor: number; heatedArea: number };
 type BuildingMeta = { propertyCode: string; propertyLabel: string; billingYear: number; periodFrom: string; periodTo: string; landlordName: string; landlordAddress: string; locked: boolean };
 type BillingWorkspace = { meta: BuildingMeta; apartments: ApartmentRow[]; costs: CostRow[]; heating: HeatingSettings; selectedApartmentId: string | null };
+type BillingRecord = { id: string; name: string; workspace: BillingWorkspace };
+type BillingCollection = { version: 2; selectedBillingId: string | null; billings: BillingRecord[] };
 type Co2StageResult = { stage: number; tenantPercent: number; landlordPercent: number };
 
 function createId() { return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
@@ -26,13 +28,13 @@ function getCo2Stage(co2PerSqm: number): Co2StageResult { if (co2PerSqm < 12) re
 function isGarage(o: ObjectOption) { const t = `${o.objekt_code} ${o.label}`.toLowerCase(); return t.includes("garage") || t.includes("garagen") || t.includes("tg") || t.includes("tiefgarage"); }
 
 const DEFAULT_COSTS: Array<Omit<CostRow, "id">> = [
-  { label: "Wasser / Kanal", amount: 4357.3, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: false, note: "Hausverwaltung: 9911 gesamt / 365 Personen(BR) für diese Wohnung. Nicht zusätzlich nach Monaten kürzen, wenn der Schlüssel schon Zeitraum/Tage enthält." },
+  { label: "Wasser / Kanal", amount: 4357.3, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: "Colmarer 2025: erst Jahresanteil laut Hausverwaltung 160,47 € (= 4.357,30 × 365 / 9.911), dann bei 7 Monaten 160,47 / 12 × 7 = 93,61 €." },
   { label: "Heiz- und Warmwasserkosten", amount: 23175.9, allocation: "heatingDirect", totalKey: 0, apartmentKey: 0, directAmount: 474.25, prorateByOccupancy: false, note: "KALO-Direktbetrag hier eintragen. Erste Periode 474,25 €, zweite Periode 353,44 €. Keine zusätzliche Wärmeversorgung anlegen." },
   { label: "Straßenreinigung", amount: 2119.29, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
-  { label: "Müllabfuhr", amount: 3338.39, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: false, note: "Hausverwaltung: Gesamt 9911 / Wohnung 365 Personen(BR). Für zweite Periode ggf. passenden Personen-/Tageswert eintragen oder Direktbetrag nutzen." },
+  { label: "Müllabfuhr", amount: 3338.39, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: "Colmarer 2025: Jahresanteil 122,95 € (= 3.338,39 × 365 / 9.911), bei 7 Monaten 71,72 €." },
   { label: "Gebäudereinigung", amount: 7699.48, allocation: "allocationKey", totalKey: 9613.01, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA ohne Garagen" },
   { label: "Gartenpflege", amount: 3768.12, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
-  { label: "Allgemeinstrom", amount: 696.01, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: false, note: "Hausverwaltung: 9911 gesamt / 365 Personen(BR)" },
+  { label: "Allgemeinstrom", amount: 696.01, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: "Colmarer 2025: Jahresanteil 25,63 € (= 696,01 × 365 / 9.911), bei 7 Monaten 14,95 €." },
   { label: "Haftpflichtversicherung", amount: 449.88, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
   { label: "Gebäudeversicherung", amount: 10970.93, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
   { label: "Glasbruchschadenversicherung", amount: 340.74, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
@@ -46,7 +48,171 @@ function createDefaultWorkspace(year: number, object?: ObjectOption): BillingWor
   return { meta: { propertyCode: object?.objekt_code ?? "", propertyLabel: object?.label ?? "Bitte Objekt wählen", billingYear: year, periodFrom: `${year}-01-01`, periodTo: `${year}-12-31`, landlordName: "", landlordAddress: "", locked: false }, apartments: [{ id, label: "Wohnung 1", tenantName: "", area: 33.79, allocationKey: 170.99, persons: 1, occupancyMonths: 12, advancePayments: 0, active: true }], costs: DEFAULT_COSTS.map((c) => ({ ...c, id: createId() })), heating: { totalHeatingCost: 22968.84, totalWarmWaterCost: 0, totalCo2Cost: 2177.66, totalConsumptionKwh: 181071, emissionFactor: 0.2664, heatedArea: 2079.38 }, selectedApartmentId: id };
 }
 function normalizeCost(row: any, index: number): CostRow { const d = DEFAULT_COSTS[index % DEFAULT_COSTS.length]; return { ...d, ...row, id: row?.id || createId(), totalKey: Number.isFinite(row?.totalKey) ? row.totalKey : (row?.allocationTotalKey ?? d.totalKey), apartmentKey: Number.isFinite(row?.apartmentKey) ? row.apartmentKey : (row?.allocationApartmentKey ?? d.apartmentKey), prorateByOccupancy: typeof row?.prorateByOccupancy === "boolean" ? row.prorateByOccupancy : false }; }
-function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a: any, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map(normalizeCost) : fb.costs; return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
+function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectOption): CostRow[] {
+  const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
+  const isColmarer2025 = year === 2025 && objectText.includes("colmarer");
+  if (!isColmarer2025) return costs;
+
+  return costs.map((row) => {
+    const label = row.label.toLowerCase();
+
+    if (label.includes("wasser") || label.includes("kanal")) {
+      return {
+        ...row,
+        label: "Wasser / Kanal",
+        allocation: "allocationKey",
+        amount: 4357.3,
+        totalKey: 9911,
+        apartmentKey: 365,
+        directAmount: 0,
+        prorateByOccupancy: true,
+        note: "Korrektur Colmarer 2025: 4.357,30 × 365 / 9.911 = 160,47 € Jahresanteil; bei 7 Monaten = 93,61 €.",
+      };
+    }
+
+    if (label.includes("müll") || label.includes("muell")) {
+      return {
+        ...row,
+        label: "Müllabfuhr",
+        allocation: "allocationKey",
+        amount: 3338.39,
+        totalKey: 9911,
+        apartmentKey: 365,
+        directAmount: 0,
+        prorateByOccupancy: true,
+        note: "Korrektur Colmarer 2025: 3.338,39 × 365 / 9.911 = 122,95 € Jahresanteil; bei 7 Monaten = 71,72 €.",
+      };
+    }
+
+    if (label.includes("allgemeinstrom") || label.includes("strom gebäude") || label.includes("strom gebaeude")) {
+      return {
+        ...row,
+        label: "Allgemeinstrom",
+        allocation: "allocationKey",
+        amount: 696.01,
+        totalKey: 9911,
+        apartmentKey: 365,
+        directAmount: 0,
+        prorateByOccupancy: true,
+        note: "Korrektur Colmarer 2025: 696,01 × 365 / 9.911 = 25,63 € Jahresanteil; bei 7 Monaten = 14,95 €.",
+      };
+    }
+
+    return row;
+  });
+}
+function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a: any, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map(normalizeCost) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
+
+
+function makePeriodName(w: BillingWorkspace) {
+  const from = w.meta.periodFrom ? formatDate(w.meta.periodFrom) : "von offen";
+  const to = w.meta.periodTo ? formatDate(w.meta.periodTo) : "bis offen";
+  const tenant = w.apartments.find(a => a.id === w.selectedApartmentId)?.tenantName || w.apartments[0]?.tenantName || "ohne Mieter";
+  return `${from} - ${to} · ${tenant}`;
+}
+function makeBillingRecord(workspace: BillingWorkspace, id = createId()): BillingRecord { return { id, name: makePeriodName(workspace), workspace }; }
+function asBillingCollection(raw: any, year: number, object?: ObjectOption): BillingCollection {
+  if (raw?.version === 2 && Array.isArray(raw?.billings) && raw.billings.length) {
+    const billings = raw.billings.map((b: any, i: number) => {
+      const workspace = normalizeWorkspace(b?.workspace ?? null, year, object);
+      return { id: b?.id || createId(), name: b?.name || makePeriodName(workspace) || `Abrechnung ${i + 1}`, workspace };
+    });
+    const selectedBillingId = raw.selectedBillingId && billings.some((b: BillingRecord) => b.id === raw.selectedBillingId) ? raw.selectedBillingId : billings[0].id;
+    return cleanupBillingRecords(billings, selectedBillingId, year, object);
+  }
+  const workspace = normalizeWorkspace(raw as Partial<BillingWorkspace> | null | undefined, year, object);
+  const record = makeBillingRecord(workspace);
+  return cleanupBillingRecords([record], record.id, year, object);
+}
+function replaceBillingRecord(records: BillingRecord[], id: string | null, workspace: BillingWorkspace) {
+  if (!id) return records.length ? records : [makeBillingRecord(workspace)];
+  const next = records.map(b => b.id === id ? { ...b, name: makePeriodName(workspace), workspace } : b);
+  return next.some(b => b.id === id) ? next : [...next, makeBillingRecord(workspace, id)];
+}
+
+function isColmarer2025(year: number, object?: ObjectOption) {
+  const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
+  return year === 2025 && objectText.includes("colmarer");
+}
+
+function setWorkspacePeriodAndTenant(source: BillingWorkspace, from: string, to: string, tenantName: string, advancePayments: number, occupancyMonths: number, year: number, object?: ObjectOption): BillingWorkspace {
+  const selectedId = source.selectedApartmentId || source.apartments[0]?.id || createId();
+  const apartments = (source.apartments.length ? source.apartments : createDefaultWorkspace(year, object).apartments).map((a, i) => ({
+    ...a,
+    tenantName: i === 0 ? tenantName : a.tenantName,
+    advancePayments: i === 0 ? advancePayments : a.advancePayments,
+    occupancyMonths: i === 0 ? occupancyMonths : a.occupancyMonths,
+    active: i === 0 ? Boolean(tenantName) : a.active,
+  }));
+  return {
+    ...source,
+    meta: {
+      ...source.meta,
+      propertyCode: object?.objekt_code ?? source.meta.propertyCode,
+      propertyLabel: object?.label ?? source.meta.propertyLabel,
+      billingYear: year,
+      periodFrom: from,
+      periodTo: to,
+    },
+    apartments,
+    selectedApartmentId: apartments.some(a => a.id === selectedId) ? selectedId : apartments[0]?.id ?? null,
+  };
+}
+
+function cleanupBillingRecords(records: BillingRecord[], selectedId: string | null, year: number, object?: ObjectOption): BillingCollection {
+  let cleaned = records.filter((record) => {
+    const from = record.workspace.meta.periodFrom;
+    const to = record.workspace.meta.periodTo;
+    if (from === "2025-07-31" && to === "2025-07-31") return false;
+    if (from === "2025-07-31" && to === "2025-12-31") return false;
+    return true;
+  });
+
+  const seen = new Set<string>();
+  cleaned = cleaned.filter((record) => {
+    const tenant = record.workspace.apartments.find(a => a.id === record.workspace.selectedApartmentId)?.tenantName || record.workspace.apartments[0]?.tenantName || "";
+    const key = `${record.workspace.meta.periodFrom}|${record.workspace.meta.periodTo}|${tenant}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (isColmarer2025(year, object)) {
+    const firstExisting = cleaned.find(r => r.workspace.meta.periodFrom === "2025-01-01" && r.workspace.meta.periodTo === "2025-07-31")?.workspace ?? createDefaultWorkspace(year, object);
+    const secondExisting = cleaned.find(r => r.workspace.meta.periodFrom === "2025-08-01" && r.workspace.meta.periodTo === "2025-12-31")?.workspace ?? nextPeriodWorkspace(firstExisting, year, object);
+
+    const firstWorkspace = setWorkspacePeriodAndTenant(firstExisting, "2025-01-01", "2025-07-31", "Cansu Kurt", 770, 7, year, object);
+    const secondWorkspace = setWorkspacePeriodAndTenant(secondExisting, "2025-08-01", "2025-12-31", "", 0, 5, year, object);
+
+    const first: BillingRecord = { id: "colmarer-2025-01-07", name: makePeriodName(firstWorkspace), workspace: firstWorkspace };
+    const second: BillingRecord = { id: "colmarer-2025-08-12", name: makePeriodName(secondWorkspace), workspace: secondWorkspace };
+    const preferred = selectedId === second.id ? second.id : first.id;
+    return { version: 2, selectedBillingId: preferred, billings: [first, second] };
+  }
+
+  if (!cleaned.length) {
+    const workspace = createDefaultWorkspace(year, object);
+    const record = makeBillingRecord(workspace);
+    return cleanupBillingRecords([record], record.id, year, object);
+  }
+
+  const validSelectedId = selectedId && cleaned.some(r => r.id === selectedId) ? selectedId : cleaned[0].id;
+  return { version: 2, selectedBillingId: validSelectedId, billings: cleaned.map(r => ({ ...r, name: makePeriodName(r.workspace) })) };
+}
+function nextPeriodWorkspace(source: BillingWorkspace, year: number, object?: ObjectOption): BillingWorkspace {
+  const clone: BillingWorkspace = JSON.parse(JSON.stringify(source));
+  const nextId = createId();
+  const end = new Date(`${source.meta.periodTo || `${year}-07-31`}T00:00:00`);
+  const nextStart = Number.isNaN(end.getTime()) ? new Date(year, 7, 1) : new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
+  const fallbackStart = new Date(year, 7, 1);
+  const start = nextStart.getFullYear() === year ? nextStart : fallbackStart;
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  clone.meta = { ...clone.meta, propertyCode: object?.objekt_code ?? clone.meta.propertyCode, propertyLabel: object?.label ?? clone.meta.propertyLabel, billingYear: year, periodFrom: iso(start), periodTo: `${year}-12-31`, locked: false };
+  clone.apartments = clone.apartments.map((a, i) => ({ ...a, id: i === 0 ? nextId : createId(), tenantName: "", advancePayments: 0, occupancyMonths: Math.max(1, 12 - start.getMonth()) }));
+  clone.costs = clone.costs.map(c => ({ ...c, id: createId() }));
+  clone.selectedApartmentId = nextId;
+  return clone;
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="grid gap-2"><span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</span>{children}</label>; }
 function TextInput(props: InputHTMLAttributes<HTMLInputElement>) { return <input {...props} className={`h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-[15px] text-slate-900 shadow-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100 ${props.className ?? ""}`} />; }
@@ -82,13 +248,13 @@ function Stat({ title, value, accent = "default" }: { title: string; value: stri
 export default function NebenkostenWohnungen() {
   const currentYear = new Date().getFullYear();
   const [objects, setObjects] = useState<ObjectOption[]>([]); const [selectedObjectCode, setSelectedObjectCode] = useState(""); const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
+  const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]); const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
   useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) setSelectedObjectCode(list[0].objekt_code); })(); return () => { alive = false; }; }, [selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
-  useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { setWorkspace(createDefaultWorkspace(selectedYear, selectedObject ?? undefined)); setError(`Supabase-Fehler: ${error.message}`); } else if (data?.data) { setWorkspace(normalizeWorkspace(data.data as Partial<BillingWorkspace>, selectedYear, selectedObject ?? undefined)); setStatus(`Gespeicherte Abrechnung für ${selectedYear} geladen.`); } else { setWorkspace(createDefaultWorkspace(selectedYear, selectedObject ?? undefined)); setStatus(`Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
-  useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const payload = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear}`); }, 650); return () => window.clearTimeout(id); }, [workspace, selectedObjectCode, selectedYear, selectedObject]);
+  useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
+  useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const billings = cleaned.billings; const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setBillingRecords(billings); setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
-  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(updater); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
+  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(updater); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
   function addApartment() { if (locked) return; const a: ApartmentRow = { id: createId(), label: `Wohnung ${workspace.apartments.length + 1}`, tenantName: "", area: 0, allocationKey: 0, persons: 1, occupancyMonths: 12, advancePayments: 0, active: true }; update(p => ({ ...p, apartments: [...p.apartments, a], selectedApartmentId: a.id })); }
   function deleteApartment(id: string) { if (locked) return; update(p => { const next = p.apartments.filter(a => a.id !== id); return { ...p, apartments: next.length ? next : createDefaultWorkspace(selectedYear, selectedObject ?? undefined).apartments, selectedApartmentId: next[0]?.id ?? null }; }); }
   function addCost() { if (locked) return; update(p => ({ ...p, costs: [...p.costs, { id: createId(), label: `Kostenart ${p.costs.length + 1}`, amount: 0, allocation: "allocationKey", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "" }] })); }
@@ -97,7 +263,7 @@ export default function NebenkostenWohnungen() {
   const costBreakdown = useMemo(() => { if (!activeApartment) return []; return workspace.costs.map(row => { let tenantShare = 0; if (row.allocation === "directAmount" || row.allocation === "heatingDirect") tenantShare = row.directAmount; else { const base = row.totalKey > 0 ? row.amount * (row.apartmentKey / row.totalKey) : 0; tenantShare = row.prorateByOccupancy ? base * (clamp(activeApartment.occupancyMonths, 0, 12) / 12) : base; } return { row, tenantShare: roundMoney(tenantShare), landlordShare: roundMoney(Math.max(0, row.amount - tenantShare)) }; }); }, [workspace.costs, activeApartment]);
   const totalHeatingCosts = roundMoney(costBreakdown.filter(x => x.row.allocation === "heatingDirect").reduce((s, x) => s + x.tenantShare, 0)); const totalColdCosts = roundMoney(costBreakdown.filter(x => x.row.allocation !== "heatingDirect").reduce((s, x) => s + x.tenantShare, 0)); const totalTenantCosts = roundMoney(totalColdCosts + totalHeatingCosts); const tenantBalance = activeApartment ? roundMoney(activeApartment.advancePayments - totalTenantCosts) : 0;
   function exportOnePager() { if (!activeApartment) return; const lines = ["Nebenkostenabrechnung Wohnung", `Objekt: ${workspace.meta.propertyLabel}`, `Objekt-Code: ${workspace.meta.propertyCode}`, `Jahr: ${workspace.meta.billingYear}`, `Zeitraum: ${formatDate(workspace.meta.periodFrom)} bis ${formatDate(workspace.meta.periodTo)}`, "", `Wohnung: ${activeApartment.label}`, `Mieter: ${activeApartment.tenantName || "—"}`, `Vorauszahlungen: ${formatCurrency(activeApartment.advancePayments)}`, "", "KOSTENAUFSTELLUNG", ...costBreakdown.map(x => `${x.row.label} | ${allocationLabel(x.row.allocation)} | ${x.row.totalKey ? `Gesamt ${formatFlex(x.row.totalKey)} / Wohnung ${formatFlex(x.row.apartmentKey)}` : "Direkt"} | Mieter ${formatCurrency(x.tenantShare)}`), "", `Kalte Betriebskosten: ${formatCurrency(totalColdCosts)}`, `Heiz-/Warmwasserkosten: ${formatCurrency(totalHeatingCosts)}`, `Gesamtkosten Mieter: ${formatCurrency(totalTenantCosts)}`, `Vorauszahlungen: ${formatCurrency(activeApartment.advancePayments)}`, `Saldo: ${formatCurrency(tenantBalance)}`, "", "ANLAGE: BERECHNUNG IHRES ANTEILS AN DEN CO2-KOSTEN", `A CO2-Emission mit aufteilungspflichtigen CO2-Kosten: ${formatNumber(co2TotalKg, 0)} kg CO2`, `B Gesamtwohnfläche der Liegenschaft: ${formatNumber(workspace.heating.heatedArea, 2)} m²`, `C Spezifischer Emissionswert = A : B: ${formatNumber(co2PerSqm, 1)} kg CO2/m²/a`, `Anteil Vermieter: ${co2Stage.landlordPercent}%`, `Anteil Mieter: ${co2Stage.tenantPercent}%`, `CO2-Kosten gesamt laut KALO: ${formatCurrency(workspace.heating.totalCo2Cost)}`]; downloadText(`nebenkosten_${workspace.meta.propertyCode}_${workspace.meta.billingYear}_${activeApartment.label}.txt`, lines.join("\n")); }
-  return <main className="min-h-screen bg-slate-50 p-4 text-slate-950 md:p-6 print:bg-white"><div className="mx-auto max-w-[1500px] space-y-6"><section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm print:hidden"><div className="flex flex-wrap items-center justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Property App</div><h1 className="mt-1 text-2xl font-bold">NK-Abrechnungen Wohnungen</h1><p className="mt-1 text-sm text-slate-500">Je Kostenart eigener Gesamt- und Wohnungsschlüssel. KALO-Heizkosten als Direktbetrag übernehmen.</p></div><div className="flex flex-wrap items-center gap-3"><SelectInput value={selectedObjectCode} onChange={e => setSelectedObjectCode(e.target.value)}><option value="">Objekt wählen</option>{objects.map(o => <option key={o.objekt_code} value={o.objekt_code}>{o.label}</option>)}</SelectInput><YearInput value={selectedYear} onChange={setSelectedYear} disabled={locked} /><button onClick={() => updateMeta("locked", !locked)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50">{locked ? <Pencil className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{locked ? "Bearbeiten" : "Sperren"}</button></div></div>{(status || error || loading || saving) && <div className="mt-4 text-sm"><span className="text-slate-500">{loading ? "Lade… " : saving ? "Speichere… " : status}</span>{error && <span className="ml-3 text-rose-600">{error}</span>}</div>}</section>
+  return <main className="min-h-screen bg-slate-50 p-4 text-slate-950 md:p-6 print:bg-white"><div className="mx-auto max-w-[1500px] space-y-6"><section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm print:hidden"><div className="flex flex-wrap items-center justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Property App</div><h1 className="mt-1 text-2xl font-bold">NK-Abrechnungen Wohnungen</h1><p className="mt-1 text-sm text-slate-500">Je Kostenart eigener Gesamt- und Wohnungsschlüssel. KALO-Heizkosten als Direktbetrag übernehmen.</p></div><div className="flex flex-wrap items-center gap-3"><SelectInput value={selectedBillingId ?? ""} onChange={e => selectBilling(e.target.value)} className="min-w-[260px]"><option value="">Abrechnung wählen</option>{billingRecords.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</SelectInput><button onClick={createNewPartialBilling} className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700"><Plus className="h-4 w-4"/> Teilabrechnung</button><SelectInput value={selectedObjectCode} onChange={e => setSelectedObjectCode(e.target.value)}><option value="">Objekt wählen</option>{objects.map(o => <option key={o.objekt_code} value={o.objekt_code}>{o.label}</option>)}</SelectInput><YearInput value={selectedYear} onChange={setSelectedYear} disabled={locked} /><button onClick={() => updateMeta("locked", !locked)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50">{locked ? <Pencil className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{locked ? "Bearbeiten" : "Sperren"}</button></div></div>{(status || error || loading || saving) && <div className="mt-4 text-sm"><span className="text-slate-500">{loading ? "Lade… " : saving ? "Speichere… " : status}</span>{error && <span className="ml-3 text-rose-600">{error}</span>}</div>}</section>
   <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]"><Card title="Grunddaten" icon={<Home className="h-5 w-5"/>}><div className="grid gap-4 md:grid-cols-2"><Field label="Objektbezeichnung"><TextInput value={workspace.meta.propertyLabel} onChange={e => updateMeta("propertyLabel", e.target.value)} disabled={locked}/></Field><Field label="Objekt-Code"><TextInput value={workspace.meta.propertyCode} onChange={e => updateMeta("propertyCode", e.target.value)} disabled={locked}/></Field><Field label="Zeitraum von"><TextInput type="date" value={workspace.meta.periodFrom} onChange={e => updateMeta("periodFrom", e.target.value)} disabled={locked}/></Field><Field label="Zeitraum bis"><TextInput type="date" value={workspace.meta.periodTo} onChange={e => updateMeta("periodTo", e.target.value)} disabled={locked}/></Field><Field label="Vermieter"><TextInput value={workspace.meta.landlordName} onChange={e => updateMeta("landlordName", e.target.value)} disabled={locked}/></Field><Field label="Vermieteradresse"><TextAreaInput value={workspace.meta.landlordAddress} onChange={e => updateMeta("landlordAddress", e.target.value)} disabled={locked}/></Field></div></Card>
   <Card title="Wohnungen / Mieter" icon={<UserSquare2 className="h-5 w-5"/>} actions={<button onClick={addApartment} disabled={locked} className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700"><Plus className="h-4 w-4"/> Wohnung hinzufügen</button>}><div className="space-y-4">{workspace.apartments.map(a => <div key={a.id} className={`rounded-[24px] border p-4 ${workspace.selectedApartmentId === a.id ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}><div className="mb-4 flex items-center justify-between"><button onClick={() => update(p => ({...p, selectedApartmentId: a.id}))} className="text-left"><div className="font-semibold">{a.label}</div><div className="text-sm text-slate-500">{a.tenantName || "Noch kein Mieter"}</div></button><div className="flex gap-2"><label className="rounded-full border bg-white px-3 py-2 text-sm"><input type="checkbox" className="mr-2" checked={a.active} disabled={locked} onChange={e => updateApartment(a.id, { active: e.target.checked })}/>belegt</label><button onClick={() => deleteApartment(a.id)} disabled={locked} className="h-10 w-10 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700"><Trash2 className="mx-auto h-4 w-4"/></button></div></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"><Field label="Wohnungsname"><TextInput value={a.label} onChange={e => updateApartment(a.id, { label: e.target.value })} disabled={locked}/></Field><Field label="Mietername"><TextInput value={a.tenantName} onChange={e => updateApartment(a.id, { tenantName: e.target.value })} disabled={locked}/></Field><Field label="Wohnfläche (m²)"><NumberInput value={a.area} onCommit={v => updateApartment(a.id, { area: v })} disabled={locked}/></Field><Field label="Standard-MEA / Info"><NumberInput value={a.allocationKey} onCommit={v => updateApartment(a.id, { allocationKey: v })} disabled={locked} decimals={4}/></Field><Field label="Personen"><NumberInput value={a.persons} onCommit={v => updateApartment(a.id, { persons: v })} disabled={locked} decimals={0}/></Field><Field label="Belegungsmonate"><NumberInput value={a.occupancyMonths} onCommit={v => updateApartment(a.id, { occupancyMonths: clamp(v,0,12) })} disabled={locked} decimals={0}/></Field><Field label="Vorauszahlungen (€)"><NumberInput value={a.advancePayments} onCommit={v => updateApartment(a.id, { advancePayments: v })} disabled={locked}/></Field></div></div>)}</div></Card></div>
   <Card title="Kostenarten" icon={<Warehouse className="h-5 w-5"/>} actions={<button onClick={addCost} disabled={locked} className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700"><Plus className="h-4 w-4"/> Kostenart hinzufügen</button>}><div className="space-y-4">{workspace.costs.map(row => <div key={row.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h3 className="text-lg font-semibold">{row.label}</h3><p className="text-sm text-slate-500">{allocationLabel(row.allocation)}</p></div><button onClick={() => deleteCost(row.id)} disabled={locked} className="h-10 w-10 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700"><Trash2 className="mx-auto h-4 w-4"/></button></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"><Field label="Bezeichnung"><TextInput value={row.label} onChange={e => updateCost(row.id, { label: e.target.value })} disabled={locked}/></Field><Field label="Gesamtbetrag (€)"><NumberInput value={row.amount} onCommit={v => updateCost(row.id, { amount: v })} disabled={locked}/></Field><Field label="Verteilung"><SelectInput value={row.allocation} onChange={e => updateCost(row.id, { allocation: e.target.value as AllocationType })} disabled={locked}><option value="allocationKey">Umlageschlüssel</option><option value="persons">Personen/Tage</option><option value="directAmount">Direktbetrag</option><option value="heatingDirect">KALO-Heizkosten direkt</option></SelectInput></Field>{(row.allocation === "allocationKey" || row.allocation === "persons") && <><Field label="Gesamt-Schlüssel"><NumberInput value={row.totalKey} onCommit={v => updateCost(row.id, { totalKey: v })} disabled={locked} decimals={4}/></Field><Field label="Wohnungs-Schlüssel"><NumberInput value={row.apartmentKey} onCommit={v => updateCost(row.id, { apartmentKey: v })} disabled={locked} decimals={4}/></Field></>}{(row.allocation === "directAmount" || row.allocation === "heatingDirect") && <Field label="Direktbetrag Mieter (€)"><NumberInput value={row.directAmount} onCommit={v => updateCost(row.id, { directAmount: v })} disabled={locked}/></Field>}<label className="flex min-h-[72px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700"><input type="checkbox" checked={row.prorateByOccupancy} disabled={locked || row.allocation === "directAmount" || row.allocation === "heatingDirect"} onChange={e => updateCost(row.id, { prorateByOccupancy: e.target.checked })}/><span>zusätzlich nach Belegungsmonaten kürzen</span></label></div><div className="mt-3 grid gap-4 md:grid-cols-[1fr_180px]"><Field label="Notiz"><TextInput value={row.note} onChange={e => updateCost(row.id, { note: e.target.value })} disabled={locked} /></Field><div className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Mieteranteil</div><div className="mt-1 text-xl font-semibold">{formatCurrency(costBreakdown.find(x => x.row.id === row.id)?.tenantShare ?? 0)}</div></div></div></div>)}</div></Card>
