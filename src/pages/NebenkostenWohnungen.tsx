@@ -161,6 +161,30 @@ function setWorkspacePeriodAndTenant(source: BillingWorkspace, from: string, to:
   };
 }
 
+
+function getPrimaryApartment(workspace: BillingWorkspace): ApartmentRow | undefined {
+  return workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0];
+}
+
+function workspaceCompletenessScore(workspace: BillingWorkspace): number {
+  const apartment = getPrimaryApartment(workspace);
+  let score = 0;
+  if (apartment?.tenantName?.trim()) score += 1000;
+  if (Number.isFinite(apartment?.advancePayments) && (apartment?.advancePayments ?? 0) > 0) score += 200;
+  if (Number.isFinite(apartment?.co2LandlordDeductionKalo) && (apartment?.co2LandlordDeductionKalo ?? 0) > 0) score += 100;
+  if (Number.isFinite(apartment?.occupancyMonths) && (apartment?.occupancyMonths ?? 0) > 0) score += 50;
+  if (workspace.meta.landlordName?.trim()) score += 20;
+  if (workspace.meta.landlordAddress?.trim()) score += 20;
+  score += workspace.costs.filter(c => Number.isFinite(c.directAmount) && c.directAmount > 0).length * 10;
+  score += workspace.costs.filter(c => Number.isFinite(c.amount) && c.amount > 0).length;
+  return score;
+}
+
+function pickBestWorkspace(candidates: BillingWorkspace[], fallback: BillingWorkspace): BillingWorkspace {
+  if (!candidates.length) return fallback;
+  return [...candidates].sort((a, b) => workspaceCompletenessScore(b) - workspaceCompletenessScore(a))[0];
+}
+
 function cleanupBillingRecords(records: BillingRecord[], selectedId: string | null, year: number, object?: ObjectOption): BillingCollection {
   let cleaned = records.filter((record) => {
     const from = record.workspace.meta.periodFrom;
@@ -172,7 +196,7 @@ function cleanupBillingRecords(records: BillingRecord[], selectedId: string | nu
 
   const seen = new Set<string>();
   cleaned = cleaned.filter((record) => {
-    const tenant = record.workspace.apartments.find(a => a.id === record.workspace.selectedApartmentId)?.tenantName || record.workspace.apartments[0]?.tenantName || "";
+    const tenant = getPrimaryApartment(record.workspace)?.tenantName || "";
     const key = `${record.workspace.meta.periodFrom}|${record.workspace.meta.periodTo}|${tenant}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -180,38 +204,48 @@ function cleanupBillingRecords(records: BillingRecord[], selectedId: string | nu
   });
 
   if (isColmarer2025(year, object)) {
-    const firstExisting = cleaned.find(r => r.workspace.meta.periodFrom === "2025-01-01" && r.workspace.meta.periodTo === "2025-07-31")?.workspace ?? createDefaultWorkspace(year, object);
-    const secondExisting = cleaned.find(r => r.workspace.meta.periodFrom === "2025-08-01" && r.workspace.meta.periodTo === "2025-12-31")?.workspace ?? nextPeriodWorkspace(firstExisting, year, object);
+    const defaultWorkspace = createDefaultWorkspace(year, object);
+    const firstCandidates = cleaned
+      .filter(r => r.id === "colmarer-2025-01-07" || (r.workspace.meta.periodFrom === "2025-01-01" && r.workspace.meta.periodTo === "2025-07-31"))
+      .map(r => r.workspace);
+    const firstExisting = pickBestWorkspace(firstCandidates, defaultWorkspace);
 
-    const firstApartment = firstExisting.apartments.find(a => a.id === firstExisting.selectedApartmentId) ?? firstExisting.apartments[0];
-    const secondApartment = secondExisting.apartments.find(a => a.id === secondExisting.selectedApartmentId) ?? secondExisting.apartments[0];
+    const secondFallback = nextPeriodWorkspace(firstExisting, year, object);
+    const secondCandidates = cleaned
+      .filter(r => r.id === "colmarer-2025-08-12" || (r.workspace.meta.periodFrom === "2025-08-01" && r.workspace.meta.periodTo === "2025-12-31"))
+      .map(r => r.workspace);
+    const secondExisting = pickBestWorkspace(secondCandidates, secondFallback);
+
+    const firstApartment = getPrimaryApartment(firstExisting);
+    const secondApartment = getPrimaryApartment(secondExisting);
 
     const firstWorkspace = setWorkspacePeriodAndTenant(
       firstExisting,
       "2025-01-01",
       "2025-07-31",
       firstApartment?.tenantName?.trim() || "Cansu Kurt",
-      Number.isFinite(firstApartment?.advancePayments) ? firstApartment.advancePayments : 770,
+      typeof firstApartment?.advancePayments === "number" && Number.isFinite(firstApartment.advancePayments) ? firstApartment.advancePayments : 770,
       7,
       year,
       object,
-      Number.isFinite(firstApartment?.co2LandlordDeductionKalo) && firstApartment.co2LandlordDeductionKalo > 0 ? firstApartment.co2LandlordDeductionKalo : 13.49,
+      typeof firstApartment?.co2LandlordDeductionKalo === "number" && Number.isFinite(firstApartment.co2LandlordDeductionKalo) && firstApartment.co2LandlordDeductionKalo > 0 ? firstApartment.co2LandlordDeductionKalo : 13.49,
     );
     const secondWorkspace = setWorkspacePeriodAndTenant(
       secondExisting,
       "2025-08-01",
       "2025-12-31",
-      secondApartment?.tenantName?.trim() || "",
-      Number.isFinite(secondApartment?.advancePayments) ? secondApartment.advancePayments : 0,
+      secondApartment?.tenantName?.trim() || "Nicholas Kraeft-Wendte",
+      typeof secondApartment?.advancePayments === "number" && Number.isFinite(secondApartment.advancePayments) ? secondApartment.advancePayments : 0,
       5,
       year,
       object,
-      Number.isFinite(secondApartment?.co2LandlordDeductionKalo) && secondApartment.co2LandlordDeductionKalo > 0 ? secondApartment.co2LandlordDeductionKalo : 9.26,
+      typeof secondApartment?.co2LandlordDeductionKalo === "number" && Number.isFinite(secondApartment.co2LandlordDeductionKalo) && secondApartment.co2LandlordDeductionKalo > 0 ? secondApartment.co2LandlordDeductionKalo : 9.26,
     );
 
     const first: BillingRecord = { id: "colmarer-2025-01-07", name: makePeriodName(firstWorkspace), workspace: firstWorkspace };
     const second: BillingRecord = { id: "colmarer-2025-08-12", name: makePeriodName(secondWorkspace), workspace: secondWorkspace };
-    const preferred = selectedId === second.id ? second.id : first.id;
+    const selectedOriginalSecond = Boolean(selectedId && cleaned.some(r => r.id === selectedId && (r.id === "colmarer-2025-08-12" || (r.workspace.meta.periodFrom === "2025-08-01" && r.workspace.meta.periodTo === "2025-12-31"))));
+    const preferred = selectedOriginalSecond ? second.id : first.id;
     return { version: 2, selectedBillingId: preferred, billings: [first, second] };
   }
 
@@ -277,9 +311,9 @@ export default function NebenkostenWohnungen() {
   useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) setSelectedObjectCode(list[0].objekt_code); })(); return () => { alive = false; }; }, [selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
   useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
-  useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const billings = cleaned.billings; const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setBillingRecords(billings); setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
+  useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, billingRecords, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
-  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(updater); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
+  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(prev => { const next = updater(prev); setBillingRecords(current => cleanupBillingRecords(replaceBillingRecord(current, selectedBillingId, next), selectedBillingId, selectedYear, selectedObject ?? undefined).billings); return next; }); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
   function addApartment() { if (locked) return; const a: ApartmentRow = { id: createId(), label: `Wohnung ${workspace.apartments.length + 1}`, tenantName: "", area: 0, allocationKey: 0, persons: 1, occupancyMonths: 12, advancePayments: 0, co2LandlordDeductionKalo: 0, active: true }; update(p => ({ ...p, apartments: [...p.apartments, a], selectedApartmentId: a.id })); }
   function deleteApartment(id: string) { if (locked) return; update(p => { const next = p.apartments.filter(a => a.id !== id); return { ...p, apartments: next.length ? next : createDefaultWorkspace(selectedYear, selectedObject ?? undefined).apartments, selectedApartmentId: next[0]?.id ?? null }; }); }
   function addCost() { if (locked) return; update(p => ({ ...p, costs: [...p.costs, { id: createId(), label: `Kostenart ${p.costs.length + 1}`, amount: 0, allocation: "allocationKey", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "" }] })); }
