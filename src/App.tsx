@@ -21,6 +21,7 @@ import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
 import Datenpruefung from "./pages/Datenpruefung";
+import Automatisierung from "./pages/Automatisierung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
 import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
@@ -211,6 +212,7 @@ function AppShell() {
       { to: "/mieteruebersicht", label: "Mieterübersicht" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
+      { to: "/automatisierung", label: "Automatisierung" },
     ],
     [],
   );
@@ -243,7 +245,7 @@ function AppShell() {
             </NavLink>
 
             <div className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex">
-              <nav className="flex max-w-[660px] flex-wrap justify-center gap-2.5">
+              <nav className="flex max-w-[820px] flex-wrap justify-center gap-2.5">
                 {navItems.map((item) => (
                   <NavLink
                     key={item.to}
@@ -368,6 +370,7 @@ export default function App() {
         />
 
         <Route path="/datenpruefung" element={<Datenpruefung />} />
+        <Route path="/automatisierung" element={<Automatisierung />} />
 
         <Route path="/nebenkosten" element={<NebenkostenIndexPage />} />
         <Route
