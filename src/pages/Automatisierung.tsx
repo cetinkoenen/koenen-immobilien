@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 
-type MonthRow = { month: number; income: number; expenses: number; rent: number; net: number; rentDay: number | null; rentStatus: "ok" | "late" | "critical" | "missing" | "unknown" | "future" };
+type MonthRow = { month: number; income: number; expenses: number; rent: number; net: number; rentDay: number | null; rentStatus: "ok" | "late" | "critical" | "missing" | "unknown" };
 type PropertyAutomationRow = {
   propertyId: string;
   propertyName: string;
@@ -70,25 +70,9 @@ function dayOf(date: string | null) {
   const d = Number(String(date ?? "").slice(8, 10));
   return Number.isFinite(d) && d >= 1 && d <= 31 ? d : null;
 }
-function classifyRentMonth(
-  rent: number,
-  expectedRent: number,
-  firstRentDay: number | null,
-  month: number,
-  selectedYear: number,
-  referenceDate: Date
-): MonthRow["rentStatus"] {
+function classifyRentMonth(rent: number, expectedRent: number, firstRentDay: number | null): MonthRow["rentStatus"] {
   if (expectedRent <= 0) return "unknown";
-  const referenceYear = referenceDate.getFullYear();
-  const referenceMonth = referenceDate.getMonth() + 1;
-  const referenceDay = referenceDate.getDate();
-  const isFutureMonth = selectedYear > referenceYear || (selectedYear === referenceYear && month > referenceMonth);
-  const isCurrentMonthBeforeGracePeriod = selectedYear === referenceYear && month === referenceMonth && referenceDay <= 7;
-
-  if (isFutureMonth) return "future";
-  if (rent + 1 < expectedRent * 0.85) {
-    return isCurrentMonthBeforeGracePeriod ? "unknown" : "missing";
-  }
+  if (rent + 1 < expectedRent * 0.85) return "missing";
   if (!firstRentDay) return "unknown";
   if (firstRentDay <= 7) return "ok";
   if (firstRentDay <= 14) return "late";
@@ -135,7 +119,7 @@ function rentStatusHint(row: PropertyAutomationRow) {
   return `Soll ${eur(row.expectedRent)} · Ist ${eur(row.paidRent)}`;
 }
 function rentLegendText() {
-  return "Grün = Zahlung bis 7. Tag · Gelb = 8.–14. Tag · Rot = überfällig/fehlend · Grau = zukünftiger Monat";
+  return "Grün = Zahlung bis 7. Tag · Gelb = 8.–14. Tag · Rot = ab 15. Tag oder fehlend";
 }
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
@@ -161,8 +145,7 @@ function download(filename: string, content: string, type = "text/csv;charset=ut
 
 export default function Automatisierung() {
   const app = useAppData();
-  const today = new Date();
-  const currentYear = today.getFullYear();
+  const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
 
@@ -184,10 +167,9 @@ export default function Automatisierung() {
         return { month, income, expenses, rent, net: income - expenses, rentDay, rentStatus: "unknown" as const };
       });
       const expectedRent = median(baseMonthly.map((m) => m.rent).filter((v) => v > 0));
-      const monthly = baseMonthly.map((m) => ({ ...m, rentStatus: classifyRentMonth(m.rent, expectedRent, m.rentDay, m.month, year, today) }));
+      const monthly = baseMonthly.map((m) => ({ ...m, rentStatus: classifyRentMonth(m.rent, expectedRent, m.rentDay) }));
       const paidRent = rentEntries.reduce((sum, entry) => sum + entry.amount, 0);
-      const dueMonthsCount = monthly.filter((m) => m.rentStatus !== "future").length;
-      const expectedYearRent = expectedRent * dueMonthsCount;
+      const expectedYearRent = expectedRent * 12;
       const missingMonths = expectedRent > 0 ? monthly.filter((m) => m.rentStatus === "missing").map((m) => m.month) : [];
       return {
         propertyId: object.id,
@@ -205,7 +187,7 @@ export default function Automatisierung() {
         monthly,
       };
     }).filter((row) => row.income || row.expenses || row.rentIncome);
-  }, [app, year, today]);
+  }, [app, year]);
 
   const visibleRows = selectedPropertyId === "all" ? rows : rows.filter((row) => row.propertyId === selectedPropertyId);
   const totals = visibleRows.reduce((acc, row) => ({
@@ -344,7 +326,6 @@ function rentDotClass(status: MonthRow["rentStatus"]) {
   if (status === "ok") return "bg-emerald-500 text-white border-emerald-600";
   if (status === "late") return "bg-amber-400 text-amber-950 border-amber-500";
   if (status === "critical" || status === "missing") return "bg-red-500 text-white border-red-600";
-  if (status === "future") return "bg-slate-100 text-slate-400 border-slate-200";
   return "bg-slate-200 text-slate-600 border-slate-300";
 }
 function RentTrafficLight({ row }: { row: PropertyAutomationRow }) {
@@ -355,7 +336,7 @@ function RentTrafficLight({ row }: { row: PropertyAutomationRow }) {
     </div>
     <div className="grid grid-cols-12 gap-1">
       {row.monthly.map((m) => {
-        const title = m.rentStatus === "future" ? `${monthLabel(m.month)}: zukünftiger Monat, noch nicht fällig` : `${monthLabel(m.month)}: ${eur(m.rent)}${m.rentDay ? ` · Zahlungstag ${m.rentDay}` : " · keine Mietzahlung erkannt"}`;
+        const title = `${monthLabel(m.month)}: ${eur(m.rent)}${m.rentDay ? ` · Zahlungstag ${m.rentDay}` : " · keine Mietzahlung erkannt"}`;
         return <span key={m.month} title={title} className={`flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-black ${rentDotClass(m.rentStatus)}`}>{m.month}</span>;
       })}
     </div>

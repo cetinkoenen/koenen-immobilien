@@ -636,6 +636,86 @@ export default function NebenkostenWohnungen() {
     updateMeta("locked", true);
   }
 
+
+  const archivedBillings = useMemo(
+    () => billingRecords.filter((record) => record.workspace.meta.locked),
+    [billingRecords],
+  );
+
+  function summarizeBilling(target: BillingWorkspace) {
+    const apartment = target.apartments.find(a => a.id === target.selectedApartmentId) ?? target.apartments[0];
+    if (!apartment) {
+      return { apartment: null as ApartmentRow | null, cold: 0, heatingBeforeCo2: 0, co2Deduction: 0, tenantTotal: 0, advance: 0, balance: 0, label: "Guthaben" };
+    }
+    let cold = 0;
+    let heatingBeforeCo2 = 0;
+    for (const row of target.costs) {
+      const isHeating = row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label);
+      let amount = 0;
+      if (row.allocation === "directAmount" || row.allocation === "heatingDirect") amount = row.directAmount;
+      else {
+        const base = row.totalKey > 0 ? row.amount * (row.apartmentKey / row.totalKey) : 0;
+        amount = row.prorateByOccupancy ? base * (clamp(apartment.occupancyMonths, 0, 12) / 12) : base;
+      }
+      if (isHeating) heatingBeforeCo2 += amount;
+      else cold += amount;
+    }
+    const co2Deduction = Math.min(Math.max(apartment.co2LandlordDeductionKalo || 0, 0), Math.max(heatingBeforeCo2, 0));
+    const tenantTotal = roundMoney(cold + Math.max(heatingBeforeCo2 - co2Deduction, 0));
+    const balance = roundMoney(apartment.advancePayments - tenantTotal);
+    return { apartment, cold: roundMoney(cold), heatingBeforeCo2: roundMoney(heatingBeforeCo2), co2Deduction: roundMoney(co2Deduction), tenantTotal, advance: apartment.advancePayments, balance, label: balance >= 0 ? "Guthaben" : "Nachzahlung" };
+  }
+
+  function archivedBillingHtml(target: BillingWorkspace) {
+    const summary = summarizeBilling(target);
+    const apartment = summary.apartment;
+    const safeTenant = escapeHtml(apartment?.tenantName || "—");
+    const safeObject = escapeHtml(target.meta.propertyLabel || "—");
+    const rows = target.costs.map((row) => {
+      const isHeating = row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label);
+      let amount = 0;
+      if (apartment) {
+        if (row.allocation === "directAmount" || row.allocation === "heatingDirect") amount = row.directAmount;
+        else {
+          const base = row.totalKey > 0 ? row.amount * (row.apartmentKey / row.totalKey) : 0;
+          amount = row.prorateByOccupancy ? base * (clamp(apartment.occupancyMonths, 0, 12) / 12) : base;
+        }
+      }
+      const shown = isHeating && summary.co2Deduction > 0 && summary.heatingBeforeCo2 > 0
+        ? Math.max(amount - (amount / summary.heatingBeforeCo2) * summary.co2Deduction, 0)
+        : amount;
+      return `<tr><td>${escapeHtml(row.label)}</td><td>${escapeHtml(allocationLabel(row.allocation))}</td><td class="right">${escapeHtml(formatCurrency(shown))}</td></tr>`;
+    }).join("");
+    const attachments = (target.meta.attachmentReferences || "").split(/\n|;/).map(x => x.trim()).filter(Boolean).map((x, i) => `<li><strong>Anlage ${i + 1}:</strong> ${escapeHtml(x)}</li>`).join("") || "<li>Keine Anlagen hinterlegt.</li>";
+    return `<!doctype html><html><head><meta charset="utf-8"/><title>Archivierte NK-Abrechnung ${safeObject}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a;padding:28px} .page{max-width:860px;margin:0 auto;background:white;border:1px solid #dbe3f0;border-radius:24px;padding:32px} h1{margin:0;font-size:24px}.sub{margin-top:8px;color:#475569}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}.box{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.kpi{border:1px solid #e2e8f0;border-radius:14px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#64748b;font-weight:700}.value{font-size:18px;font-weight:800;margin-top:6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}.right{text-align:right}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}@media print{body{background:white;padding:0}.page{border:0;border-radius:0;padding:0}.no-print{display:none}.kpis{grid-template-columns:repeat(2,1fr)}}
+    </style></head><body><main class="page"><div class="status">Freigegeben / abgeschlossen</div><h1>Nebenkostenabrechnung ${escapeHtml(String(target.meta.billingYear))}</h1><div class="sub">${safeObject} · ${escapeHtml(formatDate(target.meta.periodFrom))} bis ${escapeHtml(formatDate(target.meta.periodTo))}</div><div class="grid"><div class="box"><div class="label">Mieter</div><strong>${safeTenant}</strong><br/>${escapeHtml(apartment?.label || "—")}</div><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(target.meta.landlordName || "—")}</strong><br/>${escapeHtml(target.meta.landlordAddress || "")}</div></div><div class="kpis"><div class="kpi"><div class="label">Kalte Betriebskosten</div><div class="value">${escapeHtml(formatCurrency(summary.cold))}</div></div><div class="kpi"><div class="label">Heizkosten nach CO₂</div><div class="value">${escapeHtml(formatCurrency(Math.max(summary.heatingBeforeCo2-summary.co2Deduction,0)))}</div></div><div class="kpi"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(summary.advance))}</div></div><div class="kpi"><div class="label">${escapeHtml(summary.label)}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(summary.balance)))}</div></div></div><h2>Kostenpositionen</h2><table><thead><tr><th>Kostenart</th><th>Schlüssel</th><th class="right">Betrag</th></tr></thead><tbody>${rows}</tbody></table><h2>Anlagen / Referenzen</h2><ul>${attachments}</ul><p class="sub">Archivnachweis: Diese Abrechnung wurde in der App abgeschlossen und ist gegen Bearbeitung gesperrt. Zum PDF-Speichern im Browser „Drucken“ → „Als PDF speichern“ wählen.</p></main></body></html>`;
+  }
+
+  function openArchivedBillingPdf(target: BillingWorkspace) {
+    const win = window.open("", "_blank", "width=960,height=1200");
+    if (!win) return;
+    win.document.open();
+    win.document.write(archivedBillingHtml(target));
+    win.document.write(`<script>window.onload=function(){setTimeout(function(){window.print();},250)};<\/script>`);
+    win.document.close();
+  }
+
+  function downloadArchivedBillingHtml(record: BillingRecord) {
+    const summary = summarizeBilling(record.workspace);
+    const tenant = summary.apartment?.tenantName || "ohne-Mieter";
+    const filename = safeFilename(`NK-Archiv_${record.workspace.meta.billingYear}_${record.workspace.meta.propertyLabel}_${tenant}.html`);
+    const blob = new Blob([archivedBillingHtml(record.workspace)], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-950 md:p-6 print:bg-white">
       <style>{`
@@ -681,6 +761,45 @@ export default function NebenkostenWohnungen() {
           </div>
           {(status || error || loading || saving) && <div className="mt-4 text-sm"><span className="text-slate-500">{loading ? "Lade… " : saving ? "Speichere… " : status}</span>{error && <span className="ml-3 text-rose-600">{error}</span>}</div>}
         </section>
+
+        <Card title="Archiv abgeschlossener NK-Abrechnungen" icon={<FileText className="h-5 w-5"/>}>
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Hier erscheinen alle freigegebenen/gesperrten Abrechnungen für das gewählte Objekt und Jahr. Die Einträge bleiben objektbezogen gespeichert und können jederzeit wieder als PDF geöffnet oder als Archivdatei heruntergeladen werden.
+          </div>
+          {archivedBillings.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+              Noch keine abgeschlossene Abrechnung im Archiv. Nach dem Klick auf <strong>„Abschließen“</strong> wird die Abrechnung hier automatisch aufgeführt.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {archivedBillings.map((record) => {
+                const summary = summarizeBilling(record.workspace);
+                const tenant = summary.apartment?.tenantName || "ohne Mieter";
+                return (
+                  <div key={record.id} className="rounded-[24px] border border-emerald-100 bg-emerald-50/50 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">Freigegeben</div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-950">{record.workspace.meta.propertyLabel}</h3>
+                        <p className="mt-1 text-sm text-slate-600">{formatDate(record.workspace.meta.periodFrom)} bis {formatDate(record.workspace.meta.periodTo)}</p>
+                        <p className="mt-1 text-sm text-slate-600">{tenant}</p>
+                      </div>
+                      <div className="text-right text-sm font-semibold text-slate-950">{record.workspace.meta.billingYear}</div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                      <div className="rounded-2xl bg-white p-3"><div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Kosten</div><div className="mt-1 font-semibold">{formatCurrency(summary.tenantTotal)}</div></div>
+                      <div className="rounded-2xl bg-white p-3"><div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{summary.label}</div><div className={`mt-1 font-semibold ${summary.balance >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatCurrency(Math.abs(summary.balance))}</div></div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button onClick={() => openArchivedBillingPdf(record.workspace)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><Printer className="h-4 w-4"/> PDF öffnen</button>
+                      <button onClick={() => downloadArchivedBillingHtml(record)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><FileText className="h-4 w-4"/> Archivdatei</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
 
         <div className="space-y-6">
           <Card title="Grunddaten" icon={<Home className="h-5 w-5"/>}>

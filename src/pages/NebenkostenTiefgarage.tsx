@@ -15,6 +15,8 @@ type CostRow = {
 
 type BillingYearData = {
   year: number;
+  finalized?: boolean;
+  finalizedAt?: string;
   propertyLabel: string;
   unitLabel: string;
   periodFrom: string;
@@ -359,6 +361,8 @@ function monthsInclusive(periodFrom: string, periodTo: string) {
 function buildDefaultYear(year: number): BillingYearData {
   return {
     year,
+    finalized: false,
+    finalizedAt: "",
     propertyLabel: "Tiefgaragenstellplatz",
     unitLabel: "Stellplatz 1",
     periodFrom: `${year}-01-01`,
@@ -711,35 +715,44 @@ export default function NebenkostenTiefgarage() {
   }
 
   function openPrintPreview() {
-    const printable = document.getElementById("tg-onepager-preview");
-    if (!printable) return;
+    openTgRecordPdf(activeRecord);
+  }
 
+  function createTgOnepagerHtml(record: BillingYearData) {
+    const months = monthsInclusive(record.periodFrom, record.periodTo);
+    const annual = roundMoney(record.monthlyHausgeld * months);
+    const apportionable = roundMoney(record.apportionableRows.reduce((sum, row) => sum + deriveRowShare(row, record), 0));
+    const balance = roundMoney(apportionable - record.tenantPrepayments);
+    const rows = record.apportionableRows.map((row) => `<tr><td>${row.label}</td><td style=\"text-align:right;font-weight:700\">${formatCurrency(deriveRowShare(row, record))}</td></tr>`).join("");
+    return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${record.year}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><div class="status">${record.finalized ? "Freigegeben / abgeschlossen" : "Entwurf"}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${record.year}</h1><p>${record.propertyLabel} · ${record.unitLabel} · ${formatDate(record.periodFrom)} bis ${formatDate(record.periodTo)}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${record.landlordName || "—"}</strong><br/>${(record.landlordAddress || "").replace(/\n/g, "<br/>")}</div><div class="box"><div class="label">Mieter</div><strong>${record.tenantName || "—"}</strong><br/>${(record.tenantAddress || "").replace(/\n/g, "<br/>")}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${formatCurrency(annual)}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${formatCurrency(apportionable)}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${formatCurrency(record.tenantPrepayments)}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${formatCurrency(Math.abs(balance))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${formatCurrency(apportionable)}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${formatCurrency(record.tenantPrepayments)}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${formatCurrency(Math.abs(balance))}</td></tr></tbody></table><p style="margin-top:24px;color:#475569">${record.footerNote || ""}</p></div></body></html>`;
+  }
+
+  function openTgRecordPdf(record: BillingYearData) {
     const printWindow = window.open("", "_blank", "width=960,height=1200");
     if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Nebenkostenabrechnung TG ${activeRecord.year}</title>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Inter, Arial, sans-serif; background: #f8fafc; padding: 32px; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-            .print-card { max-width: 820px; margin: 0 auto; background: #fff; border: 1px solid #dbe3f0; border-radius: 24px; padding: 32px; }
-            @media print {
-              body { background: #fff; padding: 0; }
-              .print-card { border: none; padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-card">${printable.innerHTML}</div>
-          <script>window.onload = function () { window.print(); };</script>
-        </body>
-      </html>
-    `);
+    printWindow.document.open();
+    printWindow.document.write(createTgOnepagerHtml(record));
+    printWindow.document.write(`<script>window.onload=function(){setTimeout(function(){window.print();},250)};<\/script>`);
     printWindow.document.close();
+  }
+
+  function downloadTgArchiveHtml(record: BillingYearData) {
+    const filename = `NK-Tiefgarage-Archiv-${record.year}-${record.propertyLabel}-${record.unitLabel}`.replace(/[^a-zA-Z0-9._-]+/g, "_") + ".html";
+    const blob = new Blob([createTgOnepagerHtml(record)], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function finalizeActiveRecord() {
+    const ok = window.confirm("Diese TG-Nebenkostenabrechnung abschließen und ins Archiv übernehmen?");
+    if (!ok) return;
+    updateActiveRecord({ finalized: true, finalizedAt: new Date().toISOString() });
   }
 
   return (
@@ -802,6 +815,51 @@ export default function NebenkostenTiefgarage() {
               Aktives Jahr zurücksetzen
             </button>
           </div>
+        </div>
+      </section>
+
+      <section style={pageStyles.section}>
+        <div style={pageStyles.sectionHeader}>
+          <div>
+            <h2 style={pageStyles.sectionTitle}>Archiv abgeschlossener TG-Abrechnungen</h2>
+            <div style={pageStyles.mutedText}>Freigegebene Tiefgaragenabrechnungen werden hier nach Jahr archiviert und können erneut als PDF geöffnet werden.</div>
+          </div>
+          <button type="button" style={pageStyles.primaryButton} onClick={finalizeActiveRecord}>
+            Aktive Abrechnung abschließen
+          </button>
+        </div>
+        <div style={pageStyles.sectionBody}>
+          {records.filter((record) => record.finalized).length === 0 ? (
+            <div style={{ border: "1px dashed #cbd5e1", borderRadius: 18, padding: 18, color: "#64748b", background: "#fff" }}>
+              Noch keine abgeschlossene TG-Abrechnung im Archiv. Nach dem Abschluss erscheint die Abrechnung hier automatisch.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+              {records.filter((record) => record.finalized).map((record) => {
+                const apportionable = roundMoney(record.apportionableRows.reduce((sum, row) => sum + deriveRowShare(row, record), 0));
+                const balance = roundMoney(apportionable - record.tenantPrepayments);
+                return (
+                  <div key={`archive-${record.year}`} style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 20, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ display: "inline-block", borderRadius: 999, background: "#dcfce7", color: "#166534", padding: "5px 10px", fontSize: 12, fontWeight: 900 }}>Freigegeben</div>
+                        <div style={{ marginTop: 10, fontWeight: 900, color: "#0f172a" }}>{record.propertyLabel}</div>
+                        <div style={pageStyles.mutedText}>{record.unitLabel} · {record.year}</div>
+                      </div>
+                      <div style={{ textAlign: "right", fontWeight: 900 }}>{formatCurrency(apportionable)}</div>
+                    </div>
+                    <div style={{ marginTop: 12, color: balance >= 0 ? "#b91c1c" : "#166534", fontWeight: 900 }}>
+                      {balance >= 0 ? "Nachzahlung" : "Guthaben"}: {formatCurrency(Math.abs(balance))}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+                      <button type="button" style={pageStyles.button} onClick={() => openTgRecordPdf(record)}>PDF öffnen</button>
+                      <button type="button" style={pageStyles.button} onClick={() => downloadTgArchiveHtml(record)}>Archivdatei</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
