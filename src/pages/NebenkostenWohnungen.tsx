@@ -562,6 +562,56 @@ type BillingImportResult = {
   ignored: IgnoredBillingItem[];
 };
 
+type StoredBillingMetadata = {
+  finance_entry_id: string;
+  is_recoverable: boolean | null;
+  nk_cost_type: string | null;
+  allocation_type: AllocationType | string | null;
+  total_key: number | null;
+  apartment_key: number | null;
+  direct_amount: number | null;
+  recoverable_percent: number | null;
+  classification_status: string | null;
+  ignored_reason: string | null;
+  reason: string | null;
+  confidence: ImportedBillingItem["confidence"] | string | null;
+};
+
+function metadataKey(sourceId: string) {
+  return String(sourceId ?? "");
+}
+
+function storedMetadataToImported(entry: AppFinanceEntry, stored: StoredBillingMetadata): ImportedBillingItem | IgnoredBillingItem | null {
+  const amount = Math.abs(Number(entry.amount) || 0);
+  const sourceId = String(entry.id ?? `${entry.booking_date}-${entry.category}-${amount}`);
+  const base = { sourceId, date: entry.booking_date ?? "", category: entry.category ?? "", note: entry.note ?? "", amount };
+
+  if (!stored.is_recoverable) {
+    return {
+      ...base,
+      reason: stored.ignored_reason || stored.reason || "In Supabase als nicht umlagefähig / zu prüfen gespeichert.",
+    };
+  }
+
+  if (!stored.nk_cost_type) return null;
+
+  const allocation = (stored.allocation_type === "persons" || stored.allocation_type === "directAmount" || stored.allocation_type === "heatingDirect" || stored.allocation_type === "allocationKey")
+    ? stored.allocation_type
+    : "allocationKey";
+
+  return {
+    ...base,
+    label: stored.nk_cost_type,
+    allocation,
+    totalKey: Number(stored.total_key ?? 0),
+    apartmentKey: Number(stored.apartment_key ?? 0),
+    directAmount: Number(stored.direct_amount ?? (allocation === "directAmount" || allocation === "heatingDirect" ? amount : 0)),
+    prorateByOccupancy: false,
+    confidence: (stored.confidence === "hoch" || stored.confidence === "mittel" || stored.confidence === "prüfen") ? stored.confidence : "mittel",
+    reason: stored.reason || "Aus gespeicherter Supabase-NK-Zuordnung übernommen.",
+  };
+}
+
 function normalizeForMatch(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
@@ -691,6 +741,11 @@ function classifyBillingEntry(entry: AppFinanceEntry, preset: BillingPreset | nu
   };
 }
 
+
+function isImportedBillingItem(item: ImportedBillingItem | IgnoredBillingItem): item is ImportedBillingItem {
+  return typeof (item as ImportedBillingItem).label === "string" && typeof (item as ImportedBillingItem).allocation === "string";
+}
+
 function summarizeImport(imported: ImportedBillingItem[]) {
   const map = new Map<string, ImportedBillingItem>();
   for (const item of imported) {
@@ -733,40 +788,150 @@ Diese Vorlage überschreibt die aktuellen Wohnungs- und Kostenzeilen dieser Abre
     setStatus(`Vorlage angewendet: ${activePreset.title}`);
   }
   function deleteCost(id: string) { if (locked) return; update(p => ({ ...p, costs: p.costs.filter(c => c.id !== id) })); }
-  function importBookingsIntoBilling() {
+  async function loadStoredBillingMetadata(periodFrom: string, periodTo: string, year: number) {
+    const empty = new Map<string, StoredBillingMetadata>();
+    if (!selectedObjectCode) return empty;
+
+    const { data, error } = await supabase
+      .from("finance_entry_billing_metadata")
+      .select("finance_entry_id,is_recoverable,nk_cost_type,allocation_type,total_key,apartment_key,direct_amount,recoverable_percent,classification_status,ignored_reason,reason,confidence")
+      .eq("objekt_code", selectedObjectCode)
+      .eq("billing_year", year)
+      .gte("billing_period_from", periodFrom)
+      .lte("billing_period_to", periodTo);
+
+    if (error) {
+      // Tabelle ist für ältere Installationen optional. Der Import bleibt funktionsfähig.
+      if (error.code !== "42P01" && !String(error.message || "").toLowerCase().includes("does not exist")) {
+        setError(`NK-Metadaten konnten nicht geladen werden: ${error.message}`);
+      }
+      return empty;
+    }
+
+    for (const row of data ?? []) {
+      empty.set(metadataKey(row.finance_entry_id), row as StoredBillingMetadata);
+    }
+    return empty;
+  }
+
+  async function saveBillingMetadata(importedRaw: ImportedBillingItem[], ignoredRaw: IgnoredBillingItem[]) {
+    if (!selectedObjectCode) return { saved: 0, skipped: true, message: "Kein Objekt ausgewählt." };
+
+    const importedRows = importedRaw.map((item) => ({
+      finance_entry_id: item.sourceId,
+      objekt_code: selectedObjectCode,
+      billing_year: selectedYear,
+      billing_period_from: workspace.meta.periodFrom,
+      billing_period_to: workspace.meta.periodTo,
+      booking_date: item.date || null,
+      source_category: item.category || null,
+      source_note: item.note || null,
+      amount: item.amount,
+      is_recoverable: true,
+      recoverable_percent: 100,
+      nk_cost_type: item.label,
+      allocation_type: item.allocation,
+      total_key: item.totalKey || null,
+      apartment_key: item.apartmentKey || null,
+      direct_amount: item.directAmount || null,
+      classification_status: item.confidence === "prüfen" ? "needs_review" : "auto_detected",
+      confidence: item.confidence,
+      reason: item.reason,
+      ignored_reason: null,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const ignoredRows = ignoredRaw.map((item) => ({
+      finance_entry_id: item.sourceId,
+      objekt_code: selectedObjectCode,
+      billing_year: selectedYear,
+      billing_period_from: workspace.meta.periodFrom,
+      billing_period_to: workspace.meta.periodTo,
+      booking_date: item.date || null,
+      source_category: item.category || null,
+      source_note: item.note || null,
+      amount: item.amount,
+      is_recoverable: false,
+      recoverable_percent: 0,
+      nk_cost_type: null,
+      allocation_type: null,
+      total_key: null,
+      apartment_key: null,
+      direct_amount: null,
+      classification_status: "ignored_auto",
+      confidence: null,
+      reason: null,
+      ignored_reason: item.reason,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const rows = [...importedRows, ...ignoredRows];
+    if (!rows.length) return { saved: 0, skipped: false, message: "Keine Metadaten zu speichern." };
+
+    const { error } = await supabase
+      .from("finance_entry_billing_metadata")
+      .upsert(rows, { onConflict: "finance_entry_id,billing_period_from,billing_period_to" });
+
+    if (error) {
+      if (error.code === "42P01" || String(error.message || "").toLowerCase().includes("does not exist")) {
+        return { saved: 0, skipped: true, message: "Supabase-Tabelle finance_entry_billing_metadata fehlt noch. Import funktioniert, aber Zuordnungen werden noch nicht pro Buchung gespeichert." };
+      }
+      throw error;
+    }
+
+    return { saved: rows.length, skipped: false, message: `${rows.length} Buchungs-Zuordnung(en) in Supabase gespeichert.` };
+  }
+
+  async function importBookingsIntoBilling() {
     if (locked) return;
     if (!selectedObjectCode) {
       setError("Bitte zuerst ein Objekt auswählen.");
       return;
     }
 
-    const relevantEntries = appData.entries
-      .filter((entry) => sameObjectForBilling(entry, selectedObjectCode, selectedObject, appData.objects))
-      .filter((entry) => isExpenseInPeriod(entry, workspace.meta.periodFrom, workspace.meta.periodTo, selectedYear));
+    setLoading(true);
+    setError("");
 
-    const imported: ImportedBillingItem[] = [];
-    const ignored: IgnoredBillingItem[] = [];
+    try {
+      const relevantEntries = appData.entries
+        .filter((entry) => sameObjectForBilling(entry, selectedObjectCode, selectedObject, appData.objects))
+        .filter((entry) => isExpenseInPeriod(entry, workspace.meta.periodFrom, workspace.meta.periodTo, selectedYear));
 
-    for (const entry of relevantEntries) {
-      const classified = classifyBillingEntry(entry, activePreset, workspace, heatingIsTenantDirect);
-      if ("label" in classified) imported.push(classified);
-      else ignored.push(classified);
+      const storedMetadata = await loadStoredBillingMetadata(workspace.meta.periodFrom, workspace.meta.periodTo, selectedYear);
+      const imported: ImportedBillingItem[] = [];
+      const ignored: IgnoredBillingItem[] = [];
+
+      for (const entry of relevantEntries) {
+        const amount = Math.abs(Number(entry.amount) || 0);
+        const sourceId = String(entry.id ?? `${entry.booking_date}-${entry.category}-${amount}`);
+        const stored = storedMetadata.get(metadataKey(sourceId));
+        const fromStored = stored ? storedMetadataToImported(entry, stored) : null;
+        const classified = fromStored ?? classifyBillingEntry(entry, activePreset, workspace, heatingIsTenantDirect);
+        if (isImportedBillingItem(classified)) imported.push(classified);
+        else ignored.push(classified);
+      }
+
+      const summarized = summarizeImport(imported);
+      const metadataSave = await saveBillingMetadata(imported, ignored);
+
+      if (!summarized.length) {
+        setLastImportResult({ imported: [], ignored });
+        setStatus(`Keine eindeutig umlagefähigen Buchungen für ${workspace.meta.propertyLabel} / ${selectedYear} gefunden. ${metadataSave.message}`);
+        return;
+      }
+
+      update((p) => {
+        const withPresetDefaults = applyPresetDefaultsBeforeImport(p, activePreset, selectedYear, selectedObject ?? undefined);
+        return mergeImportedItemsIntoCosts(withPresetDefaults, summarized, selectedYear);
+      });
+
+      setLastImportResult({ imported: summarized, ignored });
+      setStatus(`${summarized.length} Kostenart(en) wurden übernommen und unten in den Kostenarten aktualisiert. ${ignored.length} Buchung(en) wurden nicht automatisch übernommen und bleiben zur Prüfung. ${metadataSave.message}`);
+    } catch (err) {
+      setError(err instanceof Error ? `Import/Supabase-Speicherung fehlgeschlagen: ${err.message}` : "Import/Supabase-Speicherung fehlgeschlagen.");
+    } finally {
+      setLoading(false);
     }
-
-    const summarized = summarizeImport(imported);
-    if (!summarized.length) {
-      setLastImportResult({ imported: [], ignored });
-      setStatus(`Keine eindeutig umlagefähigen Buchungen für ${workspace.meta.propertyLabel} / ${selectedYear} gefunden.`);
-      return;
-    }
-
-    update((p) => {
-      const withPresetDefaults = applyPresetDefaultsBeforeImport(p, activePreset, selectedYear, selectedObject ?? undefined);
-      return mergeImportedItemsIntoCosts(withPresetDefaults, summarized, selectedYear);
-    });
-
-    setLastImportResult({ imported: summarized, ignored });
-    setStatus(`${summarized.length} Kostenart(en) wurden übernommen und unten in den Kostenarten aktualisiert. Das Ergebnis/Druck wird daraus neu berechnet. ${ignored.length} Buchung(en) wurden nicht automatisch übernommen und bleiben zur Prüfung.`);
   }
 
   const co2TotalKg = roundMoney(workspace.heating.totalConsumptionKwh * workspace.heating.emissionFactor); const co2PerSqm = workspace.heating.heatedArea > 0 ? co2TotalKg / workspace.heating.heatedArea : 0; const co2Stage = getCo2Stage(co2PerSqm);
@@ -1171,7 +1336,7 @@ Diese Vorlage überschreibt die aktuellen Wohnungs- und Kostenzeilen dieser Abre
           </Card>
         </div>
 
-        <Card title="Buchungen → automatische NK-Abrechnung" icon={<Calculator className="h-5 w-5"/>} actions={<button onClick={importBookingsIntoBilling} disabled={locked || appData.loading} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4"/> Buchungen importieren</button>}>
+        <Card title="Buchungen → automatische NK-Abrechnung" icon={<Calculator className="h-5 w-5"/>} actions={<button onClick={importBookingsIntoBilling} disabled={locked || appData.loading || loading} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4"/> Buchungen importieren</button>}>
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
               <div className="font-semibold text-slate-950">So funktioniert der Import</div>
