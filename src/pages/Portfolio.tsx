@@ -5,6 +5,7 @@ import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfo
 import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
 import { loadAllPropertyExtras, savePropertyExtra, writeLocalPropertyExtras, type PropertyExtraInfo } from "../services/propertyExtraService";
 import { supabase } from "../lib/supabaseClient";
+import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 
 type ExtraInfo = PropertyExtraInfo;
 
@@ -191,6 +192,7 @@ export default function Portfolio() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const year = currentYear();
+  const backendFinance = useBackendFinanceMaster(year);
   const rows = appData.portfolioRows;
 
   useEffect(() => {
@@ -252,6 +254,23 @@ export default function Portfolio() {
   }, [financeSummary]);
 
   function getFinanceForRow(row: PortfolioLoanRow): PortfolioFinanceSummary | undefined {
+    const backend = backendFinance.snapshots.find((item) => {
+      const rowName = normalizeText(row.property_name);
+      const itemName = normalizeText(item.propertyName);
+      return item.propertyId === row.property_id || item.portfolioPropertyId === row.portfolio_property_id || (itemName && (rowName.includes(itemName) || itemName.includes(rowName) || rowName.includes(itemName.split(" ")[0])));
+    });
+
+    if (backend) {
+      return {
+        portfolio_property_id: backend.portfolioPropertyId ?? row.portfolio_property_id ?? row.property_id,
+        name: backend.propertyName,
+        jahr: backend.year,
+        einnahmen: backend.income,
+        ausgaben: backend.expenses,
+        mieteingaenge: backend.rentIncome,
+      };
+    }
+
     const byPortfolioId = row.portfolio_property_id ? financeMap[row.portfolio_property_id] : undefined;
     if (byPortfolioId) return byPortfolioId;
 
@@ -289,7 +308,7 @@ export default function Portfolio() {
       },
       { lastBalance: 0, principalTotal: 0, interestTotal: 0, income: 0, expenses: 0, cashflow: 0, portfolioValue: 0 }
     );
-  }, [rows, extraInfo, financeMap, financeSummary]);
+  }, [rows, extraInfo, financeMap, financeSummary, backendFinance.snapshots]);
 
   const averageRepaidPercent = useMemo(
     () => (rows.length ? rows.reduce((sum, row) => sum + row.repaid_percent, 0) / rows.length : 0),

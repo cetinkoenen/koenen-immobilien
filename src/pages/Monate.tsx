@@ -4,6 +4,7 @@ import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;
+type GroupMode = "none" | "object" | "category" | "type";
 
 type EntryRow = {
   id: number;
@@ -291,6 +292,7 @@ export default function Monate() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [groupMode, setGroupMode] = useState<GroupMode>("none");
 
   const [sortKey, setSortKey] = useState<SortKey>("booking_date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -560,6 +562,91 @@ export default function Monate() {
       net: income - expense,
     };
   }, [sortedRows]);
+
+  const selectedRows = useMemo(() => {
+    const selected = new Set(selectedKeys);
+    return sortedRows.filter((row) => selected.has(rowSelectionKey(row)));
+  }, [selectedKeys, sortedRows]);
+
+  const selectedTotals = useMemo(() => {
+    const income = selectedRows
+      .filter((r) => r.entry_type === "income")
+      .reduce((sum, r) => sum + r.amount, 0);
+
+    const expense = selectedRows
+      .filter((r) => r.entry_type === "expense")
+      .reduce((sum, r) => sum + r.amount, 0);
+
+    return { income, expense, net: income - expense };
+  }, [selectedRows]);
+
+  const groupedSummaries = useMemo(() => {
+    const map = new Map<string, { label: string; count: number; income: number; expense: number; net: number }>();
+
+    for (const row of sortedRows) {
+      const objectCode = row.objekt_code ?? "";
+      const label =
+        groupMode === "object"
+          ? objectLabelMap.get(objectCode) ?? (objectCode || "Ohne Objekt")
+          : groupMode === "category"
+          ? row.category?.trim() || "Ohne Kategorie"
+          : groupMode === "type"
+          ? row.entry_type === "income" ? "Einnahmen" : "Ausgaben"
+          : "Alle Buchungen";
+
+      const current = map.get(label) ?? { label, count: 0, income: 0, expense: 0, net: 0 };
+      current.count += 1;
+
+      if (row.entry_type === "income") current.income += row.amount;
+      else current.expense += row.amount;
+
+      current.net = current.income - current.expense;
+      map.set(label, current);
+    }
+
+    return Array.from(map.values()).sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  }, [groupMode, objectLabelMap, sortedRows]);
+
+  function applyPreset(preset: "rent" | "capex" | "expenses" | "income" | "reset") {
+    setCurrentPage(1);
+
+    if (preset === "reset") {
+      setSearch("");
+      setTypeFilter("all");
+      setCategoryFilter("ALL");
+      setGroupMode("none");
+      return;
+    }
+
+    if (preset === "rent") {
+      setTypeFilter("income");
+      setSearch("miete");
+      setCategoryFilter("ALL");
+      setGroupMode("object");
+      return;
+    }
+
+    if (preset === "capex") {
+      setTypeFilter("expense");
+      setSearch("sanierung reparatur modernisierung capex");
+      setCategoryFilter("ALL");
+      setGroupMode("category");
+      return;
+    }
+
+    if (preset === "expenses") {
+      setTypeFilter("expense");
+      setSearch("");
+      setCategoryFilter("ALL");
+      setGroupMode("category");
+      return;
+    }
+
+    setTypeFilter("income");
+    setSearch("");
+    setCategoryFilter("ALL");
+    setGroupMode("object");
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -1026,10 +1113,27 @@ export default function Monate() {
           style={{
             padding: 12,
             borderBottom: "1px solid #e5e7eb",
-            fontWeight: 900,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          Buchungen im Monat ({monthLabel} {year})
+          <div>
+            <div style={{ fontWeight: 950 }}>Buchungen im Monat ({monthLabel} {year})</div>
+            <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 800, marginTop: 3 }}>
+              Enterprise-Ansicht mit Presets, Gruppierung, Summenzeilen, Sticky Header und Batch-Auswahl.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => applyPreset("rent")} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", fontWeight: 900, cursor: "pointer" }}>Miete</button>
+            <button onClick={() => applyPreset("capex")} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #fed7aa", background: "#fff7ed", color: "#9a3412", fontWeight: 900, cursor: "pointer" }}>Capex</button>
+            <button onClick={() => applyPreset("expenses")} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", fontWeight: 900, cursor: "pointer" }}>Ausgaben</button>
+            <button onClick={() => applyPreset("income")} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 900, cursor: "pointer" }}>Einnahmen</button>
+            <button onClick={() => applyPreset("reset")} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #e5e7eb", background: "white", color: "#334155", fontWeight: 900, cursor: "pointer" }}>Zurücksetzen</button>
+          </div>
         </div>
 
         <div
@@ -1055,6 +1159,27 @@ export default function Monate() {
                 borderRadius: 12,
                 border: "1px solid #e5e7eb",
                 fontWeight: 700,
+              }}
+            />
+          </label>
+
+          <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
+            Jahr
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => {
+                setYear(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{
+                marginTop: 6,
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                fontWeight: 700,
+                background: "white",
               }}
             />
           </label>
@@ -1128,6 +1253,29 @@ export default function Monate() {
               <option value={100}>100</option>
             </select>
           </label>
+
+
+          <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
+            Gruppierung
+            <select
+              value={groupMode}
+              onChange={(e) => setGroupMode(e.target.value as GroupMode)}
+              style={{
+                marginTop: 6,
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                fontWeight: 700,
+                background: "white",
+              }}
+            >
+              <option value="none">Keine Gruppierung</option>
+              <option value="object">Nach Objekt</option>
+              <option value="category">Nach Kategorie</option>
+              <option value="type">Nach Einnahme/Ausgabe</option>
+            </select>
+          </label>
         </div>
 
         <div
@@ -1144,9 +1292,14 @@ export default function Monate() {
             alignItems: "center",
           }}
         >
-          <span>Treffer: {sortedRows.length}</span>
+          <span>Treffer: {sortedRows.length} · Netto gefiltert: {formatEUR(totals.net)}</span>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {selectedKeys.length > 0 && (
+              <span style={{ padding: "6px 10px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", color: selectedTotals.net < 0 ? "#991b1b" : "#166534" }}>
+                Auswahl: {selectedKeys.length} · Netto {formatEUR(selectedTotals.net)}
+              </span>
+            )}
             <span>
               Anzeige: {pageStart}–{pageEnd} von {sortedRows.length}
             </span>
@@ -1173,10 +1326,40 @@ export default function Monate() {
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        {groupMode !== "none" && (
+          <div style={{ padding: 12, borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.75, marginBottom: 8 }}>Gruppierte Zusammenfassung</div>
+            <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "white" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f1f5f9" }}>
+                    <th style={{ textAlign: "left", padding: 10 }}>Gruppe</th>
+                    <th style={{ textAlign: "right", padding: 10 }}>Zeilen</th>
+                    <th style={{ textAlign: "right", padding: 10 }}>Einnahmen</th>
+                    <th style={{ textAlign: "right", padding: 10 }}>Ausgaben</th>
+                    <th style={{ textAlign: "right", padding: 10 }}>Netto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedSummaries.map((group) => (
+                    <tr key={group.label} style={{ borderTop: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: 10, fontWeight: 900 }}>{group.label}</td>
+                      <td style={{ padding: 10, textAlign: "right", fontWeight: 800 }}>{group.count}</td>
+                      <td style={{ padding: 10, textAlign: "right", color: "#166534", fontWeight: 900 }}>{formatEUR(group.income)}</td>
+                      <td style={{ padding: 10, textAlign: "right", color: "#991b1b", fontWeight: 900 }}>{formatEUR(group.expense)}</td>
+                      <td style={{ padding: 10, textAlign: "right", color: group.net < 0 ? "#991b1b" : "#166534", fontWeight: 950 }}>{formatEUR(group.net)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <div style={{ overflowX: "auto", maxHeight: 680 }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
-              <tr style={{ background: "#f9fafb" }}>
+              <tr style={{ background: "#f9fafb", position: "sticky", top: 0, zIndex: 2, boxShadow: "0 1px 0 #e5e7eb" }}>
                 <th style={{ padding: 10, width: 42, textAlign: "center" }}>
                   <input
                     type="checkbox"
@@ -1355,6 +1538,17 @@ export default function Monate() {
                 })
               )}
             </tbody>
+            <tfoot>
+              <tr style={{ background: "#f8fafc", position: "sticky", bottom: 0, zIndex: 1, boxShadow: "0 -1px 0 #e5e7eb" }}>
+                <td colSpan={5} style={{ padding: 10, textAlign: "right", fontWeight: 950 }}>Summe gefiltert</td>
+                <td style={{ padding: 10, textAlign: "right", fontWeight: 950, color: totals.net < 0 ? "#991b1b" : "#166534", whiteSpace: "nowrap" }}>
+                  {formatEUR(totals.net)}
+                </td>
+                <td colSpan={2} style={{ padding: 10, fontSize: 12, opacity: 0.7 }}>
+                  Einnahmen {formatEUR(totals.income)} · Ausgaben {formatEUR(totals.expense)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
 

@@ -120,6 +120,25 @@ function cleanDisplayName(value: unknown, fallback = "Unbenanntes Objekt"): stri
   return cleaned || fallback;
 }
 
+function isHiddenTechnicalPropertyName(value: unknown): boolean {
+  const name = String(value ?? "")
+    .toLowerCase()
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!name) return true;
+
+  return [
+    /\brls\b/,
+    /\btest\b/,
+    /\btrigger\b/,
+    /\bdebug\b/,
+    /\bdummy\b/,
+    /\bsample\b/,
+  ].some((pattern) => pattern.test(name));
+}
+
 function dateInRange(value: string | null, start?: string, end?: string) {
   if (!value) return false;
   if (start && value < start) return false;
@@ -378,6 +397,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       let mappedPortfolio = ((portfolioRes.data ?? []) as any[])
         .filter((row) => row.property_id)
+        .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
           property_id: String(row.property_id ?? ""),
           portfolio_property_id: row.portfolio_property_id == null ? null : String(row.portfolio_property_id),
@@ -392,6 +412,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       let mappedLoans = ((loanRes.data ?? []) as any[])
         .filter((row) => row.property_id)
+        .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
           property_id: String(row.property_id ?? ""),
           property_name: cleanDisplayName(row.property_name, "Unbenannte Immobilie"),
@@ -414,6 +435,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const ledgerOverrideIds = Array.from(new Set([
         ...mappedLoans.map((row) => row.property_id),
         ...mappedPortfolio.map((row) => row.property_id),
+        ...mappedPortfolio.map((row) => row.portfolio_property_id),
       ].filter(Boolean)));
       if (ledgerOverrideIds.length) {
         const ledgerOverrideRes = await supabase
@@ -456,7 +478,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           });
 
           mappedPortfolio = mappedPortfolio.map((row) => {
-            const latest = latestByProperty[row.property_id];
+            const latest = latestByProperty[row.property_id] ?? (row.portfolio_property_id ? latestByProperty[row.portfolio_property_id] : undefined);
             if (!latest) return row;
             return {
               ...row,

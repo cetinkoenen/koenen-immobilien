@@ -44,7 +44,7 @@ export default function Login() {
     if (error) throw error;
 
     if (data?.currentLevel === "aal1" || data?.currentLevel === "aal2") {
-      return data.currentLevel;
+      return data.currentLevel as "aal1" | "aal2";
     }
 
     return null;

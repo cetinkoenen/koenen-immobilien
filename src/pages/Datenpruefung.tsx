@@ -20,6 +20,9 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAppData } from "@/state/AppDataContext";
 import { createMissingCapexYear, createMissingIncomeYear, extendLoanOneYear } from "@/services/dataRepairService";
+import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
+import { refreshBackendFinanceMaterializedViews } from "@/services/backendFinanceMasterService";
+import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 
 type Row = {
   property_id: string | null;
@@ -226,6 +229,8 @@ export default function Datenpruefung() {
   const [notice, setNotice] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [openActions, setOpenActions] = useState<string | null>(null);
+  const [refreshingViews, setRefreshingViews] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
   const loadAuditTables = useCallback(async () => {
     const [capexRes, incomeRes, ledgerRes, rentalsRes] = await Promise.all([
@@ -266,7 +271,14 @@ export default function Datenpruefung() {
   }, []);
 
   const auditSources = useMemo<AuditSource[]>(() => {
-    const bases: AuditSource[] = app.objects.map((object) => ({ id: object.id, name: object.label, aliases: [object.id] }));
+    // Kanonische Grundlage wie Portfolio → Objektübersicht: app.portfolioRows.
+    // Dadurch werden Restschuld-Gesamtsummen nicht mehr aus einer zweiten, abweichenden
+    // Datenprüfungs-Liste addiert. Objekte aus v_object_dropdown werden nur als Alias ergänzt.
+    const bases: AuditSource[] = app.portfolioRows.map((row) => ({
+      id: row.property_id,
+      name: row.property_name,
+      aliases: unique([row.property_id, row.portfolio_property_id]),
+    }));
     const fallbackByName = new Map<string, AuditSource>();
 
     const addAlias = (source: AuditSource, id: string | null | undefined) => {
@@ -290,6 +302,7 @@ export default function Datenpruefung() {
       }
     };
 
+    app.objects.forEach((object) => attach(object.id, object.label));
     app.portfolioRows.forEach((row) => {
       attach(row.property_id, row.property_name);
       attach(row.portfolio_property_id, row.property_name);
@@ -317,7 +330,8 @@ export default function Datenpruefung() {
       const portfolioLoan = app.portfolioRows.find((row) => hasId(row.property_id) || hasId(row.portfolio_property_id) || namesMatch(row.property_name, source.name));
       const latestLedger = ledgerRows[ledgerRows.length - 1];
       const previousLedger = ledgerRows[ledgerRows.length - 2];
-      const rawLatestBalance = latestLedger?.balance ?? dashboardLoan?.last_balance ?? null;
+      // Einheitliche Quelle für die Anzeige: dieselbe kanonisch überschriebenen Portfolio-/AppData-Werte wie in der Portfolio-Objektübersicht.
+      const rawLatestBalance = portfolioLoan?.last_balance ?? dashboardLoan?.last_balance ?? latestLedger?.balance ?? null;
       const propertyContext = [source.name, dashboardLoan?.property_name, portfolioLoan?.property_name, ...source.aliases].filter(Boolean).join(" ");
       const latestBalance = cleanBalanceForAudit(rawLatestBalance, propertyContext);
       const portfolioBalance = cleanBalanceForAudit(portfolioLoan ? toNumber(portfolioLoan.last_balance) : null, propertyContext);
@@ -349,12 +363,32 @@ export default function Datenpruefung() {
         loan: (ledgerRows.length ? "ok" : "bad") as Status,
         portfolio: (portfolioLoan ? "ok" : "warn") as Status,
         balance: latestBalance,
-        sourceText: latestLedger?.year ? `Darlehensübersicht ${latestLedger.year}` : dashboardLoan?.last_balance_year ? `Darlehensdashboard ${dashboardLoan.last_balance_year}` : "—",
+        sourceText: portfolioLoan ? "Portfolio/AppData · letzter Ledger-Wert" : latestLedger?.year ? `Darlehensübersicht ${latestLedger.year}` : dashboardLoan?.last_balance_year ? `Darlehensdashboard ${dashboardLoan.last_balance_year}` : "—",
         notes,
         risk,
       };
     });
   }, [auditSources, app.yearlyFinanceSummaries, app.loanRows, app.portfolioRows, capex, incomeYears, ledger, rentals]);
+
+  const backendFinance = useBackendFinanceMaster(currentYear);
+  const qualityChecks = backendFinance.dataQualityChecks;
+  const qualityStats = useMemo(() => ({
+    critical: qualityChecks.filter((row) => row.severity === "critical").length,
+    warning: qualityChecks.filter((row) => row.severity === "warning").length,
+    total: qualityChecks.length,
+  }), [qualityChecks]);
+  const qualityTopRows = useMemo(() => qualityChecks.slice(0, 12), [qualityChecks]);
+  const frontendMasterSnapshots = useMemo(() => buildMasterFinanceSnapshots({
+    objects: app.objects,
+    entries: app.entries,
+    yearlyFinanceSummaries: app.yearlyFinanceSummaries,
+    portfolioRows: app.portfolioRows,
+    loanRows: app.loanRows,
+    loanChartByPropertyId: app.loanChartByPropertyId,
+  }, currentYear), [app.objects, app.entries, app.yearlyFinanceSummaries, app.portfolioRows, app.loanRows, app.loanChartByPropertyId]);
+  const masterSnapshots = backendFinance.snapshots.length ? backendFinance.snapshots : frontendMasterSnapshots;
+
+  const masterTotals = useMemo(() => buildMasterTotals(masterSnapshots), [masterSnapshots]);
 
   const visibleRows = useMemo(() => {
     if (filterMode === "warnings") return rows.filter((row) => row.notes.length > 0);
@@ -380,6 +414,26 @@ export default function Datenpruefung() {
       setError(unknownError instanceof Error ? unknownError.message : "Reparatur konnte nicht ausgeführt werden.");
     } finally {
       setRepairing(null);
+    }
+  }
+
+  async function refreshMaterializedViews() {
+    setRefreshingViews(true);
+    setError(null);
+    setNotice(null);
+    setRefreshResult(null);
+    try {
+      const result = await refreshBackendFinanceMaterializedViews();
+      const refreshed = result.filter((row) => row.status === "refreshed").length;
+      const skipped = result.filter((row) => row.status === "not_found").length;
+      const failed = result.filter((row) => row.status.startsWith("error")).length;
+      setRefreshResult(`${refreshed} Views aktualisiert · ${skipped} nicht vorhanden · ${failed} Fehler`);
+      setNotice("Backend-Views wurden aktualisiert. Bitte Datenprüfung erneut laden, falls Werte noch abweichen.");
+      await runCheck();
+    } catch (unknownError) {
+      setError(unknownError instanceof Error ? unknownError.message : "Materialized Views konnten nicht aktualisiert werden.");
+    } finally {
+      setRefreshingViews(false);
     }
   }
 
@@ -409,8 +463,9 @@ export default function Datenpruefung() {
     objects: rows.length,
     okLoans: rows.filter((row) => row.loan === "ok").length,
     missingLoans: rows.filter((row) => row.loan === "bad").length,
-    warnings: rows.reduce((sum, row) => sum + row.notes.length, 0),
-    totalBalance: rows.reduce((sum, row) => sum + (row.balance ?? 0), 0),
+    warnings: masterTotals.warnings,
+    // Phase 3A: Datenprüfung, Portfolio und Auswertung nutzen denselben Master-Service.
+    totalBalance: masterTotals.latestBalance,
   };
 
   const lastCheckLabel = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
@@ -451,6 +506,84 @@ export default function Datenpruefung() {
 
       {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 font-bold text-rose-700">{error}</div> : null}
       {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 font-bold text-emerald-700">{notice}</div> : null}
+
+
+      <section className="rounded-[28px] border border-indigo-100 bg-indigo-50/70 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Phase 3A · Single Source of Truth</div>
+            <h2 className="mt-1 text-lg font-black text-slate-950">Backend-Finanzmaster aktiv</h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">Restschuld, Einnahmen, Ausgaben, Capex und Cashflow werden bevorzugt aus der Supabase-Finance-Master-View/RPC geladen. Fallback: lokale Frontend-Masterberechnung, falls der Backend-Master nicht verfügbar ist.</p>
+            <p className={`mt-2 text-xs font-black ${backendFinance.snapshots.length ? "text-emerald-700" : backendFinance.error ? "text-rose-700" : "text-amber-700"}`}>Quelle: {backendFinance.snapshots.length ? "Backend-Finanzmaster" : "Frontend-Fallback"}{backendFinance.error ? ` · ${backendFinance.error}` : ""}</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
+            <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Master-Objekte</div><div className="mt-1 text-xl font-black text-slate-950">{masterSnapshots.length}</div></div>
+            <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">kritisch</div><div className="mt-1 text-xl font-black text-rose-600">{masterTotals.critical}</div></div>
+            <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Netto-Cashflow {currentYear}</div><div className="mt-1 text-xl font-black text-slate-950">{euro(masterTotals.netCashflow)}</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
+              <ShieldCheck size={13} /> Phase 5E · Datenprüfung & Reparatur-Center
+            </div>
+            <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Backend-Qualitätschecks</h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
+              Supabase prüft jetzt zentral doppelte Objekte, Testdaten, fehlende Darlehens-Ledger, fehlende Dokumente, negative Cashflows und Abweichungen zwischen Master-View und alten Quellen.
+            </p>
+            {refreshResult ? <p className="mt-2 text-xs font-black text-slate-500">Refresh-Ergebnis: {refreshResult}</p> : null}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Checks</div>
+              <div className="mt-1 text-2xl font-black text-slate-950">{qualityStats.total}</div>
+            </div>
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-500">kritisch</div>
+              <div className="mt-1 text-2xl font-black text-rose-700">{qualityStats.critical}</div>
+            </div>
+            <button
+              type="button"
+              disabled={refreshingViews || checking}
+              onClick={() => void refreshMaterializedViews()}
+              className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={16} className={refreshingViews ? "animate-spin" : ""} />
+              Views refreshen
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+          <div className="grid grid-cols-[130px_minmax(160px,1fr)_minmax(220px,1.5fr)_minmax(220px,1.5fr)] gap-0 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.1em] text-slate-500 max-lg:hidden">
+            <div>Status</div>
+            <div>Bereich / Objekt</div>
+            <div>Problem</div>
+            <div>Reparaturhinweis</div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {qualityTopRows.length ? qualityTopRows.map((check, index) => (
+              <div key={`${check.issue_code}-${check.property_id ?? index}-${index}`} className="grid gap-3 px-4 py-4 lg:grid-cols-[130px_minmax(160px,1fr)_minmax(220px,1.5fr)_minmax(220px,1.5fr)] lg:items-start">
+                <div><StatusBadge status={check.severity === "critical" ? "bad" : check.severity === "warning" ? "warn" : "ok"} label={check.severity === "critical" ? "kritisch" : check.severity === "warning" ? "prüfen" : "ok"} /></div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black text-slate-950">{check.area}</div>
+                  <div className="mt-1 break-words text-xs font-bold text-slate-500">{check.property_name ?? "Portfolio gesamt"}</div>
+                </div>
+                <div className="text-sm font-semibold leading-6 text-slate-700">{check.detail}</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold leading-6 text-slate-600">{check.repair_hint}</div>
+              </div>
+            )) : (
+              <div className="flex items-center gap-2 px-4 py-5 text-sm font-black text-emerald-700">
+                <CheckCircle2 size={18} /> Keine Backend-Qualitätsprobleme gefunden.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard label="Objekte eindeutig" value={stats.objects} tone="indigo" icon={<Building2 size={22} />} />
@@ -504,7 +637,7 @@ export default function Datenpruefung() {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={row.risk} label={row.notes.length ? `${row.notes.length} Hinweis(e)` : "Stabil"} />
                     </div>
-                    <NavLink to={`/objekte/${row.id}`} className="block break-words text-lg font-black leading-tight text-slate-950 underline decoration-slate-300 underline-offset-4 transition hover:text-indigo-700">
+                    <NavLink to={`/portfolio/${row.id}/objektakte`} className="block break-words text-lg font-black leading-tight text-slate-950 underline decoration-slate-300 underline-offset-4 transition hover:text-indigo-700">
                       {row.name}
                     </NavLink>
                     <div className="mt-1 font-mono text-[11px] text-slate-400">{row.aliases.length > 1 ? `${row.aliases.length} verknüpfte IDs` : row.id}</div>

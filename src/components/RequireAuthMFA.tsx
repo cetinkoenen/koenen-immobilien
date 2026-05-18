@@ -134,7 +134,7 @@ export default function RequireAuthMFA({ children }: Props) {
           if (aErr) throw aErr;
 
           const lvl = aData?.currentLevel;
-          aal = lvl === "aal1" || lvl === "aal2" ? lvl : null;
+          aal = lvl === "aal1" || lvl === "aal2" ? (lvl as AAL) : null;
         }
 
         if (cancelled) return;

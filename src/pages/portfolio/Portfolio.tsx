@@ -439,6 +439,29 @@ export default function Portfolio() {
         </div>
       </header>
 
+      <section className="portfolio-object-shortcuts" style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+        {rows.map((row) => (
+          <button
+            key={row.property_id}
+            type="button"
+            onClick={() => openSection(row, "objektakte")}
+            style={{
+              border: "1px solid #d8d2c7",
+              background: "#ffffff",
+              borderRadius: 999,
+              padding: "10px 14px",
+              fontWeight: 900,
+              color: "#111827",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.08)",
+              cursor: "pointer",
+            }}
+            title="Komplette Objektakte mit Darlehen, Income, Capex und Diagrammen öffnen"
+          >
+            {row.property_name}
+          </button>
+        ))}
+      </section>
+
       <section className="portfolio-kpis refined">
         <div>
           <span>Objekte</span>
@@ -548,6 +571,7 @@ export default function Portfolio() {
                   </div>
 
                   <div className="portfolio-actions top compact-actions">
+                    <button type="button" onClick={() => openSection(row, "objektakte")}>Objektakte</button>
                     <button type="button" onClick={() => openSection(row, "finanzen")}>Finanzen</button>
                     <button type="button" onClick={() => openSection(row, "energie")}>Energie</button>
                     <button type="button" onClick={() => openSection(row, "vermietung")}>Vermietung</button>

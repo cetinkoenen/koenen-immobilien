@@ -159,7 +159,7 @@ function download(filename: string, content: string, type = "text/csv;charset=ut
   URL.revokeObjectURL(url);
 }
 
-export default function Automatisierung() {
+export function AutomationAnalytics({ embedded = false }: { embedded?: boolean } = {}) {
   const app = useAppData();
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -261,7 +261,7 @@ export default function Automatisierung() {
 
   return (
     <div className="space-y-6 automation-page">
-      <section className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm md:p-8">
+      {!embedded ? <section className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 shadow-sm md:p-8">
         <div className="inline-flex rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">Interne Verwaltung</div>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -280,7 +280,7 @@ export default function Automatisierung() {
             <button onClick={printReport} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 font-extrabold text-slate-900">Drucken/PDF</button>
           </div>
         </div>
-      </section>
+      </section> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Kpi title="Jahres-Cashflow" value={eur(net)} hint="Einnahmen minus Ausgaben" positive={net >= 0} />
@@ -362,3 +362,8 @@ function RentTrafficLight({ row }: { row: PropertyAutomationRow }) {
   </div>;
 }
 function MonthlyCard({ row }: { row: PropertyAutomationRow }) { const maxAbs = Math.max(...row.monthly.map((m) => Math.abs(m.net)), 1); return <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-950">{row.propertyName}</h3><p className="text-xs font-semibold text-slate-500">Echte Buchungen dieses Objekts · Einnahmen minus Ausgaben</p></div><span className={`rounded-full px-3 py-1 text-xs font-black ${row.income - row.expenses >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{eur(row.income - row.expenses)}</span></div><div className="mt-3 grid gap-2">{row.monthly.map((m) => <div key={m.month} className="grid grid-cols-[54px_1fr_110px] items-center gap-3 text-sm"><span className="font-black text-slate-500">{monthLabel(m.month)}</span><div className="h-3 overflow-hidden rounded-full bg-white"><div className={`h-full rounded-full ${m.net >= 0 ? "bg-emerald-500" : "bg-red-400"}`} style={{ width: `${Math.max(4, Math.min(100, (Math.abs(m.net) / maxAbs) * 100))}%` }} /></div><span className={`text-right font-black ${m.net >= 0 ? "text-emerald-700" : "text-red-700"}`}>{eur(m.net)}</span></div>)}</div></div>; }
+
+
+export default function Automatisierung() {
+  return <AutomationAnalytics />;
+}

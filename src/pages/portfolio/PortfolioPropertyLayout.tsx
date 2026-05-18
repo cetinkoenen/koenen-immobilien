@@ -61,6 +61,16 @@ function sectionLabel(section: string): string {
       return "Adresse";
     case "details":
       return "Details";
+    case "objektakte":
+      return "Objektakte";
+    case "darlehen":
+      return "Darlehensübersicht / Edit";
+    case "finance-pro-jahr":
+      return "Finance pro Jahr";
+    case "income":
+      return "Income";
+    case "capex":
+      return "Capex";
     case "finanzen":
       return "Finanzen";
     case "energie":
@@ -540,6 +550,11 @@ export default function PortfolioPropertyLayout() {
         >
           <TabLink to="address" label="Adresse" />
           <TabLink to="details" label="Details" />
+          <TabLink to="objektakte" label="Objektakte gesamt" />
+          <TabLink to="darlehen" label="Darlehensübersicht / Edit" />
+          <TabLink to="finance-pro-jahr" label="Finance pro Jahr" />
+          <TabLink to="income" label="Income" />
+          <TabLink to="capex" label="Capex" />
           <TabLink to="finanzen" label="Finanzen" />
           <TabLink to="energie" label="Energie" />
           <TabLink to="vermietung" label="Vermietung" />

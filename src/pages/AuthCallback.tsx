@@ -25,7 +25,7 @@ export default function AuthCallback() {
           return;
         }
 
-        navigate("/objekte", { replace: true });
+        navigate("/portfolio", { replace: true });
       } catch (err) {
         console.error("[AuthCallback] unexpected error:", err);
 

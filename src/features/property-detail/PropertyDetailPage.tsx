@@ -446,8 +446,11 @@ function FinanceSection(props: {
   );
 }
 
+type DetailFocus = "all" | "darlehen" | "finance" | "income" | "capex";
+
 export default function PropertyDetailPage(props: {
   mode?: PageMode;
+  focus?: DetailFocus;
 }) {
   const { propertyId } = useParams<{ propertyId: string }>();
   const location = useLocation();
@@ -460,6 +463,15 @@ export default function PropertyDetailPage(props: {
       : location.pathname.endsWith("/auswertungen")
         ? "auswertungen"
         : "detail");
+
+
+  const focus: DetailFocus = props.focus ?? "all";
+  const showAllDetailSections = focus === "all";
+  const showBasisData = showAllDetailSections;
+  const showLoanEdit = showAllDetailSections || focus === "darlehen";
+  const showFinance = showAllDetailSections || focus === "finance";
+  const showIncome = showAllDetailSections || focus === "income";
+  const showCapex = showAllDetailSections || focus === "capex";
 
   const {
     data: resolvedContext,
@@ -908,6 +920,7 @@ export default function PropertyDetailPage(props: {
 
       {pageMode === "detail" && (
         <>
+          {showBasisData && (
           <Card title="Basisdaten">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoRow label="Kaufpreis" value={formatCurrency(purchasePrice)} />
@@ -925,7 +938,9 @@ export default function PropertyDetailPage(props: {
               />
             </div>
           </Card>
+          )}
 
+          {showLoanEdit && (
           <Card
             title="Darlehensübersicht / Edit"
             action={
@@ -1061,11 +1076,12 @@ export default function PropertyDetailPage(props: {
               )}
             </div>
           </Card>
+          )}
 
-          <FinanceSection yearlyMetrics={finance.yearlyMetrics} />
-          <IncomeSection incomeData={incomeData} />
-          <CapexSection yearlyCapex={incomeData.yearlyCapex} />
-          <LedgerReadOnlySection ledger={derivedLedgerForFinance} />
+          {showFinance && <FinanceSection yearlyMetrics={finance.yearlyMetrics} />}
+          {showIncome && <IncomeSection incomeData={incomeData} />}
+          {showCapex && <CapexSection yearlyCapex={incomeData.yearlyCapex} />}
+          {showLoanEdit && <LedgerReadOnlySection ledger={derivedLedgerForFinance} />}
         </>
       )}
 

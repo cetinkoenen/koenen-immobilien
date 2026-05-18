@@ -37,7 +37,7 @@ function getFromPath(locationState: unknown): string {
     return from.pathname;
   }
 
-  return "/objekte";
+  return "/portfolio";
 }
 
 export default function MFA() {
@@ -80,7 +80,7 @@ export default function MFA() {
     if (error) throw error;
 
     if (data?.currentLevel === "aal1" || data?.currentLevel === "aal2") {
-      return data.currentLevel;
+      return data.currentLevel as "aal1" | "aal2";
     }
 
     return null;

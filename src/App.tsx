@@ -5,29 +5,27 @@ import {
   Outlet,
   Route,
   Routes,
-  useLocation,
   useNavigate,
   useParams,
 } from "react-router-dom";
 import { ArrowRight, Building2, Menu, X } from "lucide-react";
 
-import PropertyDetailPage from "./features/property-detail/PropertyDetailPage";
 import EntryAdd from "./pages/EntryAdd";
 import Monate from "./pages/Monate";
-import Objekte from "./pages/Objekte";
 import Portfolio from "./pages/Portfolio";
 import Auswertung from "./pages/Auswertung";
 import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
 import Datenpruefung from "./pages/Datenpruefung";
-import Automatisierung from "./pages/Automatisierung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
 import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
 import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
 import PortfolioPropertyLayout from "./pages/portfolio/PortfolioPropertyLayout";
 import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
+import PortfolioObjectDetail from "./pages/portfolio/PortfolioObjectDetail";
+import PortfolioFinanceModules from "./pages/portfolio/PortfolioFinanceModules";
 import Login from "./pages/Login";
 import MFA from "./pages/MFA";
 import AuthCallback from "./pages/AuthCallback";
@@ -66,41 +64,10 @@ function navLinkStyle(isActive: boolean): CSSProperties {
   };
 }
 
-function PropertyContextNotice() {
-  const location = useLocation();
+
+function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
   const { propertyId } = useParams<{ propertyId: string }>();
-
-  const activeSection = location.pathname.endsWith("/monate")
-    ? "Monate"
-    : location.pathname.endsWith("/auswertungen")
-      ? "Auswertungen"
-      : "Objektdetail";
-
-  const shortId = !propertyId
-    ? "–"
-    : propertyId.length <= 14
-      ? propertyId
-      : `${propertyId.slice(0, 8)}…${propertyId.slice(-4)}`;
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-      <span className="font-medium">Objekt:</span>{" "}
-      <span className="font-mono">{shortId}</span>
-      <span className="mx-2 text-slate-400">•</span>
-      <span className="font-medium">Bereich:</span> {activeSection}
-    </div>
-  );
-}
-
-function PropertyDetailRoute(props: {
-  mode?: "detail" | "monate" | "auswertungen";
-}) {
-  return (
-    <div className="space-y-4">
-      <PropertyContextNotice />
-      <PropertyDetailPage mode={props.mode ?? "detail"} />
-    </div>
-  );
+  return <Navigate to={propertyId ? `/portfolio/${encodeURIComponent(propertyId)}/${section}` : "/portfolio"} replace />;
 }
 
 function LogoutButton() {
@@ -205,14 +172,12 @@ function AppShell() {
   const navItems = useMemo<Array<{ to: string; label: string; end?: boolean }>>(
     () => [
       { to: "/portfolio", label: "Portfolio" },
-      { to: "/objekte", label: "Objekte" },
       { to: "/monate", label: "Monate" },
       { to: "/auswertungen", label: "Auswertungen" },
       { to: "/buchungen", label: "Buchungen" },
       { to: "/mieteruebersicht", label: "Mieterübersicht" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
-      { to: "/automatisierung", label: "Automatisierung" },
     ],
     [],
   );
@@ -336,23 +301,40 @@ export default function App() {
           <Route index element={<Navigate to="details" replace />} />
           <Route path="address" element={<PortfolioAddress />} />
           <Route path="details" element={<PortfolioDetails />} />
+          <Route path="objektakte" element={<PortfolioObjectDetail />} />
+          <Route path="darlehen" element={<PortfolioFinanceModules focus="darlehen" />} />
+          <Route path="finance-pro-jahr" element={<PortfolioFinanceModules focus="finance" />} />
+          <Route path="income" element={<PortfolioFinanceModules focus="income" />} />
+          <Route path="capex" element={<PortfolioFinanceModules focus="capex" />} />
           <Route path="finanzen" element={<PortfolioFinance />} />
           <Route path="energie" element={<PortfolioEnergy />} />
           <Route path="vermietung" element={<PortfolioRenting />} />
         </Route>
 
-        <Route path="/objekte" element={<Objekte />} />
+        <Route path="/objekte" element={<Navigate to="/portfolio" replace />} />
         <Route
           path="/objekte/:propertyId"
-          element={<PropertyDetailRoute mode="detail" />}
+          element={<RedirectObjectRoute section="objektakte" />}
         />
         <Route
           path="/objekte/:propertyId/monate"
-          element={<PropertyDetailRoute mode="monate" />}
+          element={<RedirectObjectRoute section="finance-pro-jahr" />}
         />
         <Route
           path="/objekte/:propertyId/auswertungen"
-          element={<PropertyDetailRoute mode="auswertungen" />}
+          element={<RedirectObjectRoute section="finance-pro-jahr" />}
+        />
+        <Route
+          path="/objekte/:propertyId/darlehen"
+          element={<RedirectObjectRoute section="darlehen" />}
+        />
+        <Route
+          path="/objekte/:propertyId/income"
+          element={<RedirectObjectRoute section="income" />}
+        />
+        <Route
+          path="/objekte/:propertyId/capex"
+          element={<RedirectObjectRoute section="capex" />}
         />
 
         <Route path="/monate" element={<Monate />} />
@@ -370,7 +352,7 @@ export default function App() {
         />
 
         <Route path="/datenpruefung" element={<Datenpruefung />} />
-        <Route path="/automatisierung" element={<Automatisierung />} />
+        <Route path="/automatisierung" element={<Navigate to="/auswertungen" replace />} />
 
         <Route path="/nebenkosten" element={<NebenkostenIndexPage />} />
         <Route
@@ -382,7 +364,7 @@ export default function App() {
           element={<NebenkostenWohnungen />}
         />
 
-        <Route path="/darlehen" element={<Navigate to="/objekte" replace />} />
+        <Route path="/darlehen" element={<Navigate to="/portfolio" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

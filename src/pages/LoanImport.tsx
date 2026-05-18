@@ -254,9 +254,9 @@ export default function LoanImport() {
 
       // zurück
       if (preselectPropertyId) {
-        nav(`/objekte/${preselectPropertyId}`);
+        nav(`/portfolio/${preselectPropertyId}/objektakte`);
       } else {
-        nav(`/objekte`);
+        nav(`/portfolio`);
       }
     } catch (e: any) {
       console.error(e);
@@ -270,7 +270,7 @@ export default function LoanImport() {
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Link
-          to={preselectPropertyId ? `/objekte/${preselectPropertyId}` : "/objekte"}
+          to={preselectPropertyId ? `/portfolio/${preselectPropertyId}/objektakte` : "/portfolio"}
           style={{
             textDecoration: "none",
             padding: "8px 12px",
