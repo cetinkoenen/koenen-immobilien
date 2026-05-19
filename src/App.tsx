@@ -34,7 +34,7 @@ import BackupButton from "./components/BackupButton";
 import { useAuth } from "./auth/AuthProvider";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
-import logo from "./assets/koenen-brand-logo.png";
+import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider } from "./state/AppDataContext";
 import "./App.css";
 
