@@ -138,7 +138,13 @@ export async function loadBackendFinanceConsistency(year = new Date().getFullYea
 
 export async function loadBackendDataQualityChecks(year = new Date().getFullYear()): Promise<BackendDataQualityCheckRow[]> {
   const { data, error } = await supabase.rpc("get_koenen_data_quality_checks", { p_year: year });
-  if (error) throw new Error(`Backend-Datenqualitätsprüfung konnte nicht geladen werden: ${error.message}`);
+  if (error) {
+    const message = String(error.message ?? "");
+    if (message.includes("Could not find the function") || message.includes("schema cache")) {
+      return [];
+    }
+    throw new Error(`Backend-Datenqualitätsprüfung konnte nicht geladen werden: ${error.message}`);
+  }
   return ((data ?? []) as Record<string, unknown>[]).map(mapDataQualityRow);
 }
 

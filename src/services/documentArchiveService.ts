@@ -136,11 +136,20 @@ export async function uploadPropertyDocument(input: UploadPropertyDocumentInput)
   return data as PropertyDocumentRow;
 }
 
-export async function getPropertyDocumentSignedUrl(storagePath: string, expiresInSeconds = 60 * 10) {
+export async function getPropertyDocumentSignedUrl(
+  storagePath: string,
+  expiresInSeconds = 60 * 10,
+  storageBucket = PROPERTY_DOCUMENTS_BUCKET,
+) {
+  if (!storagePath) throw new Error("Dokument hat keinen Storage-Pfad.");
+
   const { data, error } = await supabase.storage
-    .from(PROPERTY_DOCUMENTS_BUCKET)
+    .from(storageBucket || PROPERTY_DOCUMENTS_BUCKET)
     .createSignedUrl(storagePath, expiresInSeconds);
+
   if (error) throw error;
+  if (!data?.signedUrl) throw new Error("Supabase konnte keine Vorschau-/Download-URL erzeugen.");
+
   return data.signedUrl;
 }
 

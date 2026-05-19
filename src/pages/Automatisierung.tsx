@@ -54,15 +54,16 @@ function localNamesMatch(a: string | null | undefined, b: string | null | undefi
   if (!left || !right) return false;
   return left === right || left.includes(right) || right.includes(left);
 }
-function entriesForObjectStrict(entries: FinanceEntry[], object: { id: string; code: string | null; label: string }) {
+function entriesForObjectStrict(entries: FinanceEntry[], object: { id: string; code: string | null; label: string; aliases?: string[] }) {
   const objectId = String(object.id);
   const objectCode = object.code;
   const objectLabel = object.label;
+  const aliases = Array.from(new Set([objectId, objectCode, objectLabel, ...(object.aliases ?? [])].map((value) => String(value ?? "").trim()).filter(Boolean)));
   return entries.filter((entry) => {
     const entryObjectId = String(entry.object_id ?? "");
-    if (entryObjectId && entryObjectId === objectId) return true;
+    if (entryObjectId && aliases.includes(entryObjectId)) return true;
     const code = String(entry.objekt_code ?? "");
-    if (code && (localNamesMatch(code, objectCode) || localNamesMatch(code, objectLabel))) return true;
+    if (code && aliases.some((alias) => localNamesMatch(code, alias))) return true;
     return false;
   });
 }

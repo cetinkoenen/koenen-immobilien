@@ -4204,10 +4204,26 @@ function PhaseFiveBBackendBindingCenter() {
   }, [documentCategory, documentYear, loadBackendData, selectedObjektCode, selectedProperty, selectedPropertyName]);
 
   const handleOpenDocument = useCallback(async (document: PropertyDocumentRow) => {
+    const previewWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
     try {
-      const signedUrl = await getPropertyDocumentSignedUrl(document.storage_path);
-      window.open(signedUrl, "_blank", "noopener,noreferrer");
+      if (previewWindow) {
+        previewWindow.document.title = document.title || "Dokument";
+        previewWindow.document.body.innerHTML = '<p style="font-family:system-ui;padding:24px">Dokument wird geladen …</p>';
+      }
+
+      const signedUrl = await getPropertyDocumentSignedUrl(
+        document.storage_path,
+        60 * 10,
+        document.storage_bucket,
+      );
+
+      if (previewWindow) {
+        previewWindow.location.href = signedUrl;
+      } else {
+        window.location.href = signedUrl;
+      }
     } catch (error) {
+      previewWindow?.close();
       setBackendError(error instanceof Error ? error.message : "Dokument konnte nicht geöffnet werden.");
     }
   }, []);

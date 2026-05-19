@@ -25,19 +25,27 @@ export function useBackendFinanceMaster(year: number): BackendFinanceMasterState
     setLoading(true);
     setError(null);
 
-    Promise.all([loadBackendFinanceMaster(year), loadBackendFinanceConsistency(year), loadBackendDataQualityChecks(year)])
-      .then(([masterRows, consistencyRows, qualityRows]) => {
+    Promise.allSettled([loadBackendFinanceMaster(year), loadBackendFinanceConsistency(year), loadBackendDataQualityChecks(year)])
+      .then((results) => {
         if (cancelled) return;
+        const [masterResult, consistencyResult, qualityResult] = results;
+
+        const masterRows = masterResult.status === "fulfilled" ? masterResult.value : [];
+        const consistencyRows = consistencyResult.status === "fulfilled" ? consistencyResult.value : [];
+        const qualityRows = qualityResult.status === "fulfilled" ? qualityResult.value : [];
+
         setRows(masterRows);
         setConsistency(consistencyRows);
         setDataQualityChecks(qualityRows);
-      })
-      .catch((unknownError) => {
-        if (cancelled) return;
-        setRows([]);
-        setConsistency([]);
-        setDataQualityChecks([]);
-        setError(unknownError instanceof Error ? unknownError.message : "Backend-Finanzmaster konnte nicht geladen werden.");
+
+        const criticalErrors = [masterResult, consistencyResult]
+          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+
+        // Die Datenqualitäts-RPC wurde in älteren produktiven Supabase-Ständen noch nicht angelegt.
+        // Sie darf den gesamten Finanzmaster nicht mehr in den Frontend-Fallback ziehen.
+        if (criticalErrors.length) setError(criticalErrors.join(" | "));
+        else setError(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

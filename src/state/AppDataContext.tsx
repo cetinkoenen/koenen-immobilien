@@ -6,6 +6,8 @@ export type AppObject = {
   id: string;
   code: string | null;
   label: string;
+  /** Phase 5F: alle bekannten technischen IDs/Codes/Namen, die zu derselben Immobilie gehören. */
+  aliases?: string[];
 };
 
 export type FinanceEntry = {
@@ -111,10 +113,26 @@ function parseMaybeNumber(value: unknown): number | null {
 
 
 function cleanDisplayName(value: unknown, fallback = "Unbenanntes Objekt"): string {
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "").replace(/ /g, " ").replace(/\s+/g, " ").trim();
+  const knownNames = [
+    "Lilienthaler Str. 54",
+    "Colmarer Str. 45",
+    "Elsasser Str. 52",
+    "Fürther Str. 74",
+    "Hohenloher Str. 78",
+    "Rosenstein Str. 25",
+    "Rosensteinstraße 25",
+  ];
+  const lowered = raw.toLowerCase();
+  for (const candidate of knownNames) {
+    if (lowered.startsWith(candidate.toLowerCase())) {
+      return candidate === "Rosensteinstraße 25" ? "Rosenstein Str. 25" : candidate;
+    }
+  }
   const cleaned = raw
-    .replace(/\s*\(\s*core[-\s]*shadow\s*\)\s*/gi, "")
-    .replace(/\s*core[-\s]*shadow\s*/gi, "")
+    .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
+    .replace(/\s*\(?\s*shadow\s*\)?/gi, "")
+    .replace(/\s+\d{5}(?:\s+[^\d,;|/]+)?\s*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
   return cleaned || fallback;
@@ -187,7 +205,13 @@ function normalizeMatchText(value: string | null | undefined): string {
     .replace(/[ü]/g, "u")
     .replace(/strasse/g, "str")
     .replace(/straße/g, "str")
+    .replace(/([a-z])str/g, "$1 str")
+    .replace(/objekt\s*\d+/g, "")
+    .replace(/\d{5}/g, "")
+    .replace(/(bremen|stuttgart|deutschland|germany)/g, "")
+    .replace(/(core\s*shadow|shadow|hauptmiete|wohnung|garage|darlehen|immobilie)/g, "")
     .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -198,7 +222,41 @@ function namesMatch(a: string | null | undefined, b: string | null | undefined):
   return left === right || left.includes(right) || right.includes(left);
 }
 
-function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined, propertyNameById: Record<string, string>) {
+function uniqueClean(values: unknown[]): string[] {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function dedupeObjectsByCanonicalName(rows: AppObject[]): AppObject[] {
+  const byKey = new Map<string, AppObject>();
+
+  for (const row of rows) {
+    if (!row.id || isHiddenTechnicalPropertyName(row.label)) continue;
+    const label = cleanDisplayName(row.label, "Unbenanntes Objekt");
+    const key = normalizeMatchText(label || row.code || row.id);
+    if (!key) continue;
+
+    const aliases = uniqueClean([row.id, row.code, row.label, label, ...(row.aliases ?? [])]);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, { ...row, label, aliases });
+      continue;
+    }
+
+    const existingLabelLooksGeneric = /^objekt\s*\d+/i.test(existing.label);
+    const rowLabelLooksSpecific = !/^objekt\s*\d+/i.test(label);
+    const preferred = existingLabelLooksGeneric && rowLabelLooksSpecific ? { ...row, label } : existing;
+
+    byKey.set(key, {
+      ...preferred,
+      aliases: uniqueClean([...(existing.aliases ?? []), ...aliases, existing.id, existing.code, existing.label]),
+    });
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label, "de"));
+}
+
+function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined, propertyNameById: Record<string, string>, aliasesById: Record<string, string[]> = {}) {
   if (!propertyId) return false;
   const id = String(propertyId);
   const entryObjectId = String(entry.object_id ?? "");
@@ -206,11 +264,15 @@ function sameProperty(entry: FinanceEntry, propertyId: string | null | undefined
 
   const targetName = propertyNameById[id];
   const entryObjectName = propertyNameById[entryObjectId];
+  const aliases = aliasesById[id] ?? [];
+  if (entryObjectId && aliases.includes(entryObjectId)) return true;
   if (namesMatch(entryObjectName, targetName)) return true;
 
   const code = String(entry.objekt_code ?? "");
   if (code && namesMatch(targetName, code)) return true;
   if (code && namesMatch(entryObjectName, code)) return true;
+  if (code && aliases.some((alias) => namesMatch(alias, code))) return true;
+  if (entryObjectName && aliases.some((alias) => namesMatch(alias, entryObjectName))) return true;
 
   return false;
 }
@@ -343,13 +405,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const firstBlockingError = objectsRes.error || entriesRes.error || portfolioRes.error || loanRes.error;
       if (firstBlockingError) throw firstBlockingError;
 
-      const mappedObjects = ((objectsRes.data ?? []) as any[])
+      const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as any[])
         .filter((row) => row.value)
         .map((row) => ({
           id: String(row.value),
           code: row.objekt_code ?? null,
           label: cleanDisplayName(row.label ?? row.objekt_code ?? row.value, "Unbenanntes Objekt"),
-        }));
+          aliases: uniqueClean([row.value, row.objekt_code, row.label]),
+        })));
 
       const mappedEntries = ((entriesRes.data ?? []) as any[]).map((row) => ({
         id: row.id ?? null,
@@ -562,15 +625,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const propertyNameById = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const object of objects) map[object.id] = object.label;
-    for (const row of portfolioRows) map[row.property_id] = row.property_name;
-    for (const row of loanRows) map[row.property_id] = row.property_name;
+    for (const object of objects) {
+      map[object.id] = object.label;
+      for (const alias of object.aliases ?? []) map[String(alias)] = object.label;
+    }
+    for (const row of portfolioRows) map[row.property_id] = cleanDisplayName(row.property_name, "Unbekanntes Objekt");
+    for (const row of loanRows) map[row.property_id] = cleanDisplayName(row.property_name, "Unbekanntes Objekt");
     return map;
   }, [objects, portfolioRows, loanRows]);
 
+  const aliasesById = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const object of objects) map[object.id] = uniqueClean([object.id, object.code, object.label, ...(object.aliases ?? [])]);
+    return map;
+  }, [objects]);
+
   const value = useMemo<AppDataContextValue>(() => {
     const getPropertyName = (propertyId: string | null | undefined) => (propertyId ? propertyNameById[String(propertyId)] ?? "Unbekanntes Objekt" : "Unbekanntes Objekt");
-    const getEntriesForProperty = (propertyId: string | null | undefined) => entries.filter((entry) => sameProperty(entry, propertyId, propertyNameById));
+    const getEntriesForProperty = (propertyId: string | null | undefined) => entries.filter((entry) => sameProperty(entry, propertyId, propertyNameById, aliasesById));
     const getRentEntriesForProperty = (propertyId: string | null | undefined, start?: string, end?: string) => getEntriesForProperty(propertyId).filter((entry) => isRentEntry(entry) && (!start || !end || dateInRange(entry.booking_date, start, end)));
     const getExpenseEntriesForProperty = (propertyId: string | null | undefined, year?: number) => getEntriesForProperty(propertyId).filter((entry) => entry.entry_type === "expense" && dateInYear(entry.booking_date, year));
     const getIncomeEntriesForProperty = (propertyId: string | null | undefined, year?: number) => getEntriesForProperty(propertyId).filter((entry) => entry.entry_type === "income" && dateInYear(entry.booking_date, year));
@@ -583,7 +655,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const getMonthlyRentSummary = (propertyId: string | null | undefined, year: number, month: number) => {
       if (!propertyId) return null;
       const id = String(propertyId);
-      const row = monthlyRentSummaries.find((summary) => sameProperty({ object_id: summary.object_id, objekt_code: summary.objekt_code, entry_type: null, booking_date: null, amount: 0, category: null, note: null }, id, propertyNameById) && summary.jahr === year && summary.monat === month);
+      const row = monthlyRentSummaries.find((summary) => sameProperty({ object_id: summary.object_id, objekt_code: summary.objekt_code, entry_type: null, booking_date: null, amount: 0, category: null, note: null }, id, propertyNameById, aliasesById) && summary.jahr === year && summary.monat === month);
       if (row) return row.mieteingang_summe;
       const start = `${year}-${String(month).padStart(2, "0")}-01`;
       const end = `${year}-${String(month).padStart(2, "0")}-31`;
@@ -637,7 +709,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       getYearlyFinanceSummary,
       getYearlyFinanceSummaryByObjectCode,
     };
-  }, [loading, error, objects, entries, monthlyRentSummaries, yearlyFinanceSummaries, portfolioRows, loanRows, loanChartByPropertyId, load, propertyNameById]);
+  }, [loading, error, objects, entries, monthlyRentSummaries, yearlyFinanceSummaries, portfolioRows, loanRows, loanChartByPropertyId, load, propertyNameById, aliasesById]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
