@@ -28,7 +28,21 @@ function allocationLabel(t: AllocationType) { return t === "allocationKey" ? "Um
 function getCo2Stage(co2PerSqm: number): Co2StageResult { if (co2PerSqm < 12) return { stage: 1, tenantPercent: 100, landlordPercent: 0 }; if (co2PerSqm < 17) return { stage: 2, tenantPercent: 90, landlordPercent: 10 }; if (co2PerSqm < 22) return { stage: 3, tenantPercent: 80, landlordPercent: 20 }; if (co2PerSqm < 27) return { stage: 4, tenantPercent: 70, landlordPercent: 30 }; if (co2PerSqm < 32) return { stage: 5, tenantPercent: 60, landlordPercent: 40 }; if (co2PerSqm < 37) return { stage: 6, tenantPercent: 50, landlordPercent: 50 }; if (co2PerSqm < 42) return { stage: 7, tenantPercent: 40, landlordPercent: 60 }; if (co2PerSqm < 47) return { stage: 8, tenantPercent: 30, landlordPercent: 70 }; if (co2PerSqm < 52) return { stage: 9, tenantPercent: 20, landlordPercent: 80 }; return { stage: 10, tenantPercent: 5, landlordPercent: 95 }; }
 function isGarage(o: ObjectOption) { const t = `${o.objekt_code} ${o.label}`.toLowerCase(); return t.includes("garage") || t.includes("garagen") || t.includes("tg") || t.includes("tiefgarage"); }
 
-const DEFAULT_COSTS: Array<Omit<CostRow, "id">> = [
+
+type HeatingMode = "kalo" | "separate_contract" | "bescheid" | "none";
+type NkPropertyConfig = {
+  match: string[];
+  displayName: string;
+  defaultTotalKey: number;
+  defaultApartmentKey: number;
+  defaultArea: number;
+  heatingMode: HeatingMode;
+  co2Enabled: boolean;
+  note: string;
+  costs: Array<Omit<CostRow, "id">>;
+};
+
+const COLMARER_COSTS: Array<Omit<CostRow, "id">> = [
   { label: "Wasser / Kanal", amount: 4357.3, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: "Colmarer 2025: erst Jahresanteil laut Hausverwaltung 160,47 € (= 4.357,30 × 365 / 9.911), dann bei 7 Monaten 160,47 / 12 × 7 = 93,61 €." },
   { label: "Heiz- und Warmwasserkosten", amount: 23175.9, allocation: "heatingDirect", totalKey: 0, apartmentKey: 0, directAmount: 474.25, prorateByOccupancy: false, note: "KALO-Direktbetrag hier eintragen. Erste Periode 474,25 €, zweite Periode 353,44 €. Keine zusätzliche Wärmeversorgung anlegen." },
   { label: "Straßenreinigung", amount: 2119.29, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: false, note: "MEA gesamt" },
@@ -44,11 +58,81 @@ const DEFAULT_COSTS: Array<Omit<CostRow, "id">> = [
   { label: "Dachrinnenreinigung", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Nur eintragen, wenn Kosten vorhanden" },
 ];
 
+function genericCosts(totalKey: number, apartmentKey: number): Array<Omit<CostRow, "id">> {
+  return [
+    { label: "Gebäudeversicherung", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Hausgeld-/Betriebskostenabrechnung eintragen." },
+    { label: "Haftpflichtversicherung", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Straßenreinigung", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Wasser / Abwasser", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: true, note: "Bei Wasser ggf. Sonderverteiler/Personentage aus Bescheid verwenden." },
+    { label: "Müllabfuhr", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: true, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Gebäudereinigung", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Gartenpflege", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Allgemeinstrom / Hausstrom", amount: 0, allocation: "allocationKey", totalKey, apartmentKey, directAmount: 0, prorateByOccupancy: false, note: "Betrag laut Abrechnung eintragen." },
+    { label: "Grundsteuer", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Direktbetrag laut Bescheid." },
+  ];
+}
+
+const PROPERTY_BILLING_CONFIGS: NkPropertyConfig[] = [
+  { match: ["colmarer"], displayName: "Colmarer Str. 45", defaultTotalKey: 10000, defaultApartmentKey: 170.99, defaultArea: 36, heatingMode: "kalo", co2Enabled: true, note: "Colmarer ist das Referenzobjekt: KALO-Heizkosten, CO₂KostAufG und 2025-Teilabrechnungen bleiben aktiv.", costs: COLMARER_COSTS },
+  { match: ["elsasser", "elsässer"], displayName: "Elsasser Str. 52", defaultTotalKey: 1000, defaultApartmentKey: 100, defaultArea: 39, heatingMode: "separate_contract", co2Enabled: false, note: "Wohnung 39 m², Gesamtfläche 422 m². Keine Heizkosten/CO₂, weil der Mieter einen separaten Vertrag mit dem Energieversorger hat.", costs: [
+    { label: "Gebäudeversicherung", amount: 3715.38, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
+    { label: "Haftpflichtversicherung", amount: 114.43, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
+    { label: "Straßenreinigung", amount: 386.52, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
+    { label: "Wasser / Abwasser", amount: 2868.95, allocation: "allocationKey", totalKey: 2868.95, apartmentKey: 328.57, directAmount: 0, prorateByOccupancy: true, note: "Wasserkosten Techem; Ihr Anteil laut Bescheid 328,57." },
+    { label: "Gartenwasser", amount: 147.18, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
+    { label: "Hausstrom", amount: 178.64, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
+    { label: "Grundsteuer", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Direktbetrag laut Grundsteuerbescheid ergänzen." },
+  ] },
+  { match: ["fürther", "fuerther"], displayName: "Fürther Str. 74", defaultTotalKey: 829, defaultApartmentKey: 45, defaultArea: 45, heatingMode: "separate_contract", co2Enabled: false, note: "Wohnung 45 m², Gesamtfläche 829 m². Keine Heizkosten/CO₂, weil der Mieter einen separaten Vertrag mit dem Energieversorger hat.", costs: [
+    { label: "Versicherungen", amount: 7173.60, allocation: "allocationKey", totalKey: 10000, apartmentKey: 524, directAmount: 0, prorateByOccupancy: false, note: "Miteigentumsanteil laut Bescheid." },
+    { label: "Gebäudereinigung", amount: 4010.64, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
+    { label: "Gehwegreinigung", amount: 702.07, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
+    { label: "Gartenpflege", amount: 1100.80, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
+    { label: "Müllabfuhr", amount: 4638.28, allocation: "persons", totalKey: 8249.64, apartmentKey: 366, directAmount: 0, prorateByOccupancy: false, note: "Personentage laut Bescheid." },
+    { label: "Sonstige Kosten", amount: 193.85, allocation: "allocationKey", totalKey: 10000, apartmentKey: 524, directAmount: 0, prorateByOccupancy: false, note: "Miteigentumsanteil laut Bescheid." },
+    { label: "Verwalterhonorar", amount: 4788.00, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Laut Bescheid; steuerlich/umlagefähig bitte bei Bedarf prüfen." },
+    { label: "Allgemeinstrom", amount: 288.37, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
+    { label: "Wasser", amount: 4694.21, allocation: "persons", totalKey: 8249.64, apartmentKey: 366, directAmount: 0, prorateByOccupancy: false, note: "Personentage laut Bescheid." },
+    { label: "MwSt Verw.Honorar", amount: 909.72, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Laut Bescheid; steuerlich/umlagefähig bitte bei Bedarf prüfen." },
+    { label: "Grundsteuer", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Direktbetrag laut Grundsteuerbescheid ergänzen." },
+  ] },
+  { match: ["hohenloher"], displayName: "Hohenloher Str. 78", defaultTotalKey: 1000, defaultApartmentKey: 0, defaultArea: 0, heatingMode: "none", co2Enabled: false, note: "Objektmodul vorbereitet. Grunddaten/Kostenarten bitte nachreichen oder direkt eintragen.", costs: genericCosts(1000, 0) },
+  { match: ["lilienthaler"], displayName: "Lilienthaler Str. 54", defaultTotalKey: 100, defaultApartmentKey: 120, defaultArea: 120, heatingMode: "bescheid", co2Enabled: false, note: "Wohnung 120 m², Gesamtfläche laut deiner Angabe 100 m². Verteilungswerte nach Bescheid eintragen.", costs: genericCosts(100, 120) },
+];
+
+const GENERIC_PROPERTY_CONFIG: NkPropertyConfig = { match: [], displayName: "Unbekanntes Objekt", defaultTotalKey: 1000, defaultApartmentKey: 0, defaultArea: 0, heatingMode: "none", co2Enabled: false, note: "Objekt noch nicht vorkonfiguriert. Bitte Grunddaten und Kostenarten eintragen.", costs: genericCosts(1000, 0) };
+
+function getPropertyBillingConfig(object?: ObjectOption | null): NkPropertyConfig {
+  const t = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
+  return PROPERTY_BILLING_CONFIGS.find(c => c.match.some(m => t.includes(m))) ?? GENERIC_PROPERTY_CONFIG;
+}
+
+function costsForObject(object?: ObjectOption | null): Array<Omit<CostRow, "id">> {
+  return getPropertyBillingConfig(object).costs;
+}
+
+
+const DEFAULT_COSTS: Array<Omit<CostRow, "id">> = COLMARER_COSTS;
+
 function createDefaultWorkspace(year: number, object?: ObjectOption): BillingWorkspace {
   const id = createId();
-  return { meta: { propertyCode: object?.objekt_code ?? "", propertyLabel: object?.label ?? "Bitte Objekt wählen", billingYear: year, periodFrom: `${year}-01-01`, periodTo: `${year}-12-31`, landlordName: "", landlordAddress: "", attachmentReferences: "Hausverwaltungsabrechnung\nKALO-Heizkostenabrechnung / CO₂-Anlage\nGrundsteuerbescheid / Versicherungsnachweise / Rechnungen", locked: false }, apartments: [{ id, label: "Wohnung 1", tenantName: "", area: 33.79, allocationKey: 170.99, persons: 1, occupancyMonths: 12, advancePayments: 0, co2LandlordDeductionKalo: 0, active: true }], costs: DEFAULT_COSTS.map((c) => ({ ...c, id: createId() })), heating: { totalHeatingCost: 22968.84, totalWarmWaterCost: 0, totalCo2Cost: 2177.66, totalConsumptionKwh: 181071, emissionFactor: 0.2664, heatedArea: 2079.38 }, selectedApartmentId: id };
+  const config = getPropertyBillingConfig(object);
+  const attachmentReferences = config.co2Enabled
+    ? "Hausverwaltungsabrechnung\nKALO-Heizkostenabrechnung / CO₂-Anlage\nGrundsteuerbescheid / Versicherungsnachweise / Rechnungen"
+    : "Hausverwaltungsabrechnung\nGrundsteuerbescheid / Versicherungsnachweise / Rechnungen";
+  const heating = config.co2Enabled
+    ? { totalHeatingCost: 22968.84, totalWarmWaterCost: 0, totalCo2Cost: 2177.66, totalConsumptionKwh: 181071, emissionFactor: 0.2664, heatedArea: 2079.38 }
+    : { totalHeatingCost: 0, totalWarmWaterCost: 0, totalCo2Cost: 0, totalConsumptionKwh: 0, emissionFactor: 0, heatedArea: 0 };
+
+  return {
+    meta: { propertyCode: object?.objekt_code ?? "", propertyLabel: object?.label ?? "Bitte Objekt wählen", billingYear: year, periodFrom: `${year}-01-01`, periodTo: `${year}-12-31`, landlordName: "", landlordAddress: "", attachmentReferences, locked: false },
+    apartments: [{ id, label: "Wohnung 1", tenantName: "", area: config.defaultArea, allocationKey: config.defaultApartmentKey, persons: 1, occupancyMonths: 12, advancePayments: 0, co2LandlordDeductionKalo: 0, active: true }],
+    costs: costsForObject(object).map((c) => ({ ...c, id: createId() })),
+    heating,
+    selectedApartmentId: id,
+  };
 }
-function normalizeCost(row: any, index: number): CostRow { const d = DEFAULT_COSTS[index % DEFAULT_COSTS.length]; return { ...d, ...row, id: row?.id || createId(), totalKey: Number.isFinite(row?.totalKey) ? row.totalKey : (row?.allocationTotalKey ?? d.totalKey), apartmentKey: Number.isFinite(row?.apartmentKey) ? row.apartmentKey : (row?.allocationApartmentKey ?? d.apartmentKey), prorateByOccupancy: typeof row?.prorateByOccupancy === "boolean" ? row.prorateByOccupancy : false }; }
+function normalizeCost(row: any, index: number, object?: ObjectOption): CostRow { const defaults = costsForObject(object); const d = defaults[index % defaults.length] ?? DEFAULT_COSTS[index % DEFAULT_COSTS.length]; return { ...d, ...row, id: row?.id || createId(), totalKey: Number.isFinite(row?.totalKey) ? row.totalKey : (row?.allocationTotalKey ?? d.totalKey), apartmentKey: Number.isFinite(row?.apartmentKey) ? row.apartmentKey : (row?.allocationApartmentKey ?? d.apartmentKey), prorateByOccupancy: typeof row?.prorateByOccupancy === "boolean" ? row.prorateByOccupancy : d.prorateByOccupancy }; }
 function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectOption): CostRow[] {
   const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
   const isColmarer2025 = year === 2025 && objectText.includes("colmarer");
@@ -102,8 +186,84 @@ function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectO
     return row;
   });
 }
-function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a: any, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map(normalizeCost) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
+function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a: any, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map((row: any, index: number) => normalizeCost(row, index, object)) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
 
+
+
+function colmarer2025FrozenCosts(period: "first" | "second"): CostRow[] {
+  const months = period === "first" ? 7 : 5;
+  const heatingDirect = period === "first" ? 474.25 : 353.44;
+  const heatingAmount = period === "first" ? 23175.90 : 22968.84;
+  const grundsteuerDirect = period === "first" ? 187.60 : 134.00;
+
+  const rows: Array<Omit<CostRow, "id">> = [
+    { label: "Wasser / Kanal", amount: 4357.30, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 4.357,30 × 365 / 9.911 × ${months} / 12.` },
+    { label: "Gartenpflege", amount: 3768.12, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 3.768,12 × 170,99 / 10.000 × ${months} / 12.` },
+    { label: "Gebäudereinigung", amount: 7699.48, allocation: "allocationKey", totalKey: 9613.01, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 7.699,48 × 170,99 / 9.613,01 × ${months} / 12.` },
+    { label: "Grundsteuer", amount: 321.60, allocation: "directAmount", totalKey: 9911, apartmentKey: 365, directAmount: grundsteuerDirect, prorateByOccupancy: false, note: "Colmarer 2025 eingefroren: Direktbetrag laut freigegebener Abrechnung." },
+    { label: "Müllabfuhr", amount: 3338.39, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 3.338,39 × 365 / 9.911 × ${months} / 12.` },
+    { label: "Allgemeinstrom", amount: 696.01, allocation: "allocationKey", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 696,01 × 365 / 9.911 × ${months} / 12.` },
+    { label: "Fehlende Mietzahlungen / Rechnung", amount: 0, allocation: "directAmount", totalKey: 9911, apartmentKey: 365, directAmount: 0, prorateByOccupancy: false, note: "Colmarer 2025 eingefroren." },
+    { label: "Haftpflichtversicherung", amount: 449.88, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 449,88 × 170,99 / 10.000 × ${months} / 12.` },
+    { label: "Gebäudeversicherung", amount: 10970.93, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 10.970,93 × 170,99 / 10.000 × ${months} / 12.` },
+    { label: "Glasbruchschadenversicherung", amount: 340.74, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 340,74 × 170,99 / 10.000 × ${months} / 12.` },
+    { label: "Wartung Pumpen / Hebeanlage", amount: 201.11, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 201,11 × 170,99 / 10.000 × ${months} / 12.` },
+    { label: "Dachrinnenreinigung", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Colmarer 2025 eingefroren." },
+    { label: "Wärmeversorgung / Heizkosten", amount: heatingAmount, allocation: "heatingDirect", totalKey: 9911, apartmentKey: 365, directAmount: heatingDirect, prorateByOccupancy: false, note: "Colmarer 2025 eingefroren: KALO-Direktbetrag abzüglich CO₂-Vermieteranteil." },
+    { label: "Straßenreinigung", amount: 2119.29, allocation: "allocationKey", totalKey: 10000, apartmentKey: 170.99, directAmount: 0, prorateByOccupancy: true, note: `Colmarer 2025 eingefroren: 2.119,29 × 170,99 / 10.000 × ${months} / 12.` },
+  ];
+
+  return rows.map((row) => ({ ...row, id: createId() }));
+}
+
+function freezeColmarer2025Workspace(source: BillingWorkspace, period: "first" | "second", year: number, object?: ObjectOption): BillingWorkspace {
+  const isFirst = period === "first";
+  const tenantName = isFirst ? "Cansu Kurt" : "Nicholas Kraeft-Wendte";
+  const from = isFirst ? "2025-01-01" : "2025-08-01";
+  const to = isFirst ? "2025-07-31" : "2025-12-31";
+  const advancePayments = isFirst ? 770 : 600;
+  const occupancyMonths = isFirst ? 7 : 5;
+  const co2LandlordDeductionKalo = isFirst ? 13.49 : 9.26;
+  const id = source.selectedApartmentId || source.apartments[0]?.id || createId();
+
+  return {
+    ...source,
+    meta: {
+      ...source.meta,
+      propertyCode: object?.objekt_code ?? source.meta.propertyCode,
+      propertyLabel: object?.label ?? source.meta.propertyLabel,
+      billingYear: year,
+      periodFrom: from,
+      periodTo: to,
+      landlordName: source.meta.landlordName?.trim() || "Nihal Könen",
+      landlordAddress: source.meta.landlordAddress?.trim() || "Hohenloher Str. 78/1 74243\nLangenbrettach",
+      attachmentReferences: "Hausverwaltungsabrechnung\nKALO-Heizkostenabrechnung / CO₂-Anlage\nGrundsteuerbescheid / Versicherungsnachweise / Rechnungen",
+      locked: true,
+    },
+    apartments: [{
+      id,
+      label: isFirst ? "Wohnung 1" : "Wohnung 2",
+      tenantName,
+      area: 36,
+      allocationKey: 170.99,
+      persons: 1,
+      occupancyMonths,
+      advancePayments,
+      co2LandlordDeductionKalo,
+      active: true,
+    }],
+    costs: colmarer2025FrozenCosts(period),
+    heating: {
+      totalHeatingCost: 22968.84,
+      totalWarmWaterCost: 0,
+      totalCo2Cost: isFirst ? 2177.66 : 2178.06,
+      totalConsumptionKwh: 181071,
+      emissionFactor: 0.2664,
+      heatedArea: 2079.38,
+    },
+    selectedApartmentId: id,
+  };
+}
 
 function makePeriodName(w: BillingWorkspace) {
   const from = w.meta.periodFrom ? formatDate(w.meta.periodFrom) : "von offen";
@@ -135,32 +295,6 @@ function isColmarer2025(year: number, object?: ObjectOption) {
   const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
   return year === 2025 && objectText.includes("colmarer");
 }
-
-function setWorkspacePeriodAndTenant(source: BillingWorkspace, from: string, to: string, tenantName: string, advancePayments: number, occupancyMonths: number, year: number, object?: ObjectOption, co2LandlordDeductionKalo?: number): BillingWorkspace {
-  const selectedId = source.selectedApartmentId || source.apartments[0]?.id || createId();
-  const apartments = (source.apartments.length ? source.apartments : createDefaultWorkspace(year, object).apartments).map((a, i) => ({
-    ...a,
-    tenantName: i === 0 ? tenantName : a.tenantName,
-    advancePayments: i === 0 ? advancePayments : a.advancePayments,
-    occupancyMonths: i === 0 ? occupancyMonths : a.occupancyMonths,
-    co2LandlordDeductionKalo: i === 0 && typeof co2LandlordDeductionKalo === "number" ? co2LandlordDeductionKalo : (Number.isFinite(a.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0),
-    active: i === 0 ? Boolean(tenantName) : a.active,
-  }));
-  return {
-    ...source,
-    meta: {
-      ...source.meta,
-      propertyCode: object?.objekt_code ?? source.meta.propertyCode,
-      propertyLabel: object?.label ?? source.meta.propertyLabel,
-      billingYear: year,
-      periodFrom: from,
-      periodTo: to,
-    },
-    apartments,
-    selectedApartmentId: apartments.some(a => a.id === selectedId) ? selectedId : apartments[0]?.id ?? null,
-  };
-}
-
 
 function getPrimaryApartment(workspace: BillingWorkspace): ApartmentRow | undefined {
   return workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0];
@@ -216,31 +350,8 @@ function cleanupBillingRecords(records: BillingRecord[], selectedId: string | nu
       .map(r => r.workspace);
     const secondExisting = pickBestWorkspace(secondCandidates, secondFallback);
 
-    const firstApartment = getPrimaryApartment(firstExisting);
-    const secondApartment = getPrimaryApartment(secondExisting);
-
-    const firstWorkspace = setWorkspacePeriodAndTenant(
-      firstExisting,
-      "2025-01-01",
-      "2025-07-31",
-      firstApartment?.tenantName?.trim() || "Cansu Kurt",
-      typeof firstApartment?.advancePayments === "number" && Number.isFinite(firstApartment.advancePayments) ? firstApartment.advancePayments : 770,
-      7,
-      year,
-      object,
-      typeof firstApartment?.co2LandlordDeductionKalo === "number" && Number.isFinite(firstApartment.co2LandlordDeductionKalo) && firstApartment.co2LandlordDeductionKalo > 0 ? firstApartment.co2LandlordDeductionKalo : 13.49,
-    );
-    const secondWorkspace = setWorkspacePeriodAndTenant(
-      secondExisting,
-      "2025-08-01",
-      "2025-12-31",
-      secondApartment?.tenantName?.trim() || "Nicholas Kraeft-Wendte",
-      typeof secondApartment?.advancePayments === "number" && Number.isFinite(secondApartment.advancePayments) ? secondApartment.advancePayments : 0,
-      5,
-      year,
-      object,
-      typeof secondApartment?.co2LandlordDeductionKalo === "number" && Number.isFinite(secondApartment.co2LandlordDeductionKalo) && secondApartment.co2LandlordDeductionKalo > 0 ? secondApartment.co2LandlordDeductionKalo : 9.26,
-    );
+    const firstWorkspace = freezeColmarer2025Workspace(firstExisting, "first", year, object);
+    const secondWorkspace = freezeColmarer2025Workspace(secondExisting, "second", year, object);
 
     const first: BillingRecord = { id: "colmarer-2025-01-07", name: makePeriodName(firstWorkspace), workspace: firstWorkspace };
     const second: BillingRecord = { id: "colmarer-2025-08-12", name: makePeriodName(secondWorkspace), workspace: secondWorkspace };
@@ -310,14 +421,17 @@ export default function NebenkostenWohnungen() {
   const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]); const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
   useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) setSelectedObjectCode(list[0].objekt_code); })(); return () => { alive = false; }; }, [selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
+  const selectedConfig = useMemo(() => getPropertyBillingConfig(selectedObject), [selectedObject]);
+  const co2EnabledForSelectedObject = selectedConfig.co2Enabled;
   useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
   useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, billingRecords, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
-  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(prev => { const next = updater(prev); setBillingRecords(current => cleanupBillingRecords(replaceBillingRecord(current, selectedBillingId, next), selectedBillingId, selectedYear, selectedObject ?? undefined).billings); return next; }); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
+  function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(prev => { const next = updater(prev); setBillingRecords(current => cleanupBillingRecords(replaceBillingRecord(current, selectedBillingId, next), selectedBillingId, selectedYear, selectedObject ?? undefined).billings); return next; }); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { if (isColmarer2025(selectedYear, selectedObject ?? undefined) && key === "locked" && value === false) { setStatus("Colmarer Str. 45 / 2025 ist freigegeben und bleibt eingefroren. Bitte nicht bearbeiten."); return; } update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
   function addApartment() { if (locked) return; const a: ApartmentRow = { id: createId(), label: `Wohnung ${workspace.apartments.length + 1}`, tenantName: "", area: 0, allocationKey: 0, persons: 1, occupancyMonths: 12, advancePayments: 0, co2LandlordDeductionKalo: 0, active: true }; update(p => ({ ...p, apartments: [...p.apartments, a], selectedApartmentId: a.id })); }
   function deleteApartment(id: string) { if (locked) return; update(p => { const next = p.apartments.filter(a => a.id !== id); return { ...p, apartments: next.length ? next : createDefaultWorkspace(selectedYear, selectedObject ?? undefined).apartments, selectedApartmentId: next[0]?.id ?? null }; }); }
   function addCost() { if (locked) return; update(p => ({ ...p, costs: [...p.costs, { id: createId(), label: `Kostenart ${p.costs.length + 1}`, amount: 0, allocation: "allocationKey", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "" }] })); }
   function deleteCost(id: string) { if (locked) return; update(p => ({ ...p, costs: p.costs.filter(c => c.id !== id) })); }
+  function restoreObjectDefaults() { if (locked) return; const fresh = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); update(p => ({ ...p, apartments: p.apartments.length ? p.apartments.map((a, i) => ({ ...a, area: i === 0 ? fresh.apartments[0].area : a.area, allocationKey: i === 0 ? fresh.apartments[0].allocationKey : a.allocationKey })) : fresh.apartments, costs: fresh.costs, heating: fresh.heating, meta: { ...p.meta, attachmentReferences: fresh.meta.attachmentReferences } })); }
   const co2TotalKg = roundMoney(workspace.heating.totalConsumptionKwh * workspace.heating.emissionFactor); const co2PerSqm = workspace.heating.heatedArea > 0 ? co2TotalKg / workspace.heating.heatedArea : 0; const co2Stage = getCo2Stage(co2PerSqm);
   const isHeatingCostRow = (row: CostRow) => {
     const label = row.label.toLowerCase();
@@ -351,11 +465,11 @@ export default function NebenkostenWohnungen() {
       const co2ShareApartment = roundMoney(workspace.heating.totalCo2Cost * heatingQuote);
       const autoCo2TenantShare = roundMoney(co2ShareApartment * (co2Stage.tenantPercent / 100));
       const autoCo2LandlordShare = roundMoney(co2ShareApartment * (co2Stage.landlordPercent / 100));
-      const co2LandlordShare = isHeating && manualCo2Deduction > 0 && heatingBaseForManualCo2 > 0
+      const co2LandlordShare = co2EnabledForSelectedObject && isHeating && manualCo2Deduction > 0 && heatingBaseForManualCo2 > 0
         ? roundMoney(manualCo2Deduction * (tenantShareBeforeCo2 / heatingBaseForManualCo2))
         : autoCo2LandlordShare;
-      const co2TenantShare = isHeating && manualCo2Deduction > 0 ? Math.max(0, roundMoney(co2ShareApartment - co2LandlordShare)) : autoCo2TenantShare;
-      const tenantShare = isHeating ? Math.max(0, tenantShareBeforeCo2 - co2LandlordShare) : tenantShareBeforeCo2;
+      const co2TenantShare = co2EnabledForSelectedObject && isHeating && manualCo2Deduction > 0 ? Math.max(0, roundMoney(co2ShareApartment - co2LandlordShare)) : (co2EnabledForSelectedObject ? autoCo2TenantShare : 0);
+      const tenantShare = co2EnabledForSelectedObject && isHeating ? Math.max(0, tenantShareBeforeCo2 - co2LandlordShare) : tenantShareBeforeCo2;
 
       return {
         row,
@@ -368,7 +482,7 @@ export default function NebenkostenWohnungen() {
         co2LandlordShare,
       };
     });
-  }, [workspace.costs, activeApartment, workspace.heating.totalHeatingCost, workspace.heating.totalCo2Cost, co2Stage.tenantPercent, co2Stage.landlordPercent]);
+  }, [workspace.costs, activeApartment, workspace.heating.totalHeatingCost, workspace.heating.totalCo2Cost, co2Stage.tenantPercent, co2Stage.landlordPercent, co2EnabledForSelectedObject]);
   const totalCo2LandlordShare = roundMoney(costBreakdown.reduce((s, x) => s + x.co2LandlordShare, 0));
   const totalHeatingBeforeCo2 = roundMoney(costBreakdown.filter(x => x.isHeating).reduce((s, x) => s + x.tenantShareBeforeCo2, 0));
   const totalHeatingCosts = roundMoney(costBreakdown.filter(x => x.isHeating).reduce((s, x) => s + x.tenantShare, 0)); const totalColdCosts = roundMoney(costBreakdown.filter(x => !x.isHeating).reduce((s, x) => s + x.tenantShare, 0)); const totalTenantCosts = roundMoney(totalColdCosts + totalHeatingCosts); const tenantBalance = activeApartment ? roundMoney(activeApartment.advancePayments - totalTenantCosts) : 0;
@@ -622,11 +736,11 @@ export default function NebenkostenWohnungen() {
     if ((activeApartment?.allocationKey ?? 0) <= 0) warnings.push("MEA/Wohnungsanteil fehlt oder ist 0.");
     if (costBreakdown.some(x => x.row.amount > 0 && x.row.totalKey <= 0 && x.row.allocation !== "directAmount" && x.row.allocation !== "heatingDirect")) warnings.push("Mindestens eine Kostenart hat Gesamtkosten, aber keinen Gesamt-Schlüssel.");
     if (costBreakdown.some(x => x.row.amount > 0 && x.row.apartmentKey <= 0 && x.row.allocation !== "directAmount" && x.row.allocation !== "heatingDirect")) warnings.push("Mindestens eine Kostenart hat Gesamtkosten, aber keinen Wohnungs-Schlüssel.");
-    if (totalHeatingBeforeCo2 > 0 && workspace.heating.totalCo2Cost > 0 && totalCo2LandlordShare <= 0) warnings.push("Heizkosten vorhanden, aber kein CO₂-Vermieteranteil berechnet/eingetragen.");
-    if (workspace.heating.totalConsumptionKwh > 0 && (workspace.heating.emissionFactor <= 0 || workspace.heating.heatedArea <= 0)) warnings.push("CO₂-Werte prüfen: Emissionsfaktor oder beheizte Fläche fehlt.");
+    if (co2EnabledForSelectedObject && totalHeatingBeforeCo2 > 0 && workspace.heating.totalCo2Cost > 0 && totalCo2LandlordShare <= 0) warnings.push("Heizkosten vorhanden, aber kein CO₂-Vermieteranteil berechnet/eingetragen.");
+    if (co2EnabledForSelectedObject && workspace.heating.totalConsumptionKwh > 0 && (workspace.heating.emissionFactor <= 0 || workspace.heating.heatedArea <= 0)) warnings.push("CO₂-Werte prüfen: Emissionsfaktor oder beheizte Fläche fehlt.");
     if (!attachmentList.length) warnings.push("Keine Anlagen/Referenzen für den Druck eingetragen.");
     return warnings;
-  }, [workspace.meta.propertyCode, workspace.meta.billingYear, workspace.meta.periodFrom, workspace.meta.periodTo, workspace.heating.totalCo2Cost, workspace.heating.totalConsumptionKwh, workspace.heating.emissionFactor, workspace.heating.heatedArea, activeApartment, costBreakdown, totalHeatingBeforeCo2, totalCo2LandlordShare, attachmentList.length]);
+  }, [workspace.meta.propertyCode, workspace.meta.billingYear, workspace.meta.periodFrom, workspace.meta.periodTo, workspace.heating.totalCo2Cost, workspace.heating.totalConsumptionKwh, workspace.heating.emissionFactor, workspace.heating.heatedArea, activeApartment, costBreakdown, totalHeatingBeforeCo2, totalCo2LandlordShare, attachmentList.length, co2EnabledForSelectedObject]);
 
   function finishBilling() {
     if (validationWarnings.length > 0) {
@@ -759,6 +873,30 @@ export default function NebenkostenWohnungen() {
               <button onClick={() => updateMeta("locked", !locked)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50">{locked ? <Pencil className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{locked ? "Bearbeiten" : "Sperren"}</button>
             </div>
           </div>
+          <div className="mt-5 flex gap-4 overflow-x-auto pb-1">
+            {objects.map(o => {
+              const active = o.objekt_code === selectedObjectCode;
+              return (
+                <button
+                  key={o.objekt_code}
+                  onClick={() => setSelectedObjectCode(o.objekt_code)}
+                  className={`shrink-0 rounded-[999px] border px-7 py-4 text-lg font-extrabold transition ${active ? "border-indigo-400 bg-indigo-50 text-indigo-700 shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-slate-700">
+            <div className="font-semibold text-slate-950">Objekt-Konfiguration: {selectedConfig.displayName}</div>
+            <div className="mt-1">{selectedConfig.note}</div>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-white px-3 py-1 text-slate-700">Standardfläche: {formatFlex(selectedConfig.defaultArea)} m²</span>
+              <span className="rounded-full bg-white px-3 py-1 text-slate-700">Standard-Schlüssel: {formatFlex(selectedConfig.defaultApartmentKey)} / {formatFlex(selectedConfig.defaultTotalKey)}</span>
+              <span className="rounded-full bg-white px-3 py-1 text-slate-700">CO₂: {co2EnabledForSelectedObject ? "aktiv" : "nicht aktiv"}</span>
+              <button type="button" onClick={restoreObjectDefaults} disabled={locked} className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-indigo-700 disabled:opacity-50">Objekt-Defaults laden</button>
+            </div>
+          </div>
           {(status || error || loading || saving) && <div className="mt-4 text-sm"><span className="text-slate-500">{loading ? "Lade… " : saving ? "Speichere… " : status}</span>{error && <span className="ml-3 text-rose-600">{error}</span>}</div>}
         </section>
 
@@ -816,7 +954,7 @@ export default function NebenkostenWohnungen() {
           <Card title="Wohnungen / Mieter" icon={<UserSquare2 className="h-5 w-5"/>} actions={<button onClick={addApartment} disabled={locked} className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700"><Plus className="h-4 w-4"/> Wohnung hinzufügen</button>}>
             <div className="space-y-4">{workspace.apartments.map(a => <div key={a.id} className={`overflow-visible rounded-[24px] border p-5 ${workspace.selectedApartmentId === a.id ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}>
               <div className="mb-4 flex items-start justify-between gap-3"><button onClick={() => update(p => ({...p, selectedApartmentId: a.id}))} className="text-left"><div className="font-semibold">{a.label}</div><div className="text-sm text-slate-500">{a.tenantName || "Noch kein Mieter"}</div></button><div className="flex shrink-0 gap-2"><label className="rounded-full border bg-white px-3 py-2 text-sm"><input type="checkbox" className="mr-2" checked={a.active} disabled={locked} onChange={e => updateApartment(a.id, { active: e.target.checked })}/>belegt</label><button onClick={() => deleteApartment(a.id)} disabled={locked} className="h-10 w-10 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700"><Trash2 className="mx-auto h-4 w-4"/></button></div></div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"><Field label="Wohnungsname"><TextInput value={a.label} onChange={e => updateApartment(a.id, { label: e.target.value })} disabled={locked}/></Field><Field label="Mietername"><TextInput value={a.tenantName} onChange={e => updateApartment(a.id, { tenantName: e.target.value })} disabled={locked}/></Field><Field label="Wohnfläche (m²)"><NumberInput value={a.area} onCommit={v => updateApartment(a.id, { area: v })} disabled={locked}/></Field><Field label="Standard-MEA / Info"><NumberInput value={a.allocationKey} onCommit={v => updateApartment(a.id, { allocationKey: v })} disabled={locked} decimals={4}/></Field><Field label="Personen"><NumberInput value={a.persons} onCommit={v => updateApartment(a.id, { persons: v })} disabled={locked} decimals={0}/></Field><Field label="Belegungsmonate"><NumberInput value={a.occupancyMonths} onCommit={v => updateApartment(a.id, { occupancyMonths: clamp(v,0,12) })} disabled={locked} decimals={0}/></Field><Field label="Vorauszahlungen (€)"><NumberInput value={a.advancePayments} onCommit={v => updateApartment(a.id, { advancePayments: v })} disabled={locked}/></Field><Field label="CO₂-Abzug Vermieter laut KALO (€)"><NumberInput value={a.co2LandlordDeductionKalo} onCommit={v => updateApartment(a.id, { co2LandlordDeductionKalo: v })} disabled={locked}/></Field></div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"><Field label="Wohnungsname"><TextInput value={a.label} onChange={e => updateApartment(a.id, { label: e.target.value })} disabled={locked}/></Field><Field label="Mietername"><TextInput value={a.tenantName} onChange={e => updateApartment(a.id, { tenantName: e.target.value })} disabled={locked}/></Field><Field label="Wohnfläche (m²)"><NumberInput value={a.area} onCommit={v => updateApartment(a.id, { area: v })} disabled={locked}/></Field><Field label="Standard-MEA / Info"><NumberInput value={a.allocationKey} onCommit={v => updateApartment(a.id, { allocationKey: v })} disabled={locked} decimals={4}/></Field><Field label="Personen"><NumberInput value={a.persons} onCommit={v => updateApartment(a.id, { persons: v })} disabled={locked} decimals={0}/></Field><Field label="Belegungsmonate"><NumberInput value={a.occupancyMonths} onCommit={v => updateApartment(a.id, { occupancyMonths: clamp(v,0,12) })} disabled={locked} decimals={0}/></Field><Field label="Vorauszahlungen (€)"><NumberInput value={a.advancePayments} onCommit={v => updateApartment(a.id, { advancePayments: v })} disabled={locked}/></Field>{co2EnabledForSelectedObject && <Field label="CO₂-Abzug Vermieter laut KALO (€)"><NumberInput value={a.co2LandlordDeductionKalo} onCommit={v => updateApartment(a.id, { co2LandlordDeductionKalo: v })} disabled={locked}/></Field>}</div>
             </div>)}</div>
           </Card>
         </div>
@@ -825,7 +963,7 @@ export default function NebenkostenWohnungen() {
           <div className="space-y-4">{workspace.costs.map(row => <div key={row.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h3 className="text-lg font-semibold">{row.label}</h3><p className="text-sm text-slate-500">{allocationLabel(row.allocation)}</p></div><button onClick={() => deleteCost(row.id)} disabled={locked} className="h-10 w-10 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700"><Trash2 className="mx-auto h-4 w-4"/></button></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"><Field label="Bezeichnung"><TextInput value={row.label} onChange={e => updateCost(row.id, { label: e.target.value })} disabled={locked}/></Field><Field label="Gesamtbetrag (€)"><NumberInput value={row.amount} onCommit={v => updateCost(row.id, { amount: v })} disabled={locked}/></Field><Field label="Verteilung"><SelectInput value={row.allocation} onChange={e => updateCost(row.id, { allocation: e.target.value as AllocationType })} disabled={locked}><option value="allocationKey">Umlageschlüssel</option><option value="persons">Personen/Tage</option><option value="directAmount">Direktbetrag</option><option value="heatingDirect">KALO-Heizkosten direkt</option></SelectInput></Field>{(row.allocation === "allocationKey" || row.allocation === "persons") && <><Field label="Gesamt-Schlüssel"><NumberInput value={row.totalKey} onCommit={v => updateCost(row.id, { totalKey: v })} disabled={locked} decimals={4}/></Field><Field label="Wohnungs-Schlüssel"><NumberInput value={row.apartmentKey} onCommit={v => updateCost(row.id, { apartmentKey: v })} disabled={locked} decimals={4}/></Field></>}{(row.allocation === "directAmount" || row.allocation === "heatingDirect") && <Field label="Direktbetrag Mieter (€)"><NumberInput value={row.directAmount} onCommit={v => updateCost(row.id, { directAmount: v })} disabled={locked}/></Field>}<label className="flex min-h-[72px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700"><input type="checkbox" checked={row.prorateByOccupancy} disabled={locked || row.allocation === "directAmount" || row.allocation === "heatingDirect"} onChange={e => updateCost(row.id, { prorateByOccupancy: e.target.checked })}/><span>nach Belegungsmonaten kürzen</span></label></div><div className="mt-3 grid gap-4 md:grid-cols-[1fr_180px]"><Field label="Notiz"><TextInput value={row.note} onChange={e => updateCost(row.id, { note: e.target.value })} disabled={locked} /></Field><div className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Mieteranteil</div><div className="mt-1 text-xl font-semibold">{formatCurrency(costBreakdown.find(x => x.row.id === row.id)?.tenantShare ?? 0)}</div></div></div></div>)}</div>
         </Card>
 
-        <Card title="Heizkosten / CO₂-Anlage" icon={<Calculator className="h-5 w-5"/>}><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Heizkosten gesamt KALO"><NumberInput value={workspace.heating.totalHeatingCost} onCommit={v => updateHeating("totalHeatingCost", v)} disabled={locked}/></Field><Field label="Warmwasser gesamt"><NumberInput value={workspace.heating.totalWarmWaterCost} onCommit={v => updateHeating("totalWarmWaterCost", v)} disabled={locked}/></Field><Field label="CO₂-Kosten gesamt"><NumberInput value={workspace.heating.totalCo2Cost} onCommit={v => updateHeating("totalCo2Cost", v)} disabled={locked}/></Field><Field label="Gesamtverbrauch kWh"><NumberInput value={workspace.heating.totalConsumptionKwh} onCommit={v => updateHeating("totalConsumptionKwh", v)} disabled={locked}/></Field><Field label="Emissionsfaktor"><NumberInput value={workspace.heating.emissionFactor} onCommit={v => updateHeating("emissionFactor", v)} disabled={locked} decimals={4}/></Field><Field label="Beheizte Fläche m²"><NumberInput value={workspace.heating.heatedArea} onCommit={v => updateHeating("heatedArea", v)} disabled={locked}/></Field></div><div className="mt-4 grid gap-4 md:grid-cols-4"><Stat title="CO₂ gesamt" value={`${formatNumber(co2TotalKg,0)} kg`}/><Stat title="CO₂ je m²/Jahr" value={formatNumber(co2PerSqm,1)}/><Stat title="Stufe" value={String(co2Stage.stage)}/><Stat title="Mieter / Vermieter" value={`${co2Stage.tenantPercent}% / ${co2Stage.landlordPercent}%`}/></div></Card>
+        {co2EnabledForSelectedObject ? <Card title="Heizkosten / CO₂-Anlage" icon={<Calculator className="h-5 w-5"/>}><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Heizkosten gesamt KALO"><NumberInput value={workspace.heating.totalHeatingCost} onCommit={v => updateHeating("totalHeatingCost", v)} disabled={locked}/></Field><Field label="Warmwasser gesamt"><NumberInput value={workspace.heating.totalWarmWaterCost} onCommit={v => updateHeating("totalWarmWaterCost", v)} disabled={locked}/></Field><Field label="CO₂-Kosten gesamt"><NumberInput value={workspace.heating.totalCo2Cost} onCommit={v => updateHeating("totalCo2Cost", v)} disabled={locked}/></Field><Field label="Gesamtverbrauch kWh"><NumberInput value={workspace.heating.totalConsumptionKwh} onCommit={v => updateHeating("totalConsumptionKwh", v)} disabled={locked}/></Field><Field label="Emissionsfaktor"><NumberInput value={workspace.heating.emissionFactor} onCommit={v => updateHeating("emissionFactor", v)} disabled={locked} decimals={4}/></Field><Field label="Beheizte Fläche m²"><NumberInput value={workspace.heating.heatedArea} onCommit={v => updateHeating("heatedArea", v)} disabled={locked}/></Field></div><div className="mt-4 grid gap-4 md:grid-cols-4"><Stat title="CO₂ gesamt" value={`${formatNumber(co2TotalKg,0)} kg`}/><Stat title="CO₂ je m²/Jahr" value={formatNumber(co2PerSqm,1)}/><Stat title="Stufe" value={String(co2Stage.stage)}/><Stat title="Mieter / Vermieter" value={`${co2Stage.tenantPercent}% / ${co2Stage.landlordPercent}%`}/></div></Card> : <Card title="Heizkosten / CO₂" icon={<Calculator className="h-5 w-5"/>}><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"><strong>Für dieses Objekt ist keine automatische Heizkosten-/CO₂-Berechnung aktiv.</strong><br />{selectedConfig.heatingMode === "separate_contract" ? "Der Mieter hat einen separaten Energieversorgervertrag; Heizkosten werden nicht über diese NK-Abrechnung verteilt." : "Kosten können bei Bedarf als normale Direktbeträge oder Bescheid-Positionen erfasst werden."}</div></Card>}
 
         <Card title="Ergebnis / Druck" icon={<FileText className="h-5 w-5"/>} actions={<div className="flex gap-2"><button onClick={exportOnePager} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium"><FileText className="h-4 w-4"/> Export</button><button onClick={printBillingDocument} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium"><Printer className="h-4 w-4"/> Drucken</button><button onClick={finishBilling} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-600 px-4 py-2 text-sm font-medium text-white"><CheckCircle2 className="h-4 w-4"/> Abschließen</button></div>}><div className="grid gap-4 md:grid-cols-4"><Stat title="Kalte Betriebskosten" value={formatCurrency(totalColdCosts)}/><Stat title="Heizkosten vor CO₂" value={formatCurrency(totalHeatingBeforeCo2)}/><Stat title="CO₂-Abzug Vermieter" value={`-${formatCurrency(totalCo2LandlordShare)}`} accent="success"/><Stat title="Gesamtkosten Mieter" value={formatCurrency(totalTenantCosts)}/><Stat title="Vorauszahlungen" value={formatCurrency(activeApartment?.advancePayments ?? 0)}/><Stat title={balanceLabel} value={formatCurrency(Math.abs(tenantBalance))} accent={tenantBalance >= 0 ? "success" : "danger"}/></div><div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"><div className="font-semibold text-slate-950">Dokumentation Heizkosten / CO₂</div><div className="mt-1">Heizkosten laut Einzelabrechnung: <strong>{formatCurrency(totalHeatingBeforeCo2)}</strong> · CO₂-Abzug Vermieter: <strong>-{formatCurrency(totalCo2LandlordShare)}</strong> · Umlagefähig nach CO₂-Abzug: <strong>{formatCurrency(totalHeatingCosts)}</strong></div><div className="mt-2 text-xs text-slate-500">Druckhinweis: Im Browser beim PDF-Speichern am besten Kopf- und Fußzeilen deaktivieren.</div></div>{validationWarnings.length > 0 ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><div className="font-semibold">Plausibilitätsprüfung vor Abschluss</div><ul className="mt-2 list-disc pl-5">{validationWarnings.map((w, i) => <li key={i}>{w}</li>)}</ul></div> : <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">Plausibilitätsprüfung: keine Warnungen.</div>}</Card>
       </div>
