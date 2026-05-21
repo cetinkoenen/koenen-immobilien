@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { clearAppDataCache } from "../lib/appCache";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type DropdownRow = {
@@ -159,7 +160,7 @@ export default function EntryAdd() {
         throw error;
       }
 
-      window.localStorage.removeItem("koenen:app-data-cache:v2");
+      clearAppDataCache();
       emitFinanceEntryChanged();
       setMsg("✅ Buchung erfolgreich gespeichert. Mieterübersicht und Auswertungen werden aktualisiert.");
       setAmount("");

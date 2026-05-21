@@ -1,6 +1,7 @@
 import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
+import { APP_DATA_CACHE_KEY, clearAppDataCache } from "../lib/appCache";
 
 export type AppObject = {
   id: string;
@@ -99,7 +100,6 @@ export type AppDataContextValue = {
 };
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
-const APP_DATA_CACHE_KEY = "koenen:app-data-cache:v6";
 
 function toNumber(value: unknown): number {
   return parseLocaleNumber(value, 0);
@@ -285,11 +285,27 @@ function getEntryYearMonth(value: string | null): { year: number; month: number 
   return { year, month };
 }
 
+function getEffectiveRentYearMonth(value: string | null): { year: number; month: number } | null {
+  if (!value || value.length < 10) return getEntryYearMonth(value);
+  const ym = getEntryYearMonth(value);
+  if (!ym) return null;
+  const day = Number(value.slice(8, 10));
+  if (!Number.isFinite(day) || day < 25) return ym;
+  const nextMonth = ym.month === 12 ? 1 : ym.month + 1;
+  const nextYear = ym.month === 12 ? ym.year + 1 : ym.year;
+  return { year: nextYear, month: nextMonth };
+}
+
+function isEffectiveRentMonth(entry: FinanceEntry, year: number, month: number): boolean {
+  const ym = getEffectiveRentYearMonth(entry.booking_date);
+  return ym?.year === year && ym.month === month;
+}
+
 function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[]): MonthlyRentSummaryRow[] {
   const map = new Map<string, MonthlyRentSummaryRow>();
   for (const entry of entries) {
     if (!entry.object_id || !isRentEntry(entry)) continue;
-    const ym = getEntryYearMonth(entry.booking_date);
+    const ym = getEffectiveRentYearMonth(entry.booking_date);
     if (!ym) continue;
     const key = `${entry.object_id}|${entry.objekt_code ?? ""}|${ym.year}|${ym.month}`;
     const existing = map.get(key) ?? {
@@ -324,7 +340,10 @@ function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[]): Yearly
     };
     if (entry.entry_type === "income") existing.einnahmen += entry.amount;
     if (entry.entry_type === "expense") existing.ausgaben += entry.amount;
-    if (isRentEntry(entry)) existing.mieteingaenge += entry.amount;
+    if (isRentEntry(entry)) {
+      const rentYm = getEffectiveRentYearMonth(entry.booking_date);
+      if (rentYm?.year === ym.year) existing.mieteingaenge += entry.amount;
+    }
     map.set(key, existing);
   }
   return Array.from(map.values());
@@ -389,10 +408,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [objectsRes, entriesRes, monthlyRentRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
+      const [objectsRes, entriesRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label").order("label", { ascending: true }),
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note").order("booking_date", { ascending: false }).limit(5000),
-        supabase.from("v_mieteingaenge_monat").select("object_id,objekt_code,user_id,jahr,monat,mieteingang_summe"),
         supabase.from("v_objekt_finanz_summary_jahr").select("object_id,objekt_code,user_id,jahr,einnahmen,ausgaben,mieteingaenge"),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
@@ -425,18 +443,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         note: row.note ?? null,
       }));
 
-      const monthlyFromView = !monthlyRentRes.error
-        ? ((monthlyRentRes.data ?? []) as any[])
-            .filter((row) => row.object_id)
-            .map((row) => ({
-              object_id: String(row.object_id),
-              objekt_code: row.objekt_code ?? null,
-              user_id: row.user_id ?? null,
-              jahr: toNumber(row.jahr),
-              monat: toNumber(row.monat),
-              mieteingang_summe: toNumber(row.mieteingang_summe),
-            }))
-        : [];
+      // Monatsmieten werden absichtlich aus finance_entry berechnet, damit die 25.-des-Monats-Regel überall gleich gilt.
 
       const yearlyFromView = !yearlyFinanceRes.error
         ? ((yearlyFinanceRes.data ?? []) as any[])
@@ -455,7 +462,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       // Fallback ist bewusst aus den Buchungen berechnet, damit Mieterübersicht
       // und Portfolio auch funktionieren, wenn die View v_mieteingaenge_monat
       // keine Berechtigung hat.
-      const mappedMonthlyRentSummaries = monthlyFromView.length ? monthlyFromView : buildMonthlyRentSummariesFromEntries(mappedEntries);
+      // Single Source of Truth im Frontend: Mietmonate werden immer nach der Hausverwaltungs-Regel berechnet.
+      // Zahlungen ab dem 25. eines Monats zählen als Mieteingang für den Folgemonat.
+      // Die DB-View bleibt als Backend-Quelle verfügbar, wird hier aber nicht bevorzugt, weil ältere Views diese Regel nicht kennen.
+      const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
       const mappedYearlyFinanceSummaries = yearlyFromView.length ? yearlyFromView : buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
       let mappedPortfolio = ((portfolioRes.data ?? []) as any[])
@@ -657,9 +667,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const id = String(propertyId);
       const row = monthlyRentSummaries.find((summary) => sameProperty({ object_id: summary.object_id, objekt_code: summary.objekt_code, entry_type: null, booking_date: null, amount: 0, category: null, note: null }, id, propertyNameById, aliasesById) && summary.jahr === year && summary.monat === month);
       if (row) return row.mieteingang_summe;
-      const start = `${year}-${String(month).padStart(2, "0")}-01`;
-      const end = `${year}-${String(month).padStart(2, "0")}-31`;
-      const total = getRentEntriesForProperty(id, start, end).reduce((sum, entry) => sum + entry.amount, 0);
+      const total = getEntriesForProperty(id).filter((entry) => isRentEntry(entry) && isEffectiveRentMonth(entry, year, month)).reduce((sum, entry) => sum + entry.amount, 0);
       return total > 0 ? total : null;
     };
     const getMonthlyRentSummaryByObjectCode = (objectCode: string | null | undefined, year: number, month: number) => {
@@ -669,10 +677,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (row) return row.mieteingang_summe;
       const total = entries
         .filter((entry) => normalizeMatchText(entry.objekt_code) === code && isRentEntry(entry))
-        .filter((entry) => {
-          const ym = getEntryYearMonth(entry.booking_date);
-          return ym?.year === year && ym?.month === month;
-        })
+        .filter((entry) => isEffectiveRentMonth(entry, year, month))
         .reduce((sum, entry) => sum + entry.amount, 0);
       return total > 0 ? total : null;
     };
@@ -721,5 +726,6 @@ export function useAppData() {
 }
 
 export function emitFinanceEntryChanged() {
+  clearAppDataCache();
   window.dispatchEvent(new Event("koenen:finance-entry-changed"));
 }

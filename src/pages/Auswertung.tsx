@@ -2204,28 +2204,43 @@ function PhaseTwoBAutomationCenter() {
   }, [expenseRows]);
 
   const objectCashflow = useMemo(() => {
-    const map = new Map<string, { income: number; expense: number }>();
+    const canonicalNames = new Map<string, string>();
+    const map = new Map<string, { objectName: string; income: number; expense: number }>();
+
+    const rememberCanonicalName = (rawName: string | null | undefined, canonicalName: string) => {
+      const key = normalizeObjectName(String(rawName ?? ""));
+      if (key && !canonicalNames.has(key)) canonicalNames.set(key, canonicalName);
+    };
+
+    const getCanonicalBucket = (rawName: string | null | undefined) => {
+      const cleanedName = cleanDisplayName(rawName, "Ohne Objekt");
+      const rawKey = normalizeObjectName(cleanedName);
+      const objectName = canonicalNames.get(rawKey) ?? cleanedName;
+      const bucketKey = normalizeObjectName(objectName) || rawKey || objectName;
+      const bucket = map.get(bucketKey) ?? { objectName, income: 0, expense: 0 };
+      if (!map.has(bucketKey)) map.set(bucketKey, bucket);
+      return bucket;
+    };
 
     for (const object of objects) {
-      map.set(cleanDisplayName(object.label, object.objekt_code), { income: 0, expense: 0 });
+      const canonicalName = cleanDisplayName(object.label, object.objekt_code);
+      rememberCanonicalName(object.label, canonicalName);
+      rememberCanonicalName(object.objekt_code, canonicalName);
+      getCanonicalBucket(canonicalName);
     }
 
     for (const row of incomeRows) {
-      const key = getEntryObjectName(row);
-      const bucket = map.get(key) ?? { income: 0, expense: 0 };
+      const bucket = getCanonicalBucket(getEntryObjectName(row));
       bucket.income += Number(row.amount || 0);
-      map.set(key, bucket);
     }
 
     for (const row of expenseRows) {
-      const key = getEntryObjectName(row);
-      const bucket = map.get(key) ?? { income: 0, expense: 0 };
+      const bucket = getCanonicalBucket(getEntryObjectName(row));
       bucket.expense += Number(row.amount || 0);
-      map.set(key, bucket);
     }
 
-    return Array.from(map.entries())
-      .map(([objectName, values]) => ({ objectName, ...values, net: values.income - values.expense }))
+    return Array.from(map.values())
+      .map((values) => ({ ...values, net: values.income - values.expense }))
       .filter((row) => !isHiddenTechnicalPropertyName(row.objectName))
       .sort((a, b) => a.net - b.net);
   }, [incomeRows, expenseRows, objects]);

@@ -23,6 +23,7 @@ import { createMissingCapexYear, createMissingIncomeYear, extendLoanOneYear } fr
 import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
 import { refreshBackendFinanceMaterializedViews } from "@/services/backendFinanceMasterService";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
+import { buildFinanceConsistencySummary } from "@/services/financeConsistencyEngine";
 
 type Row = {
   property_id: string | null;
@@ -388,6 +389,18 @@ export default function Datenpruefung() {
   }, currentYear), [app.objects, app.entries, app.yearlyFinanceSummaries, app.portfolioRows, app.loanRows, app.loanChartByPropertyId]);
   const masterSnapshots = backendFinance.snapshots.length ? backendFinance.snapshots : frontendMasterSnapshots;
 
+  const consistencySummary = useMemo(() => buildFinanceConsistencySummary({
+    objects: app.objects,
+    entries: app.entries,
+    yearlyFinanceSummaries: app.yearlyFinanceSummaries,
+    portfolioRows: app.portfolioRows,
+    loanRows: app.loanRows,
+    loanChartByPropertyId: app.loanChartByPropertyId,
+    year: currentYear,
+  }), [app.objects, app.entries, app.yearlyFinanceSummaries, app.portfolioRows, app.loanRows, app.loanChartByPropertyId]);
+
+  const consistencyTopRows = useMemo(() => consistencySummary.checks.slice(0, 14), [consistencySummary.checks]);
+
   const masterTotals = useMemo(() => buildMasterTotals(masterSnapshots), [masterSnapshots]);
 
   const visibleRows = useMemo(() => {
@@ -579,6 +592,64 @@ export default function Datenpruefung() {
             )) : (
               <div className="flex items-center gap-2 px-4 py-5 text-sm font-black text-emerald-700">
                 <CheckCircle2 size={18} /> Keine Backend-Qualitätsprobleme gefunden.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">
+              <Sparkles size={13} /> Phase 5I · Finanz-Konsistenz-Engine
+            </div>
+            <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Automatische Konsistenzprüfung</h2>
+            <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
+              Die App prüft jetzt frontendseitig Buchungs-Dubletten, fehlende Mieteingänge, Jahreswert-Abweichungen, steigende Darlehenssalden und Portfolio-/Darlehens-Differenzen. Zukünftige Monate werden bewusst neutral behandelt.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-4 lg:min-w-[620px]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Score</div>
+              <div className={`mt-1 text-2xl font-black ${consistencySummary.score >= 90 ? "text-emerald-700" : consistencySummary.score >= 70 ? "text-amber-700" : "text-rose-700"}`}>{consistencySummary.score}%</div>
+            </div>
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-500">kritisch</div>
+              <div className="mt-1 text-2xl font-black text-rose-700">{consistencySummary.critical}</div>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-600">prüfen</div>
+              <div className="mt-1 text-2xl font-black text-amber-700">{consistencySummary.warning}</div>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">Status</div>
+              <div className="mt-1 text-lg font-black text-emerald-700">{consistencySummary.total === 0 ? "stabil" : "prüfen"}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+          <div className="grid grid-cols-[120px_150px_minmax(160px,1fr)_minmax(220px,1.4fr)_minmax(220px,1.2fr)] gap-0 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.1em] text-slate-500 max-lg:hidden">
+            <div>Status</div>
+            <div>Bereich</div>
+            <div>Objekt</div>
+            <div>Hinweis</div>
+            <div>Nächster Schritt</div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {consistencyTopRows.length ? consistencyTopRows.map((check) => (
+              <div key={check.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[120px_150px_minmax(160px,1fr)_minmax(220px,1.4fr)_minmax(220px,1.2fr)] lg:items-start">
+                <div><StatusBadge status={check.severity === "critical" ? "bad" : check.severity === "warning" ? "warn" : "ok"} label={check.severity === "critical" ? "kritisch" : check.severity === "warning" ? "prüfen" : "ok"} /></div>
+                <div className="text-sm font-black text-slate-950">{check.area}</div>
+                <div className="min-w-0 break-words text-sm font-bold text-slate-600">{check.propertyName}</div>
+                <div className="text-sm font-semibold leading-6 text-slate-700">{check.detail}{typeof check.delta === "number" ? <span className="mt-1 block text-xs font-black text-slate-500">Differenz: {euro(check.delta)}</span> : null}</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold leading-6 text-slate-600">{check.repairHint}</div>
+              </div>
+            )) : (
+              <div className="flex items-center gap-2 px-4 py-5 text-sm font-black text-emerald-700">
+                <CheckCircle2 size={18} /> Keine zusätzlichen Konsistenzprobleme gefunden.
               </div>
             )}
           </div>

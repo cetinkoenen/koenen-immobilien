@@ -86,39 +86,6 @@ export default function Login() {
     }
   }
 
-  async function handleSignUp() {
-    setError("");
-    setInfo("");
-    setSubmitting(true);
-
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
-
-      if (data.session) {
-        await routeAfterLogin();
-        return;
-      }
-
-      setInfo(
-        "Registrierung erfolgreich. Bitte prüfe ggf. deine E-Mails und logge dich danach ein.",
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Registrierung fehlgeschlagen.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function handleForceLogout() {
     setError("");
     setInfo("");
@@ -164,7 +131,7 @@ export default function Login() {
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>Login</h1>
 
         <p style={{ marginTop: 8, color: "#6b7280", lineHeight: 1.5 }}>
-          Bitte mit deiner Supabase-E-Mail anmelden oder registrieren.
+          Privater Verwaltungszugang. Bitte nur mit dem freigegebenen Admin-Konto anmelden.
         </p>
 
         {error ? (
@@ -277,27 +244,6 @@ export default function Login() {
             Privater Zugang. Keine gewerbliche Nutzung.
           </p>
         </form>
-
-        <button
-          type="button"
-          onClick={handleSignUp}
-          disabled={submitting || authLoading}
-          style={{
-            marginTop: 10,
-            width: "100%",
-            padding: "11px 12px",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
-            background: "#f9fafb",
-            color: "#111827",
-            fontWeight: 700,
-            fontSize: 14,
-            cursor: submitting || authLoading ? "default" : "pointer",
-            opacity: submitting || authLoading ? 0.7 : 1,
-          }}
-        >
-          {submitting ? "Bitte warten…" : "Registrieren"}
-        </button>
 
         <button
           type="button"

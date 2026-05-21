@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
+import { clearAppDataCache } from "../lib/appCache";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
@@ -690,7 +691,7 @@ export default function Monate() {
       return;
     }
 
-    window.localStorage.removeItem("koenen:app-data-cache:v2");
+    clearAppDataCache();
     emitFinanceEntryChanged();
     await loadMonth();
   }
@@ -728,7 +729,7 @@ export default function Monate() {
       if (error) throw error;
 
       setSelectedKeys([]);
-      window.localStorage.removeItem("koenen:app-data-cache:v2");
+      clearAppDataCache();
       emitFinanceEntryChanged();
       await loadMonth();
     } catch (e: any) {
@@ -818,7 +819,7 @@ export default function Monate() {
 
       setEditOpen(false);
       setEditRow(null);
-      window.localStorage.removeItem("koenen:app-data-cache:v2");
+      clearAppDataCache();
       emitFinanceEntryChanged();
       await loadMonth();
     } catch (e: any) {
