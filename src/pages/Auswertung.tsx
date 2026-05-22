@@ -4126,6 +4126,39 @@ function asCount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeTaskMatchValue(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/straße/g, "str")
+    .replace(/strasse/g, "str")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildPropertyTaskMatchTokens(property: { id?: string | null; code?: string | null; label?: string | null; aliases?: string[] | null } | null): string[] {
+  if (!property) return [];
+  const rawTokens = [property.id, property.code, property.label, ...(property.aliases ?? [])];
+  return Array.from(new Set(rawTokens.map(normalizeTaskMatchValue).filter(Boolean)));
+}
+
+function taskBelongsToSelectedProperty(task: PropertyTaskRow, tokens: string[]): boolean {
+  if (tokens.length === 0) return true;
+  const taskTokens = [
+    task.property_id,
+    task.portfolio_property_id,
+    task.objekt_code,
+    task.property_name,
+    task.meta?.property_id,
+    task.meta?.portfolio_property_id,
+    task.meta?.objekt_code,
+    task.meta?.property_name,
+  ].map(normalizeTaskMatchValue).filter(Boolean);
+
+  return taskTokens.some((taskToken) => tokens.some((propertyToken) => taskToken === propertyToken || taskToken.includes(propertyToken) || propertyToken.includes(taskToken)));
+}
+
 function PhaseFiveBBackendBindingCenter() {
   const app = useAppData();
   const currentYear = new Date().getFullYear();
@@ -4160,17 +4193,20 @@ function PhaseFiveBBackendBindingCenter() {
     try {
       const [documentRows, taskRows, auditLogRows, documentSummary, taskSummary] = await Promise.all([
         listPropertyDocuments({ propertyId: selectedProperty.id }),
-        listPropertyTasks({ propertyId: selectedProperty.id, status: "aktiv" }),
+        listPropertyTasks({ status: "aktiv" }),
         listAuditLogs({ propertyId: selectedProperty.id, limit: 25 }),
         getPropertyDocumentSummary(null),
         getPropertyTaskSummary(),
       ]);
+      const selectedTaskTokens = buildPropertyTaskMatchTokens(selectedProperty);
+      const visibleTaskRows = taskRows.filter((task) => taskBelongsToSelectedProperty(task, selectedTaskTokens));
+
       setDocuments(documentRows);
-      setTasks(taskRows);
+      setTasks(visibleTaskRows);
       setAuditRows(auditLogRows);
       setStatus({
         documents: documentRows.length,
-        tasks: taskRows.length,
+        tasks: visibleTaskRows.length,
         audits: auditLogRows.length,
         documentSummary: Array.isArray(documentSummary) ? documentSummary as Array<Record<string, unknown>> : [],
         taskSummary: Array.isArray(taskSummary) ? taskSummary as Array<Record<string, unknown>> : [],
