@@ -257,10 +257,17 @@ function FinanceSummary(props: { label: string; value: string }) {
   );
 }
 
-function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
+function PropertyLoanCard(props: {
+  propertyId: string;
+  propertyName: string;
+  dashboardBalance: number;
+  dashboardPrincipalTotal: number;
+  dashboardInterestTotal: number;
+}) {
   const { propertyIncome, yearlyIncome, yearlyCapex, isLoading: incomeLoading, error: incomeError } = useIncome(props.propertyId);
   const [ledgerRows, setLedgerRows] = useState<LoanLedgerRow[]>([]);
-  const [ledgerLoading, setLedgerLoading] = useState<boolean>(true);
+  const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
+  const [ledgerLoaded, setLedgerLoaded] = useState<boolean>(false);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [open, setOpen] = useState<boolean>(false);
   const [projection, setProjection] = useState({ interestRatePercent: "3.5", annualPrincipal: "12000", years: "10" });
@@ -273,10 +280,12 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
       setLedgerError(null);
       const rows = await loadPropertyLoanLedger(props.propertyId);
       setLedgerRows(rows);
+      setLedgerLoaded(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Fehler beim Laden der Darlehensdaten.";
       setLedgerError(message);
       setLedgerRows([]);
+      setLedgerLoaded(true);
     } finally {
       setLedgerLoading(false);
     }
@@ -310,9 +319,9 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || ledgerLoaded || ledgerLoading) return;
     void reloadLedger();
-  }, [open, props.propertyId]);
+  }, [open, props.propertyId, ledgerLoaded, ledgerLoading]);
 
   const yearlyMetrics = useMemo(() => {
     return calculateYearlyFinanceMetrics({
@@ -329,21 +338,16 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
     });
   }, [ledgerRows, yearlyIncome, yearlyCapex, propertyIncome]);
 
-  const totals = useMemo(() => {
-    return yearlyMetrics.reduce(
-      (acc, row) => {
-        acc.income += row.income;
-        acc.capex += row.capex;
-        acc.debtService += row.debtService;
-        acc.cashflow += row.cashflow;
-        return acc;
-      },
-      { income: 0, capex: 0, debtService: 0, cashflow: 0 },
-    );
-  }, [yearlyMetrics]);
 
-  const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : 0;
+
+  const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : props.dashboardBalance;
   const latestYear = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].year : null;
+  const visibleDebtService = ledgerRows.length > 0
+    ? ledgerRows.reduce((sum, row) => sum + row.interest + row.principal, 0)
+    : props.dashboardInterestTotal + props.dashboardPrincipalTotal;
+  const visibleDscr = yearlyMetrics.length > 0
+    ? yearlyMetrics.reduce((sum, row) => sum + (row.dscr ?? 0), 0) / yearlyMetrics.length
+    : null;
   const yearlyWarnings = ledgerRows.some((row, index) => index > 0 && row.balance > ledgerRows[index - 1].balance + 1);
 
   return (
@@ -356,9 +360,9 @@ function PropertyLoanCard(props: { propertyId: string; propertyName: string }) {
           </div>
           <div style={styles.summaryGrid}>
             <FinanceSummary label="Aktuelle Restschuld" value={formatCurrency(latestBalance)} />
-            <FinanceSummary label="Quelle Portfolio" value={latestYear ? `Ledger ${latestYear}` : "—"} />
-            <FinanceSummary label="Durchschn. Debt Service" value={yearlyMetrics.length > 0 ? formatCurrency(totals.debtService / yearlyMetrics.length) : "—"} />
-            <FinanceSummary label="DSCR Ø" value={yearlyMetrics.length > 0 ? formatNumber(yearlyMetrics.reduce((sum, row) => sum + (row.dscr ?? 0), 0) / yearlyMetrics.length) : "—"} />
+            <FinanceSummary label="Quelle" value={latestYear ? `Ledger ${latestYear}` : "Übersicht"} />
+            <FinanceSummary label="Debt Service gesamt" value={visibleDebtService > 0 ? formatCurrency(visibleDebtService) : "—"} />
+            <FinanceSummary label="DSCR Ø" value={visibleDscr !== null ? formatNumber(visibleDscr) : "—"} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -557,7 +561,14 @@ export default function Darlehensuebersicht() {
 
       {!loading && !error
         ? filteredRows.map((row) => (
-            <PropertyLoanCard key={row.propertyId} propertyId={row.propertyId} propertyName={row.propertyName} />
+            <PropertyLoanCard
+              key={row.propertyId}
+              propertyId={row.propertyId}
+              propertyName={row.propertyName}
+              dashboardBalance={row.lastBalance}
+              dashboardPrincipalTotal={row.principalTotal}
+              dashboardInterestTotal={row.interestTotal}
+            />
           ))
         : null}
     </div>

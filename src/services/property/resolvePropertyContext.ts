@@ -46,6 +46,81 @@ function pickAddress(row: Record<string, unknown> | null | undefined): string | 
     .find(Boolean);
 }
 
+const KNOWN_PROPERTY_ID_ALIASES: Record<string, string[]> = {
+  // Elsasser Str. 52 existed in older app versions under several IDs.
+  // Include all known IDs so the detail pages can still find the Darlehens-Ledger
+  // even when the route opens the canonical property/portfolio id.
+  "f8a86965-07e4-4b6a-a97a-779dbe97a3fd": [
+    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
+    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
+    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
+  ],
+  "5db6fcc3-6419-4fb1-a03f-087dc16383cc": [
+    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
+    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
+    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
+  ],
+  "4f9d5747-f808-45e7-83a1-b5738ee018c6": [
+    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
+    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
+    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
+  ],
+  "3f029417-88e1-4cbc-a3f5-37d246d71bb9": [
+    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
+    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
+    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
+  ],
+};
+
+function aliasesForKnownPropertyIds(ids: string[]): string[] {
+  return ids.flatMap((id) => KNOWN_PROPERTY_ID_ALIASES[id] ?? []);
+}
+
+async function bridgeCandidatesForContext(ids: string[], displayName?: string): Promise<string[]> {
+  const cleanIds = Array.from(new Set(ids.map(toSafeString).filter(Boolean)));
+  const result: string[] = [];
+
+  for (const id of cleanIds) {
+    const byPropertyId = await supabase
+      .from("v_koenen_object_bridge")
+      .select("object_id, property_id")
+      .eq("property_id", id)
+      .maybeSingle();
+
+    if (!byPropertyId.error && byPropertyId.data) {
+      result.push(toSafeString(byPropertyId.data.object_id), toSafeString(byPropertyId.data.property_id));
+    }
+
+    const byObjectId = await supabase
+      .from("v_koenen_object_bridge")
+      .select("object_id, property_id")
+      .eq("object_id", id)
+      .maybeSingle();
+
+    if (!byObjectId.error && byObjectId.data) {
+      result.push(toSafeString(byObjectId.data.object_id), toSafeString(byObjectId.data.property_id));
+    }
+  }
+
+  const normalizedName = normalizeNameForMatch(displayName);
+  if (normalizedName) {
+    const byName = await supabase
+      .from("v_koenen_object_bridge")
+      .select("property_name, object_id, property_id")
+      .limit(100);
+
+    if (!byName.error && Array.isArray(byName.data)) {
+      for (const row of byName.data as Record<string, unknown>[]) {
+        if (normalizeNameForMatch(toSafeString(row.property_name)) === normalizedName) {
+          result.push(toSafeString(row.object_id), toSafeString(row.property_id));
+        }
+      }
+    }
+  }
+
+  return Array.from(new Set(result.filter(Boolean)));
+}
+
 async function hasRows(table: string, propertyId: string): Promise<boolean> {
   if (!propertyId) return false;
 
@@ -107,8 +182,16 @@ export async function resolvePropertyContext(propertyId: string) {
   }
   const corePropertyId = toSafeString(portfolio?.core_property_id) || toSafeString(property?.id);
   const portfolioPropertyId = toSafeString(portfolio?.id);
+  const displayName = cleanDisplayName(pickDisplayName(portfolio) ?? pickDisplayName(property));
+  const address = cleanDisplayName(pickAddress(portfolio) ?? pickAddress(property));
 
-  const candidates = [routeId, corePropertyId, portfolioPropertyId].filter(Boolean);
+  const baseCandidates = [routeId, corePropertyId, portfolioPropertyId].filter(Boolean);
+  const bridgeCandidates = await bridgeCandidatesForContext(baseCandidates, displayName ?? address);
+  const knownAliasCandidates = aliasesForKnownPropertyIds([...baseCandidates, ...bridgeCandidates]);
+  const candidates = Array.from(
+    new Set([...baseCandidates, ...bridgeCandidates, ...knownAliasCandidates].map(toSafeString).filter(Boolean))
+  );
+
   const incomePropertyId = await bestIdForTables(candidates, [
     "property_income",
     "yearly_property_income",
@@ -123,8 +206,8 @@ export async function resolvePropertyContext(propertyId: string) {
     ledgerPropertyId: ledgerPropertyId || routeId,
     portfolioPropertyId: portfolioPropertyId || undefined,
     corePropertyId: corePropertyId || undefined,
-    displayName: cleanDisplayName(pickDisplayName(portfolio) ?? pickDisplayName(property)),
-    address: cleanDisplayName(pickAddress(portfolio) ?? pickAddress(property)),
+    displayName,
+    address,
   };
 }
 

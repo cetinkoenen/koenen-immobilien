@@ -17,6 +17,7 @@ import Auswertung from "./pages/Auswertung";
 import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
+import Darlehensuebersicht from "./pages/Darlehensuebersicht";
 import Datenpruefung from "./pages/Datenpruefung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
 import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
@@ -176,6 +177,7 @@ function AppShell() {
       { to: "/auswertungen", label: "Auswertungen" },
       { to: "/buchungen", label: "Buchungen" },
       { to: "/mieteruebersicht", label: "Mieterübersicht" },
+      { to: "/darlehensuebersicht", label: "Darlehen" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
     ],
@@ -210,7 +212,7 @@ function AppShell() {
             </NavLink>
 
             <div className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex">
-              <nav className="flex max-w-[820px] flex-wrap justify-center gap-2.5">
+              <nav className="flex max-w-[1120px] flex-wrap justify-center gap-2.5">
                 {navItems.map((item) => (
                   <NavLink
                     key={item.to}
@@ -364,7 +366,11 @@ export default function App() {
           element={<NebenkostenWohnungen />}
         />
 
-        <Route path="/darlehen" element={<Navigate to="/portfolio" replace />} />
+        <Route path="/darlehen" element={<Navigate to="/darlehensuebersicht" replace />} />
+        <Route path="/darlehensübersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
+        <Route path="/darlehensubersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
+        <Route path="/darlehensuebersicht" element={<Darlehensuebersicht />} />
+        <Route path="/darlehensuebersicht/:propertyId" element={<Darlehensuebersicht />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
