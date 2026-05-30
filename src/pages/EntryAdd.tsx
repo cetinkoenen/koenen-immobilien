@@ -4,9 +4,13 @@ import { clearAppDataCache } from "../lib/appCache";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type DropdownRow = {
-  value: string; // object_id (uuid)
+  /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
+  value: string;
   objekt_code: string;
-  label: string; // "Objekt X – Straße"
+  label: string;
+  /** Kompatibilität: neuere v_object_dropdown-Views liefern object_id/property_id getrennt. */
+  object_id?: string | null;
+  property_id?: string | null;
 };
 
 function toISODate(date: Date): string {
@@ -77,7 +81,7 @@ export default function EntryAdd() {
 
       const { data, error } = await supabase
         .from("v_object_dropdown")
-        .select("value,objekt_code,label")
+        .select("value,objekt_code,label,object_id,property_id")
         .order("label", { ascending: true });
 
       if (!alive) return;
@@ -89,9 +93,16 @@ export default function EntryAdd() {
         return;
       }
 
-      const list = (data ?? []).filter(
-        (x: any) => x?.value && x?.objekt_code && x?.label
-      ) as DropdownRow[];
+      const list = ((data ?? []) as any[])
+        .filter((x: any) => (x?.object_id || x?.value) && x?.objekt_code && x?.label)
+        .map((x: any) => ({
+          ...x,
+          // Wichtig: finance_entry.object_id verweist auf public.objects.id.
+          // In neueren Backend-Views ist value teilweise property_id; deshalb immer object_id bevorzugen.
+          value: String(x.object_id ?? x.value),
+          object_id: x.object_id == null ? null : String(x.object_id),
+          property_id: x.property_id == null ? null : String(x.property_id),
+        })) as DropdownRow[];
 
       setObjects(list);
 

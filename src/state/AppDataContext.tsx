@@ -409,7 +409,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const [objectsRes, entriesRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
-        supabase.from("v_object_dropdown").select("value,objekt_code,label").order("label", { ascending: true }),
+        supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note").order("booking_date", { ascending: false }).limit(5000),
         supabase.from("v_objekt_finanz_summary_jahr").select("object_id,objekt_code,user_id,jahr,einnahmen,ausgaben,mieteingaenge"),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
@@ -426,10 +426,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as any[])
         .filter((row) => row.value)
         .map((row) => ({
-          id: String(row.value),
+          // AppObject.id muss zur Buchungstabelle passen: finance_entry.object_id -> public.objects.id.
+          // v_object_dropdown.value kann je nach Migration property_id sein; daher object_id bevorzugen.
+          id: String(row.object_id ?? row.value),
           code: row.objekt_code ?? null,
           label: cleanDisplayName(row.label ?? row.objekt_code ?? row.value, "Unbenanntes Objekt"),
-          aliases: uniqueClean([row.value, row.objekt_code, row.label]),
+          aliases: uniqueClean([row.object_id, row.property_id, row.value, row.objekt_code, row.label]),
         })));
 
       const mappedEntries = ((entriesRes.data ?? []) as any[]).map((row) => ({
