@@ -21,11 +21,10 @@ function toIso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function currentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const previousMonthEndWindowStart = new Date(now.getFullYear(), now.getMonth() - 1, 25);
+function currentMonthRange(baseDate = new Date()) {
+  const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  const end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+  const previousMonthEndWindowStart = new Date(baseDate.getFullYear(), baseDate.getMonth() - 1, 25);
   return {
     label: new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(start),
     start: toIso(start),
@@ -364,7 +363,14 @@ function DonutChart({ paid, missing }: { paid: number; missing: number }) {
 }
 
 export default function Mietuebersicht() {
-  const month = useMemo(() => currentMonthRange(), []);
+  // Ab dem 25. gebuchte Mieten zählen fachlich zum Folgemonat.
+  // Deshalb startet die Mieterübersicht ab dem 25. automatisch im Folgemonat,
+  // damit z. B. eine am 29.05. gebuchte "Juni 2026"-Miete sofort sichtbar ist.
+  const [monthOffset, setMonthOffset] = useState(() => (new Date().getDate() >= 25 ? 1 : 0));
+  const month = useMemo(() => {
+    const now = new Date();
+    return currentMonthRange(new Date(now.getFullYear(), now.getMonth() + monthOffset, 1));
+  }, [monthOffset]);
   const appData = useAppData();
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>(() => loadStoredTenants());
@@ -549,6 +555,8 @@ export default function Mietuebersicht() {
     [sourceObjects, appData, monthBookings, tenantInfo, month.start, month.end]
   );
 
+  const resetToRecommendedMonth = () => setMonthOffset(new Date().getDate() >= 25 ? 1 : 0);
+
   const stats = useMemo(() => {
     const paid = rows.filter((row) => row.status === "paid").length;
     const missing = rows.length - paid;
@@ -573,7 +581,12 @@ export default function Mietuebersicht() {
           <div className="tenant-card-head">
             <div>
               <h2>Mieteingänge {month.label}</h2>
-              <p>Prüfung: kompletter Monat</p>
+              <p>Prüfung: kompletter Mietmonat. Zahlungen ab dem 25. zählen automatisch zum Folgemonat.</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button type="button" onClick={() => setMonthOffset((value) => value - 1)} className="tenant-mini-button">← Vormonat</button>
+                <button type="button" onClick={resetToRecommendedMonth} className="tenant-mini-button">Aktueller Mietmonat</button>
+                <button type="button" onClick={() => setMonthOffset((value) => value + 1)} className="tenant-mini-button">Folgemonat →</button>
+              </div>
             </div>
             <strong>{formatCurrency(stats.amount)}</strong>
           </div>
