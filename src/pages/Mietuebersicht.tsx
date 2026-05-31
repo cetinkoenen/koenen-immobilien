@@ -388,8 +388,9 @@ export default function Mietuebersicht() {
     async function loadCurrentMonthBookings() {
       const { data, error } = await supabase
         .from("finance_entry")
-        .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note")
+        .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted")
         .eq("entry_type", "income")
+        .eq("is_deleted", false)
         .gte("booking_date", month.previousMonthEndWindowStart)
         .lte("booking_date", month.end)
         .order("booking_date", { ascending: false });

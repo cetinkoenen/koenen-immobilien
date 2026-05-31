@@ -37,6 +37,7 @@ export function useMonthlyEntries(objectId: string, year: number, month: number)
       .from("finance_entry")
       .select("*")
       .eq("object_id", objectId)          // ✅ neu
+      .eq("is_deleted", false)
       .gte("booking_date", fromDate)
       .lt("booking_date", toDate)
       .order("booking_date", { ascending: true });

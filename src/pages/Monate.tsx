@@ -684,7 +684,12 @@ export default function Monate() {
     const ok = window.confirm("Wirklich löschen?");
     if (!ok) return;
 
-    const { error } = await supabase.from("finance_entry").delete().eq("id", id);
+    // Datensicherheit: Buchungen werden nicht mehr endgültig gelöscht.
+    // Sie werden nur als Papierkorb/gelöscht markiert und können per SQL/Audit wiederhergestellt werden.
+    const { error } = await supabase
+      .from("finance_entry")
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+      .eq("id", id);
 
     if (error) {
       alert(`Löschen fehlgeschlagen: ${error.message}`);
@@ -724,7 +729,11 @@ export default function Monate() {
     setBulkDeleting(true);
 
     try {
-      const { error } = await supabase.from("finance_entry").delete().in("id", selectedIds);
+      // Datensicherheit: Auch Sammel-Löschen ist nur Soft-Delete, kein echtes DELETE.
+      const { error } = await supabase
+        .from("finance_entry")
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .in("id", selectedIds);
 
       if (error) throw error;
 

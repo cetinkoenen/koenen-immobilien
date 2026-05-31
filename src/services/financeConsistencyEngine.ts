@@ -108,12 +108,16 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
 
   const duplicateMap = new Map<string, FinanceEntry[]>();
   for (const entry of input.entries) {
+    // Eine Buchung ist nur dann als echte Dublette verdächtig, wenn auch die Notiz identisch ist.
+    // Wiederkehrende Zahlungen haben oft denselben Betrag/Kategorie, unterscheiden sich aber über
+    // Referenz, Zeitraum oder Beschreibung im Notizfeld und dürfen nicht als doppelt gelten.
     const key = [
       entry.object_id ?? "no-object",
       entry.booking_date ?? "no-date",
       entry.entry_type ?? "no-type",
       normalize(entry.category),
       round2(money(entry.amount)).toFixed(2),
+      normalize(entry.note),
     ].join("|");
     duplicateMap.set(key, [...(duplicateMap.get(key) ?? []), entry]);
 

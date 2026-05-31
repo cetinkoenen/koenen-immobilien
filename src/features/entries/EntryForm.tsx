@@ -83,6 +83,7 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
       const res = await supabase
         .from("finance_entry")
         .select("category")
+        .eq("is_deleted", false)
         .order("category", { ascending: true });
 
       if (cancelled) return;

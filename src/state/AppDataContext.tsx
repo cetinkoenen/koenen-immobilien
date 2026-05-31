@@ -410,7 +410,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     try {
       const [objectsRes, entriesRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
-        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note").order("booking_date", { ascending: false }).limit(5000),
+        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("v_objekt_finanz_summary_jahr").select("object_id,objekt_code,user_id,jahr,einnahmen,ausgaben,mieteingaenge"),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
