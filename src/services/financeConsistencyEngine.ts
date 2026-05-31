@@ -68,8 +68,43 @@ function entryMonth(value: string | null): { year: number; month: number; day: n
   return { year, month, day: Number.isFinite(day) ? day : 1 };
 }
 
-function effectiveRentMonth(value: string | null): { year: number; month: number } | null {
-  const parsed = entryMonth(value);
+function explicitRentMonthFromNote(entry: FinanceEntry): { year: number; month: number } | null {
+  const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
+  const yearMatch = text.match(/\b(20\d{2})\b/);
+  if (!yearMatch) return null;
+
+  const monthNames: Array<[number, string[]]> = [
+    [1, ["januar", "jan"]],
+    [2, ["februar", "feb"]],
+    [3, ["maerz", "marz", "maer", "mar"]],
+    [4, ["april", "apr"]],
+    [5, ["mai"]],
+    [6, ["juni", "jun"]],
+    [7, ["juli", "jul"]],
+    [8, ["august", "aug"]],
+    [9, ["september", "sep"]],
+    [10, ["oktober", "okt"]],
+    [11, ["november", "nov"]],
+    [12, ["dezember", "dez"]],
+  ];
+
+  for (const [month, names] of monthNames) {
+    if (names.some((name) => new RegExp(`\\b${name}\\b`).test(text))) {
+      return { year: Number(yearMatch[1]), month };
+    }
+  }
+
+  return null;
+}
+
+function effectiveRentMonth(entry: FinanceEntry): { year: number; month: number } | null {
+  // Explicit labels such as "April 2026" or "Mai 2026" are more reliable
+  // than a pure booking-date rule. This prevents payments booked after the 25th
+  // but clearly labelled for the current month from being moved into the next month.
+  const explicit = explicitRentMonthFromNote(entry);
+  if (explicit) return explicit;
+
+  const parsed = entryMonth(entry.booking_date);
   if (!parsed) return null;
   if (parsed.day < 25) return { year: parsed.year, month: parsed.month };
   return parsed.month === 12 ? { year: parsed.year + 1, month: 1 } : { year: parsed.year, month: parsed.month + 1 };
@@ -108,16 +143,13 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
 
   const duplicateMap = new Map<string, FinanceEntry[]>();
   for (const entry of input.entries) {
-    // Eine Buchung ist nur dann als echte Dublette verdächtig, wenn auch die Notiz identisch ist.
-    // Wiederkehrende Zahlungen haben oft denselben Betrag/Kategorie, unterscheiden sich aber über
-    // Referenz, Zeitraum oder Beschreibung im Notizfeld und dürfen nicht als doppelt gelten.
     const key = [
       entry.object_id ?? "no-object",
       entry.booking_date ?? "no-date",
       entry.entry_type ?? "no-type",
       normalize(entry.category),
-      round2(money(entry.amount)).toFixed(2),
       normalize(entry.note),
+      round2(money(entry.amount)).toFixed(2),
     ].join("|");
     duplicateMap.set(key, [...(duplicateMap.get(key) ?? []), entry]);
 
@@ -177,7 +209,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
     }
 
     if (isRentEntry(entry)) {
-      const rentMonth = effectiveRentMonth(entry.booking_date);
+      const rentMonth = effectiveRentMonth(entry);
       if (rentMonth) {
         const rentKey = `${id}|${rentMonth.year}|${rentMonth.month}`;
         rentByPropertyMonth.set(rentKey, (rentByPropertyMonth.get(rentKey) ?? 0) + money(entry.amount));
@@ -212,7 +244,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
   const propertiesWithCurrentRent = new Set<string>();
   for (const entry of input.entries) {
     if (!entry.object_id || !isRentEntry(entry)) continue;
-    const rentMonth = effectiveRentMonth(entry.booking_date);
+    const rentMonth = effectiveRentMonth(entry);
     if (rentMonth?.year === input.year) propertiesWithCurrentRent.add(String(entry.object_id));
   }
 
@@ -230,7 +262,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
             propertyId,
             propertyName: names[propertyId] ?? "Unbekanntes Objekt",
             detail: `Für ${String(month).padStart(2, "0")}/${input.year} wurde kein Mieteingang gefunden. Zukünftige Monate werden bewusst nicht rot markiert.`,
-            repairHint: "Mieteingang prüfen. Zahlungen ab dem 25. des Vormonats zählen bereits automatisch als Folgemonat.",
+            repairHint: 'Mieteingang prüfen. Wenn die Notiz einen Monat nennt (z. B. "April 2026"), wird dieser Monat bevorzugt; sonst gilt die 25.-Regel.',
             actualValue: value,
           });
         }
