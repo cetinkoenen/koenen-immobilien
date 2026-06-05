@@ -6,6 +6,7 @@ import { emitFinanceEntryChanged } from "../state/AppDataContext";
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;
 type GroupMode = "none" | "object" | "category" | "type";
+type PeriodMode = "month" | "year";
 
 type EntryRow = {
   id: number;
@@ -282,6 +283,7 @@ export default function Monate() {
 
   const [year, setYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
 
   const [objects, setObjects] = useState<DropdownRow[]>([]);
   const [objektCode, setObjektCode] = useState<string>("ALL");
@@ -402,7 +404,7 @@ export default function Monate() {
     return [...income, ...expense];
   }
 
-  async function loadMonth() {
+  async function loadEntries() {
     setLoading(true);
     setErr(null);
 
@@ -413,21 +415,21 @@ export default function Monate() {
       return;
     }
 
-    if (!Number.isFinite(month) || month < 1 || month > 12) {
+    if (periodMode === "month" && (!Number.isFinite(month) || month < 1 || month > 12)) {
       setRows([]);
       setErr("Bitte einen gültigen Monat auswählen.");
       setLoading(false);
       return;
     }
 
-    const { from, to } = monthRangeISO(year, month);
+    const { from, to } = periodMode === "year" ? yearRangeISO(year) : monthRangeISO(year, month);
     const code = objektCode.trim();
 
     try {
       const data = await fetchEntriesForRange(from, to, code);
       setRows(data);
     } catch (e: any) {
-      console.error("loadMonth failed:", e);
+      console.error("loadEntries failed:", e);
       setRows([]);
       setErr(e?.message ?? String(e));
     } finally {
@@ -436,9 +438,9 @@ export default function Monate() {
   }
 
   useEffect(() => {
-    void loadMonth();
+    void loadEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objektCode, year, month]);
+  }, [objektCode, year, month, periodMode]);
 
   const categories = useMemo(() => {
     return Array.from(
@@ -516,7 +518,7 @@ export default function Monate() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, typeFilter, categoryFilter, objektCode, year, month, sortKey, sortDirection]);
+  }, [search, typeFilter, categoryFilter, objektCode, year, month, periodMode, sortKey, sortDirection]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
 
@@ -698,7 +700,7 @@ export default function Monate() {
 
     clearAppDataCache();
     emitFinanceEntryChanged();
-    await loadMonth();
+    await loadEntries();
   }
 
   async function deleteSelectedEntries() {
@@ -740,7 +742,7 @@ export default function Monate() {
       setSelectedKeys([]);
       clearAppDataCache();
       emitFinanceEntryChanged();
-      await loadMonth();
+      await loadEntries();
     } catch (e: any) {
       alert(`Batch Delete fehlgeschlagen: ${e?.message ?? String(e)}`);
     } finally {
@@ -830,7 +832,7 @@ export default function Monate() {
       setEditRow(null);
       clearAppDataCache();
       emitFinanceEntryChanged();
-      await loadMonth();
+      await loadEntries();
     } catch (e: any) {
       alert(`Speichern fehlgeschlagen: ${e?.message ?? String(e)}`);
     } finally {
@@ -910,12 +912,16 @@ export default function Monate() {
     const objectPart =
       objektCode !== "ALL" ? `${sanitizeFilenamePart(objektCode)}_` : "alle_objekte_";
 
-    const filename = `monatsuebersicht_${objectPart}${year}_${monthPart}.csv`;
+    const filename =
+      periodMode === "year"
+        ? `jahresuebersicht_${objectPart}${year}_gefiltert.csv`
+        : `monatsuebersicht_${objectPart}${year}_${monthPart}_gefiltert.csv`;
 
     downloadCsv(filename, csv);
   }
 
   const monthLabel = MONTHS.find((x) => x.m === month)?.label ?? String(month);
+  const periodLabel = periodMode === "year" ? `Jahr ${year}` : `${monthLabel} ${year}`;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -927,10 +933,27 @@ export default function Monate() {
       >
         <div>
           <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 6 }}>
-            Monate
+            Buchhaltung
           </div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Monatsübersicht aller Buchungen mit Filtern, Sortierung, Bearbeiten, Löschen, CSV-Export, Pagination, Batch Delete und smarter Kategorienbearbeitung.
+            Zentrale Monats- und Jahresübersicht für Einnahmen und Ausgaben. Hier filterst,
+            sortierst, bearbeitest und exportierst du bestehende Buchungen.
+          </div>
+          <div
+            style={{
+              marginTop: 10,
+              border: "1px solid #bbf7d0",
+              borderRadius: 12,
+              background: "#f0fdf4",
+              color: "#166534",
+              padding: "9px 11px",
+              fontSize: 12,
+              fontWeight: 800,
+              lineHeight: 1.5,
+            }}
+          >
+            Datensicher: Gelöschte Buchungen werden nur markiert und nicht endgültig aus der
+            Datenbank entfernt.
           </div>
         </div>
 
@@ -953,6 +976,29 @@ export default function Monate() {
               alignItems: "end",
             }}
           >
+            <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, display: "grid", gap: 6 }}>
+              Ansicht
+              <select
+                value={periodMode}
+                onChange={(e) => {
+                  setPeriodMode(e.target.value as PeriodMode);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  padding: "0 14px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  fontWeight: 800,
+                  background: "white",
+                }}
+              >
+                <option value="month">Monat</option>
+                <option value="year">Ganzes Jahr</option>
+              </select>
+            </label>
+
             <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, display: "grid", gap: 6 }}>
               Objekt
               <select
@@ -1000,6 +1046,7 @@ export default function Monate() {
               <select
                 value={month}
                 onChange={(e) => setMonth(Number(e.target.value))}
+                disabled={periodMode === "year"}
                 style={{
                   width: "100%",
                   height: 46,
@@ -1007,7 +1054,9 @@ export default function Monate() {
                   borderRadius: 12,
                   border: "1px solid #e5e7eb",
                   fontWeight: 800,
-                  background: "white",
+                  background: periodMode === "year" ? "#f8fafc" : "white",
+                  color: periodMode === "year" ? "#94a3b8" : undefined,
+                  cursor: periodMode === "year" ? "not-allowed" : undefined,
                 }}
               >
                 {MONTHS.map((x) => (
@@ -1028,7 +1077,7 @@ export default function Monate() {
             }}
           >
             <button
-              onClick={() => void loadMonth()}
+              onClick={() => void loadEntries()}
               disabled={loading}
               style={{
                 minHeight: 46,
@@ -1056,9 +1105,9 @@ export default function Monate() {
                 fontWeight: 900,
                 cursor: loading || sortedRows.length === 0 ? "not-allowed" : "pointer",
               }}
-              title="Aktuell gefilterte und sortierte Monatstabelle als CSV exportieren"
+              title="Aktuell gefilterte und sortierte Tabelle als CSV exportieren"
             >
-              Monats-CSV exportieren
+              {periodMode === "year" ? "Gefilterte Jahres-CSV" : "Gefilterte Monats-CSV"}
             </button>
 
             <button
@@ -1131,9 +1180,9 @@ export default function Monate() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 950 }}>Buchungen im Monat ({monthLabel} {year})</div>
+            <div style={{ fontWeight: 950 }}>Buchungen im {periodMode === "year" ? "Jahr" : "Monat"} ({periodLabel})</div>
             <div style={{ fontSize: 12, opacity: 0.65, fontWeight: 800, marginTop: 3 }}>
-              Enterprise-Ansicht mit Presets, Gruppierung, Summenzeilen, Sticky Header und Batch-Auswahl.
+              Alle geladenen Buchungen koennen weiter nach Immobilie, Kategorie, Typ, Notiz, Datum und Gruppierung gefiltert werden.
             </div>
           </div>
 
@@ -1174,12 +1223,11 @@ export default function Monate() {
           </label>
 
           <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-            Jahr
-            <input
-              type="number"
-              value={year}
+            Ansicht
+            <select
+              value={periodMode}
               onChange={(e) => {
-                setYear(Number(e.target.value));
+                setPeriodMode(e.target.value as PeriodMode);
                 setCurrentPage(1);
               }}
               style={{
@@ -1191,7 +1239,10 @@ export default function Monate() {
                 fontWeight: 700,
                 background: "white",
               }}
-            />
+            >
+              <option value="month">Monat</option>
+              <option value="year">Ganzes Jahr</option>
+            </select>
           </label>
 
           <label style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>

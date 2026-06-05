@@ -567,9 +567,13 @@ export default function Mietuebersicht() {
   return (
     <div className="tenant-page">
       <header className="tenant-hero">
-        <h1>Mieterübersicht</h1>
-        <p>Alle Mieteingänge kommen direkt aus der Seite Buchungen. Die Mieterdaten werden automatisch aus Portfolio → Mieterübersicht übernommen.</p>
+        <h1>Mieter prüfen</h1>
+        <p>
+          Diese Seite kontrolliert Mieteingänge aus den vorhandenen Buchungen. Neue
+          Mieterstammdaten werden zentral unter „Mieter anlegen“ gepflegt.
+        </p>
         <div className="tenant-actions">
+          <NavLink to="/mieter-anlegen">Mieter anlegen</NavLink>
           <NavLink to="/buchungen">Buchung / Mieteingang erfassen</NavLink>
           <NavLink to="/nebenkosten/wohnungen">Nebenkosten Wohnungen</NavLink>
           <NavLink to="/nebenkosten/tiefgarage">Nebenkosten TG</NavLink>
@@ -609,13 +613,13 @@ export default function Mietuebersicht() {
                       <div className="tenant-date"><small>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
                     </div>
                     <div className="tenant-fields">
-                      <input value={tenant.firstName} placeholder="Name" readOnly disabled title="Wird automatisch aus Portfolio → Mieterübersicht übernommen" />
-                      <input value={tenant.lastName} placeholder="Nachname" readOnly disabled title="Wird automatisch aus Portfolio → Mieterübersicht übernommen" />
-                      <input value={tenant.phone} placeholder="Telefon" readOnly disabled title="Wird automatisch aus Portfolio → Mieterübersicht übernommen" />
-                      <input value={tenant.email} placeholder="E-Mail" type="email" readOnly disabled title="Wird automatisch aus Portfolio → Mieterübersicht übernommen" />
+                      <input value={tenant.firstName} placeholder="Name" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
+                      <input value={tenant.lastName} placeholder="Nachname" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
+                      <input value={tenant.phone} placeholder="Telefon" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
+                      <input value={tenant.email} placeholder="E-Mail" type="email" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
                     </div>
                     <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-                      <small>Automatisch aus Portfolio übernommen · nicht auf dieser Seite editierbar</small>
+                      <small>Mieterdaten sind hier nur lesbar · Pflege ueber Mieter anlegen</small>
                     </div>
                   </article>
                 );

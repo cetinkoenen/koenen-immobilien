@@ -14,9 +14,11 @@ import EntryAdd from "./pages/EntryAdd";
 import Monate from "./pages/Monate";
 import Portfolio from "./pages/Portfolio";
 import Auswertung from "./pages/Auswertung";
+import SteuerCenter from "./pages/SteuerCenter";
 import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
+import MieterAnlegen from "./pages/MieterAnlegen";
 import Darlehensuebersicht from "./pages/Darlehensuebersicht";
 import Datenpruefung from "./pages/Datenpruefung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
@@ -44,13 +46,13 @@ function navLinkStyle(isActive: boolean): CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 136,
-    height: 46,
-    padding: "0 18px",
-    borderRadius: 16,
+    minWidth: 126,
+    height: 44,
+    padding: "0 16px",
+    borderRadius: 14,
     textDecoration: "none",
     fontWeight: 850,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 1,
     letterSpacing: "-0.01em",
     transition:
@@ -173,10 +175,12 @@ function AppShell() {
   const navItems = useMemo<Array<{ to: string; label: string; end?: boolean }>>(
     () => [
       { to: "/portfolio", label: "Portfolio" },
-      { to: "/monate", label: "Monate" },
+      { to: "/buchhaltung", label: "Buchhaltung" },
+      { to: "/steuer", label: "Steuer" },
       { to: "/auswertungen", label: "Auswertungen" },
-      { to: "/buchungen", label: "Buchungen" },
-      { to: "/mieteruebersicht", label: "Mieterübersicht" },
+      { to: "/buchungen", label: "Neue Buchung" },
+      { to: "/mieteruebersicht", label: "Mieter prüfen" },
+      { to: "/mieter-anlegen", label: "Mieter anlegen" },
       { to: "/darlehensuebersicht", label: "Darlehen" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
@@ -340,6 +344,8 @@ export default function App() {
         />
 
         <Route path="/monate" element={<Monate />} />
+        <Route path="/buchhaltung" element={<Monate />} />
+        <Route path="/steuer" element={<SteuerCenter />} />
         <Route path="/auswertungen" element={<Auswertung />} />
         <Route
           path="/auswertung"
@@ -348,6 +354,7 @@ export default function App() {
 
         <Route path="/buchungen" element={<EntryAdd />} />
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
+        <Route path="/mieter-anlegen" element={<MieterAnlegen />} />
         <Route
           path="/entry-add"
           element={<Navigate to="/buchungen" replace />}

@@ -121,8 +121,8 @@ export default function Navbar() {
           <PillLink to="/exports" label="Exports" />
           <PillLink to="/uebersicht" label="Übersicht" />
           <PillLink to="/auswertung" label="Auswertung" />
-          <PillLink to="/monate" label="Monate" />
-          <PillLink to="/entry-add" label="+ Buchung" />
+          <PillLink to="/buchhaltung" label="Buchhaltung" />
+          <PillLink to="/entry-add" label="Neue Buchung" />
           <PillLink to="/admin/categories" label="Kategorien" />
         </nav>
 
