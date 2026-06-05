@@ -74,9 +74,20 @@ function formatTenantName(tenant: TenantProfile): string {
 
 function formatDate(value: string | null): string {
   if (!value) return "";
-  const date = new Date(`${value}T00:00:00`);
+  const date = new Date(value.includes("T") ? value : `${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("de-DE").format(date);
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatContact(tenant: TenantProfile): string {
+  const parts = [tenant.email, tenant.phone, tenant.mobile].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Keine Kontaktdaten hinterlegt";
 }
 
 export default function MieterAnlegen() {
@@ -170,7 +181,7 @@ export default function MieterAnlegen() {
 
       setStatus(
         result.contract
-          ? "Mieter und Mietverhaeltnis wurden gespeichert."
+          ? "Mieter und Mietverhältnis wurden gespeichert."
           : "Mieter wurde gespeichert.",
       );
       setForm(emptyForm);
@@ -197,12 +208,12 @@ export default function MieterAnlegen() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
               Neue Mieterdaten werden in einer eigenen Stammdatenquelle gespeichert.
-              Bestehende Buchungen, Darlehen, Charts und Portfolio-Berechnungen werden dabei nicht veraendert.
+              Bestehende Buchungen, Darlehen, Charts und Portfolio-Berechnungen werden dabei nicht verändert.
             </p>
           </div>
 
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
-            Sicherer Start: neue Tabellen, keine Aenderung an `finance_entry`.
+            Sicherer Start: neue Tabellen, keine Änderung an Buchungen.
           </div>
         </div>
       </section>
@@ -232,7 +243,7 @@ export default function MieterAnlegen() {
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
             <SectionTitle title="Adresse / Bank" />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="Strasse" name="street" value={form.street} onChange={updateField} className="xl:col-span-2" />
+              <Field label="Straße" name="street" value={form.street} onChange={updateField} className="xl:col-span-2" />
               <Field label="PLZ" name="postalCode" value={form.postalCode} onChange={updateField} />
               <Field label="Ort" name="city" value={form.city} onChange={updateField} />
               <Field label="Bank" name="bankName" value={form.bankName} onChange={updateField} className="xl:col-span-2" />
@@ -241,7 +252,7 @@ export default function MieterAnlegen() {
           </section>
 
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionTitle title="Mietverhaeltnis" />
+            <SectionTitle title="Mietverhältnis" />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <label className="grid gap-2 text-sm font-bold text-slate-700 xl:col-span-2">
                 Objekt
@@ -317,7 +328,7 @@ export default function MieterAnlegen() {
                   <div key={tenant.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="text-sm font-black text-slate-950">{formatTenantName(tenant)}</div>
                     <div className="mt-1 text-xs font-semibold text-slate-500">
-                      {tenant.email || tenant.phone || tenant.mobile || "Keine Kontaktdaten"}
+                      {formatContact(tenant)}
                     </div>
                     <div className="mt-2 text-xs font-bold text-slate-400">
                       Aktualisiert {formatDate(tenant.updated_at)}
@@ -339,7 +350,7 @@ export default function MieterAnlegen() {
             </div>
             <p className="mt-2">
               Diese Seite schreibt nur in die neuen Mieter-Tabellen. Alte Mieterdaten in Portfolio,
-              Mieteruebersicht und Vermietung bleiben zunaechst unveraendert sichtbar.
+              Mieterübersicht und Vermietung bleiben zunächst unverändert sichtbar.
             </p>
           </section>
         </aside>
