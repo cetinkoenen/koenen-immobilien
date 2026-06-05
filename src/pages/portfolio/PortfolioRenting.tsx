@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { normalizeUuid } from "../../lib/ids";
 import type { PortfolioOutletContext } from "./PortfolioPropertyLayout";
@@ -1328,6 +1328,20 @@ export default function PortfolioRenting(props: Props) {
                         >
                           Löschen
                         </button>
+                        <Link
+                          to={`/mieter-anlegen?propertyId=${encodeURIComponent(preferredWriteId ?? row.property_id)}&unit=${encodeURIComponent(row.rent_type ?? "")}`}
+                          style={{
+                            ...smallActionButtonStyle(false),
+                            marginLeft: 8,
+                            background: "#0f5f78",
+                            color: "#ffffff",
+                            borderColor: "#0b3f52",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                          }}
+                        >
+                          Mieterdaten
+                        </Link>
                       </td>
                     </tr>
                   );

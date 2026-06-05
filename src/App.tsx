@@ -19,6 +19,7 @@ import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
 import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
 import Mietuebersicht from "./pages/Mietuebersicht";
 import MieterAnlegen from "./pages/MieterAnlegen";
+import Leerstand from "./pages/Leerstand";
 import Darlehensuebersicht from "./pages/Darlehensuebersicht";
 import Datenpruefung from "./pages/Datenpruefung";
 import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
@@ -181,6 +182,7 @@ function AppShell() {
       { to: "/buchungen", label: "Neue Buchung" },
       { to: "/mieteruebersicht", label: "Mieter prüfen" },
       { to: "/mieter-anlegen", label: "Mieter anlegen" },
+      { to: "/leerstand", label: "Leerstand" },
       { to: "/darlehensuebersicht", label: "Darlehen" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
@@ -355,6 +357,7 @@ export default function App() {
         <Route path="/buchungen" element={<EntryAdd />} />
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/mieter-anlegen" element={<MieterAnlegen />} />
+        <Route path="/leerstand" element={<Leerstand />} />
         <Route
           path="/entry-add"
           element={<Navigate to="/buchungen" replace />}

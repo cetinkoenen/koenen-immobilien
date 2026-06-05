@@ -384,3 +384,9 @@ header nav { align-content: center; }
 button, a { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 1280px) { header .max-w-\[1760px\] { max-width: 100% !important; } }
 @media (max-width: 640px) { header img { object-fit: contain; } }
+
+/* Leerstand in der Mieterprüfung: eigener neutraler Zustand zwischen bezahlt und fehlt. */
+.tenant-row.is-vacant { background: #f4f4f5 !important; }
+.tenant-row.is-vacant .tenant-status span { background: #e4e4e7 !important; color: #3f3f46 !important; border: 1px solid #d4d4d8; }
+.tenant-row.is-vacant .tenant-amount b { color: #52525b !important; }
+.tenant-summary-lines .gray { color: #52525b; }

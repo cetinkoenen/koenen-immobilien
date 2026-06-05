@@ -11,9 +11,16 @@ import {
   writeLocalTenantExtras,
   type PropertyExtraInfo,
 } from "../services/propertyExtraService";
+import {
+  isVacancyActiveInRange,
+  listDerivedVacanciesFromEndedRentals,
+  listVacancies,
+  type UnitVacancy,
+} from "../services/vacancyService";
 
 type TenantInfo = Pick<PropertyExtraInfo, "firstName" | "lastName" | "phone" | "email">;
-type OverviewRow = { objectId: string; objectCode: string | null; tenantKey: string; label: string; unitLabel?: string; referenceLabel?: string; paidAmount: number; lastBookingDate: string | null; status: "paid" | "missing" };
+type PaymentStatus = "paid" | "missing" | "vacant";
+type OverviewRow = { objectId: string; objectCode: string | null; tenantKey: string; label: string; unitLabel?: string; referenceLabel?: string; paidAmount: number; lastBookingDate: string | null; status: PaymentStatus; vacancyReason?: string | null };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
 
@@ -349,12 +356,29 @@ function loadStoredTenants(): Record<string, TenantInfo> {
   return Object.fromEntries(Object.entries(extras).map(([key, value]) => [key, toTenantInfo(value)]));
 }
 
-function DonutChart({ paid, missing }: { paid: number; missing: number }) {
-  const total = paid + missing;
+function vacancyMatchesUnit(vacancy: UnitVacancy, object: { id: string; code: string | null; label: string }, unit: UnitDefinition): boolean {
+  const propertyMatch =
+    vacancy.property_id === object.id ||
+    normalizeReferenceText(vacancy.object_code) === normalizeReferenceText(object.code) ||
+    normalizeReferenceText(vacancy.object_label) === normalizeReferenceText(object.label);
+
+  if (!propertyMatch) return false;
+
+  const vacancyUnit = normalizeReferenceText(vacancy.unit_label);
+  if (!vacancyUnit) return true;
+
+  const unitRef = normalizeReferenceText(unit.ref);
+  const unitTitle = normalizeReferenceText(unit.title);
+  return vacancyUnit.includes(unitRef) || unitRef.includes(vacancyUnit) || vacancyUnit.includes(unitTitle) || unitTitle.includes(vacancyUnit);
+}
+
+function DonutChart({ paid, missing, vacant }: { paid: number; missing: number; vacant: number }) {
+  const total = paid + missing + vacant;
   const paidPercent = total > 0 ? Math.round((paid / total) * 100) : 0;
+  const missingPercent = total > 0 ? Math.round((missing / total) * 100) : 0;
   return (
     <div className="tenant-donut-wrap">
-      <div className="tenant-donut" style={{ background: `conic-gradient(#22c55e 0 ${paidPercent}%, #ef4444 ${paidPercent}% 100%)` }}>
+      <div className="tenant-donut" style={{ background: `conic-gradient(#22c55e 0 ${paidPercent}%, #ef4444 ${paidPercent}% ${paidPercent + missingPercent}%, #a1a1aa ${paidPercent + missingPercent}% 100%)` }}>
         <div>{paidPercent}%</div>
       </div>
       <span>Mieteingänge</span>
@@ -373,6 +397,7 @@ export default function Mietuebersicht() {
   }, [monthOffset]);
   const appData = useAppData();
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
+  const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>(() => loadStoredTenants());
   const [, setFullExtras] = useState<Record<string, PropertyExtraInfo>>(() => mergeLocalSources());
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -425,6 +450,39 @@ export default function Mietuebersicht() {
       window.removeEventListener("focus", handler);
     };
   }, [month.previousMonthEndWindowStart, month.end]);
+
+  useEffect(() => {
+    if (!sourceObjects.length) return;
+    let cancelled = false;
+
+    async function loadVacancies() {
+      try {
+        const propertyIds = sourceObjects.map((object) => object.id);
+        const labelByPropertyId = Object.fromEntries(sourceObjects.map((object) => [object.id, object.label]));
+        const [manualRows, derivedRows] = await Promise.all([
+          listVacancies({ from: month.start, to: month.end }),
+          listDerivedVacanciesFromEndedRentals(propertyIds, month.start, month.end, labelByPropertyId),
+        ]);
+        if (cancelled) return;
+        const activeRows = [...manualRows, ...derivedRows].filter((row) => isVacancyActiveInRange(row, month.start, month.end));
+        setVacancies(activeRows);
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("Leerstände konnten nicht geladen werden:", error);
+        setVacancies([]);
+      }
+    }
+
+    void loadVacancies();
+    const handler = () => void loadVacancies();
+    window.addEventListener("koenen:vacancy-changed", handler);
+    window.addEventListener("focus", handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("koenen:vacancy-changed", handler);
+      window.removeEventListener("focus", handler);
+    };
+  }, [sourceObjects, month.start, month.end]);
 
   useEffect(() => {
     const ids = sourceObjects.map((object) => object.id).filter(Boolean);
@@ -491,6 +549,7 @@ export default function Mietuebersicht() {
         return units.map((unit) => {
           const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
           const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
+          const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit));
           let unitBookings = relevantBookings.filter(unit.matcher);
 
           if (isFuertherWohnungUnit(object.label, unit.ref)) {
@@ -549,19 +608,21 @@ export default function Mietuebersicht() {
             referenceLabel: units.length > 1 ? unit.ref : undefined,
             paidAmount,
             lastBookingDate: sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
-            status: paidAmount > 0 ? "paid" : "missing",
+            status: vacancy ? "vacant" : paidAmount > 0 ? "paid" : "missing",
+            vacancyReason: vacancy?.reason ?? vacancy?.notes ?? null,
           };
         });
       }),
-    [sourceObjects, appData, monthBookings, tenantInfo, month.start, month.end]
+    [sourceObjects, appData, monthBookings, tenantInfo, month.start, month.end, vacancies]
   );
 
   const resetToRecommendedMonth = () => setMonthOffset(new Date().getDate() >= 25 ? 1 : 0);
 
   const stats = useMemo(() => {
     const paid = rows.filter((row) => row.status === "paid").length;
-    const missing = rows.length - paid;
-    return { paid, missing, total: rows.length, amount: rows.reduce((sum, row) => sum + row.paidAmount, 0) };
+    const vacant = rows.filter((row) => row.status === "vacant").length;
+    const missing = rows.filter((row) => row.status === "missing").length;
+    return { paid, missing, vacant, total: rows.length, amount: rows.reduce((sum, row) => sum + row.paidAmount, 0) };
   }, [rows]);
 
   return (
@@ -574,6 +635,7 @@ export default function Mietuebersicht() {
         </p>
         <div className="tenant-actions">
           <NavLink to="/mieter-anlegen">Mieter anlegen</NavLink>
+          <NavLink to="/leerstand">Leerstand verwalten</NavLink>
           <NavLink to="/buchungen">Buchung / Mieteingang erfassen</NavLink>
           <NavLink to="/nebenkosten/wohnungen">Nebenkosten Wohnungen</NavLink>
           <NavLink to="/nebenkosten/tiefgarage">Nebenkosten TG</NavLink>
@@ -604,12 +666,13 @@ export default function Mietuebersicht() {
               {rows.map((row) => {
                 const tenant = tenantInfo[row.tenantKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
                 const missing = row.status === "missing";
+                const vacant = row.status === "vacant";
                 return (
-                  <article key={row.tenantKey} className={`tenant-row ${missing ? "is-missing" : "is-paid"}`}>
+                  <article key={row.tenantKey} className={`tenant-row ${vacant ? "is-vacant" : missing ? "is-missing" : "is-paid"}`}>
                     <div className="tenant-row-top">
-                      <div className="tenant-status"><span>{missing ? "FEHLT" : "BEZAHLT"}</span></div>
+                      <div className="tenant-status"><span>{vacant ? "LEERSTAND" : missing ? "FEHLT" : "BEZAHLT"}</span></div>
                       <div className="tenant-unit"><small>Einheit</small><b>{row.label}</b>{row.unitLabel ? <em style={{ display: "block", marginTop: 4, color: "#0f172a", fontStyle: "normal", fontWeight: 900 }}>{row.unitLabel}</em> : null}{row.referenceLabel && row.referenceLabel !== row.unitLabel ? <small style={{ display: "block", marginTop: 3 }}>Betreff-Referenz: {row.referenceLabel}</small> : null}</div>
-                      <div className="tenant-amount"><small>Mieteingang</small><b>{formatCurrency(row.paidAmount)}</b></div>
+                      <div className="tenant-amount"><small>Mieteingang</small><b>{vacant ? "Leerstand" : formatCurrency(row.paidAmount)}</b>{vacant && row.vacancyReason ? <small>{row.vacancyReason}</small> : null}</div>
                       <div className="tenant-date"><small>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
                     </div>
                     <div className="tenant-fields">
@@ -632,10 +695,11 @@ export default function Mietuebersicht() {
 
         <aside className="tenant-summary">
           <h2>Zusammenfassung</h2>
-          <DonutChart paid={stats.paid} missing={stats.missing} />
+          <DonutChart paid={stats.paid} missing={stats.missing} vacant={stats.vacant} />
           <div className="tenant-summary-lines">
             <div><span>Bezahlt</span><b>{stats.paid}</b></div>
             <div className="red"><span>Fehlt</span><b>{stats.missing}</b></div>
+            <div className="gray"><span>Leerstand</span><b>{stats.vacant}</b></div>
             <div><span>Gesamt</span><b>{stats.total}</b></div>
           </div>
         </aside>

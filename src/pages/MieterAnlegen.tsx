@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Building2, CheckCircle2, Save, UserPlus } from "lucide-react";
 
 import {
@@ -92,6 +93,7 @@ function formatContact(tenant: TenantProfile): string {
 
 export default function MieterAnlegen() {
   const appData = useAppData();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [recentTenants, setRecentTenants] = useState<TenantProfile[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
@@ -131,6 +133,17 @@ export default function MieterAnlegen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRecentTenants();
   }, []);
+
+  useEffect(() => {
+    const propertyId = searchParams.get("propertyId");
+    const unit = searchParams.get("unit");
+    if (!propertyId && !unit) return;
+    setForm((current) => ({
+      ...current,
+      propertyId: propertyId ?? current.propertyId,
+      unitLabel: unit ?? current.unitLabel,
+    }));
+  }, [searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
