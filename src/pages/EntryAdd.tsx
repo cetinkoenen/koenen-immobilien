@@ -66,6 +66,7 @@ export default function EntryAdd() {
   const [amount, setAmount] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [note, setNote] = useState<string>("");
+  const [taxRelevant, setTaxRelevant] = useState<boolean>(true);
 
   const [saving, setSaving] = useState<boolean>(false);
   const [loadingObjects, setLoadingObjects] = useState<boolean>(true);
@@ -131,6 +132,7 @@ export default function EntryAdd() {
     setAmount("");
     setCategory("");
     setNote("");
+    setTaxRelevant(true);
     setMsg(null);
   }
 
@@ -163,6 +165,7 @@ export default function EntryAdd() {
         amount: amountNumber,
         category: category.trim() || null,
         note: note.trim() || null,
+        tax_relevant: taxRelevant,
       };
 
       const { error } = await supabase.from("finance_entry").insert(payload);
@@ -177,6 +180,7 @@ export default function EntryAdd() {
       setAmount("");
       setCategory("");
       setNote("");
+      setTaxRelevant(true);
     } catch (e: any) {
       setMsg(`❌ Speichern fehlgeschlagen: ${e?.message ?? String(e)}`);
     } finally {
@@ -317,6 +321,29 @@ export default function EntryAdd() {
               placeholder="optional"
               style={inputStyle()}
             />
+          </label>
+
+          <label
+            style={{
+              ...fieldLabelStyle(),
+              alignSelf: "end",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 12px",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              background: "#f8fafc",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={taxRelevant}
+              onChange={(event) => setTaxRelevant(event.target.checked)}
+              style={{ width: 18, height: 18 }}
+            />
+            Steuerrelevant
           </label>
         </div>
 

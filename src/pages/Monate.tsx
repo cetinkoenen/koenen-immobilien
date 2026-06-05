@@ -16,6 +16,7 @@ type EntryRow = {
   category: string | null;
   note: string | null;
   entry_type: EntryType;
+  tax_relevant: boolean | null;
 };
 
 type DropdownRow = {
@@ -314,6 +315,7 @@ export default function Monate() {
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editTaxRelevant, setEditTaxRelevant] = useState<boolean>(false);
 
   const [editCategoryMode, setEditCategoryMode] = useState<"existing" | "new">("existing");
   const [editCategorySelect, setEditCategorySelect] = useState("");
@@ -359,49 +361,33 @@ export default function Monate() {
   }, [objects]);
 
   async function fetchEntriesForRange(from: string, to: string, code: string) {
-    let incomeQuery = supabase
-      .from("v_income_entries")
-      .select("id,objekt_code,booking_date,amount,category,note")
+    let query = supabase
+      .from("finance_entry")
+      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+      .eq("is_deleted", false)
       .gte("booking_date", from)
-      .lt("booking_date", to);
-
-    let expenseQuery = supabase
-      .from("v_expense_entries")
-      .select("id,objekt_code,booking_date,amount,category,note")
-      .gte("booking_date", from)
-      .lt("booking_date", to);
+      .lt("booking_date", to)
+      .in("entry_type", ["income", "expense"])
+      .order("booking_date", { ascending: false });
 
     if (code && code !== "ALL") {
-      incomeQuery = incomeQuery.eq("objekt_code", code);
-      expenseQuery = expenseQuery.eq("objekt_code", code);
+      query = query.eq("objekt_code", code);
     }
 
-    const [incRes, expRes] = await Promise.all([incomeQuery, expenseQuery]);
+    const { data, error } = await query;
+    if (error) throw error;
 
-    if (incRes.error) throw incRes.error;
-    if (expRes.error) throw expRes.error;
-
-    const income: EntryRow[] = (incRes.data ?? []).map((r: any) => ({
+    const entries: EntryRow[] = (data ?? []).map((r: any) => ({
       id: Number(r.id),
       objekt_code: r.objekt_code ?? null,
       booking_date: r.booking_date,
       amount: Number(r.amount || 0),
       category: r.category ?? null,
       note: r.note ?? null,
-      entry_type: "income",
+      entry_type: r.entry_type === "expense" ? "expense" : "income",
+      tax_relevant: typeof r.tax_relevant === "boolean" ? r.tax_relevant : null,
     }));
-
-    const expense: EntryRow[] = (expRes.data ?? []).map((r: any) => ({
-      id: Number(r.id),
-      objekt_code: r.objekt_code ?? null,
-      booking_date: r.booking_date,
-      amount: Number(r.amount || 0),
-      category: r.category ?? null,
-      note: r.note ?? null,
-      entry_type: "expense",
-    }));
-
-    return [...income, ...expense];
+    return entries;
   }
 
   async function loadEntries() {
@@ -759,6 +745,7 @@ export default function Monate() {
     setEditDate(row.booking_date);
     setEditAmount(String(row.amount));
     setEditNote(row.note ?? "");
+    setEditTaxRelevant(Boolean(row.tax_relevant));
 
     if (!rawCategory) {
       setEditCategoryMode("existing");
@@ -813,12 +800,14 @@ export default function Monate() {
         amount: number;
         category: string | null;
         note: string | null;
+        tax_relevant: boolean;
       } = {
         entry_type: editType,
         booking_date: editDate,
         amount: n,
         category: resolvedCategory || null,
         note: editNote.trim() || null,
+        tax_relevant: editTaxRelevant,
       };
 
       const { error } = await supabase
@@ -838,6 +827,24 @@ export default function Monate() {
     } finally {
       setEditSaving(false);
     }
+  }
+
+  async function updateTaxRelevant(row: EntryRow, value: boolean) {
+    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: value } : item)));
+
+    const { error } = await supabase
+      .from("finance_entry")
+      .update({ tax_relevant: value })
+      .eq("id", row.id);
+
+    if (error) {
+      setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: row.tax_relevant } : item)));
+      alert(`Steuerrelevanz konnte nicht gespeichert werden: ${error.message}`);
+      return;
+    }
+
+    clearAppDataCache();
+    emitFinanceEntryChanged();
   }
 
   async function exportYearCsv() {
@@ -870,10 +877,11 @@ export default function Monate() {
               maximumFractionDigits: 2,
             }),
             Notiz: r.note?.trim() || "",
+            Steuerrelevant: r.tax_relevant ? "Ja" : "Nein",
           };
         });
 
-      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz"];
+      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "Steuerrelevant"];
       const csv = toCsv(exportRows, headers);
       const objectPart = code && code !== "ALL" ? `${sanitizeFilenamePart(code)}_` : "alle_objekte_";
       const filename = `jahresuebersicht_${objectPart}${year}.csv`;
@@ -902,10 +910,11 @@ export default function Monate() {
           maximumFractionDigits: 2,
         }),
         Notiz: r.note?.trim() || "",
+        Steuerrelevant: r.tax_relevant ? "Ja" : "Nein",
       };
     });
 
-    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz"];
+    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "Steuerrelevant"];
     const csv = toCsv(exportRows, headers);
 
     const monthPart = String(month).padStart(2, "0");
@@ -1472,6 +1481,9 @@ export default function Monate() {
                 <th style={{ textAlign: "left", padding: 10, fontSize: 12, opacity: 0.75 }}>
                   Notiz
                 </th>
+                <th style={{ textAlign: "center", padding: 10, fontSize: 12, opacity: 0.75 }}>
+                  Steuer
+                </th>
                 <th style={{ padding: 10, width: 140 }} />
               </tr>
             </thead>
@@ -1479,13 +1491,13 @@ export default function Monate() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 12, opacity: 0.7 }}>
+                  <td colSpan={9} style={{ padding: 12, opacity: 0.7 }}>
                     Lädt…
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 12, opacity: 0.7 }}>
+                  <td colSpan={9} style={{ padding: 12, opacity: 0.7 }}>
                     Keine Einträge für die aktuelle Filterung.
                   </td>
                 </tr>
@@ -1562,6 +1574,16 @@ export default function Monate() {
                         {r.note?.trim() || "—"}
                       </td>
 
+                      <td style={{ padding: 10, textAlign: "center", whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(r.tax_relevant)}
+                          onChange={(event) => void updateTaxRelevant(r, event.target.checked)}
+                          title="Steuerrelevant Ja/Nein"
+                          style={{ width: 18, height: 18 }}
+                        />
+                      </td>
+
                       <td style={{ padding: 10, textAlign: "right", whiteSpace: "nowrap" }}>
                         <button
                           onClick={() => openEdit(r)}
@@ -1605,7 +1627,7 @@ export default function Monate() {
                 <td style={{ padding: 10, textAlign: "right", fontWeight: 950, color: totals.net < 0 ? "#991b1b" : "#166534", whiteSpace: "nowrap" }}>
                   {formatEUR(totals.net)}
                 </td>
-                <td colSpan={2} style={{ padding: 10, fontSize: 12, opacity: 0.7 }}>
+                <td colSpan={3} style={{ padding: 10, fontSize: 12, opacity: 0.7 }}>
                   Einnahmen {formatEUR(totals.income)} · Ausgaben {formatEUR(totals.expense)}
                 </td>
               </tr>
@@ -1808,6 +1830,28 @@ export default function Monate() {
                 fontWeight: 800,
               }}
             />
+          </label>
+
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 13,
+              fontWeight: 900,
+              padding: "10px 12px",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              background: "#f8fafc",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={editTaxRelevant}
+              onChange={(event) => setEditTaxRelevant(event.target.checked)}
+              style={{ width: 18, height: 18 }}
+            />
+            Steuerrelevant
           </label>
 
           <div style={{ display: "flex", gap: 10 }}>

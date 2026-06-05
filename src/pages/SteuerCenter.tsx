@@ -20,6 +20,7 @@ type EntryRow = {
   category: string | null;
   note: string | null;
   entry_type: EntryType;
+  tax_relevant: boolean | null;
 };
 
 type ClassifiedEntry = EntryRow & {
@@ -224,7 +225,7 @@ function includesAny(text: string, words: string[]): boolean {
   return words.some((word) => text.includes(word));
 }
 
-function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
+function classifyEntryByRules(entry: EntryRow, objectLabel: string): ClassifiedEntry {
   const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
 
   if (entry.entry_type === "income") {
@@ -356,6 +357,29 @@ function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
   };
 }
 
+function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
+  if (entry.tax_relevant === false) {
+    return {
+      ...entry,
+      object_label: objectLabel,
+      tax_group: "Nicht steuerrelevant",
+      tax_hint: "Manuell als nicht steuerrelevant markiert",
+      relevance: "private",
+    };
+  }
+
+  const classified = classifyEntryByRules(entry, objectLabel);
+  if (entry.tax_relevant === true) {
+    return {
+      ...classified,
+      relevance: "tax",
+      tax_hint: `${classified.tax_hint} · manuell bestätigt`,
+    };
+  }
+
+  return classified;
+}
+
 function escapeCsv(value: unknown): string {
   const text = String(value ?? "");
   if (text.includes(";") || text.includes("\"") || text.includes("\n") || text.includes("\r")) {
@@ -369,6 +393,7 @@ function downloadCsv(filename: string, rows: ClassifiedEntry[]) {
     "Datum",
     "Objekt",
     "Typ",
+    "Steuerrelevant",
     "Steuergruppe",
     "Kategorie",
     "Notiz",
@@ -380,6 +405,7 @@ function downloadCsv(filename: string, rows: ClassifiedEntry[]) {
     row.booking_date,
     row.object_label,
     row.entry_type === "income" ? "Einnahme" : "Ausgabe",
+    row.tax_relevant ? "Ja" : "Nein",
     row.tax_group,
     row.category ?? "",
     row.note ?? "",
@@ -445,29 +471,23 @@ export default function SteuerCenter() {
         await loadObjects();
       }
 
-      let incomeQuery = supabase
-        .from("v_income_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
+      let query = supabase
+        .from("finance_entry")
+        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+        .eq("is_deleted", false)
         .gte("booking_date", range.from)
-        .lt("booking_date", range.to);
-
-      let expenseQuery = supabase
-        .from("v_expense_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
-        .gte("booking_date", range.from)
-        .lt("booking_date", range.to);
+        .lt("booking_date", range.to)
+        .in("entry_type", ["income", "expense"])
+        .order("booking_date", { ascending: false });
 
       if (objectCode !== "ALL") {
-        incomeQuery = incomeQuery.eq("objekt_code", objectCode);
-        expenseQuery = expenseQuery.eq("objekt_code", objectCode);
+        query = query.eq("objekt_code", objectCode);
       }
 
-      const [incomeResult, expenseResult] = await Promise.all([incomeQuery, expenseQuery]);
+      const result = await query;
+      if (result.error) throw result.error;
 
-      if (incomeResult.error) throw incomeResult.error;
-      if (expenseResult.error) throw expenseResult.error;
-
-      const incomeRows: EntryRow[] = (incomeResult.data ?? []).map((row: unknown) => {
+      const rows: EntryRow[] = (result.data ?? []).map((row: unknown) => {
         const item = row as Partial<EntryRow>;
         return {
           id: Number(item.id ?? 0),
@@ -476,24 +496,12 @@ export default function SteuerCenter() {
           amount: parseLocaleNumber(item.amount, 0),
           category: item.category ?? null,
           note: item.note ?? null,
-          entry_type: "income",
+          entry_type: item.entry_type === "expense" ? "expense" : "income",
+          tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
         };
       });
 
-      const expenseRows: EntryRow[] = (expenseResult.data ?? []).map((row: unknown) => {
-        const item = row as Partial<EntryRow>;
-        return {
-          id: Number(item.id ?? 0),
-          objekt_code: item.objekt_code ?? null,
-          booking_date: String(item.booking_date ?? ""),
-          amount: parseLocaleNumber(item.amount, 0),
-          category: item.category ?? null,
-          note: item.note ?? null,
-          entry_type: "expense",
-        };
-      });
-
-      setEntries([...incomeRows, ...expenseRows].sort((a, b) => b.booking_date.localeCompare(a.booking_date)));
+      setEntries(rows.sort((a, b) => b.booking_date.localeCompare(a.booking_date)));
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : String(loadError);
       setError(message);
@@ -733,6 +741,7 @@ export default function SteuerCenter() {
                 <th style={styles.th}>Datum</th>
                 <th style={styles.th}>Objekt</th>
                 <th style={styles.th}>Typ</th>
+                <th style={styles.th}>Steuer</th>
                 <th style={styles.th}>Steuergruppe</th>
                 <th style={styles.th}>Kategorie / Notiz</th>
                 <th style={styles.th}>Betrag</th>
@@ -745,6 +754,7 @@ export default function SteuerCenter() {
                   <td style={styles.td}>{dateDE(row.booking_date)}</td>
                   <td style={styles.td}>{row.object_label}</td>
                   <td style={styles.td}>{row.entry_type === "income" ? "Einnahme" : "Ausgabe"}</td>
+                  <td style={styles.td}>{row.tax_relevant ? "Ja" : "Nein"}</td>
                   <td style={styles.td}>
                     <strong>{row.tax_group}</strong>
                     <div style={{ marginTop: 4 }}>
@@ -760,7 +770,7 @@ export default function SteuerCenter() {
                 </tr>
               ))}
               {!filteredRows.length ? (
-                <tr><td colSpan={7} style={styles.td}>Keine Buchungen fuer die aktuelle Auswahl.</td></tr>
+                <tr><td colSpan={8} style={styles.td}>Keine Buchungen fuer die aktuelle Auswahl.</td></tr>
               ) : null}
             </tbody>
           </table>
