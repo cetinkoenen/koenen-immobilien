@@ -5,6 +5,7 @@ import { Building2, CheckCircle2, Save, UserPlus } from "lucide-react";
 import {
   createTenantWithContract,
   listTenantProfiles,
+  updateTenantProfile,
   type TenantProfile,
 } from "../services/tenantService";
 import { useAppData } from "../state/AppDataContext";
@@ -96,6 +97,7 @@ export default function MieterAnlegen() {
   const [searchParams] = useSearchParams();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [recentTenants, setRecentTenants] = useState<TenantProfile[]>([]);
+  const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -158,6 +160,31 @@ export default function MieterAnlegen() {
     setSaving(true);
 
     try {
+      if (editingTenantId) {
+        await updateTenantProfile(editingTenantId, {
+          tenantNumber: form.tenantNumber,
+          salutation: form.salutation,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          companyName: form.companyName,
+          email: form.email,
+          phone: form.phone,
+          mobile: form.mobile,
+          street: form.street,
+          postalCode: form.postalCode,
+          city: form.city,
+          bankName: form.bankName,
+          iban: form.iban,
+          notes: form.notes,
+          status: "active",
+        });
+        setStatus("Mieterstammdaten wurden aktualisiert.");
+        setEditingTenantId(null);
+        setForm(emptyForm);
+        await loadRecentTenants();
+        return;
+      }
+
       const result = await createTenantWithContract(
         {
           tenantNumber: form.tenantNumber,
@@ -207,6 +234,37 @@ export default function MieterAnlegen() {
     }
   }
 
+  function startEditTenant(tenant: TenantProfile) {
+    setEditingTenantId(tenant.id);
+    setError(null);
+    setStatus(null);
+    setForm((current) => ({
+      ...current,
+      tenantNumber: tenant.tenant_number ?? "",
+      salutation: tenant.salutation ?? "Herr/Frau",
+      firstName: tenant.first_name ?? "",
+      lastName: tenant.last_name ?? "",
+      companyName: tenant.company_name ?? "",
+      email: tenant.email ?? "",
+      phone: tenant.phone ?? "",
+      mobile: tenant.mobile ?? "",
+      street: tenant.street ?? "",
+      postalCode: tenant.postal_code ?? "",
+      city: tenant.city ?? "",
+      bankName: tenant.bank_name ?? "",
+      iban: tenant.iban ?? "",
+      notes: tenant.notes ?? "",
+    }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingTenantId(null);
+    setForm(emptyForm);
+    setStatus(null);
+    setError(null);
+  }
+
   return (
     <div className="mx-auto max-w-[1460px] space-y-5">
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-7">
@@ -217,7 +275,7 @@ export default function MieterAnlegen() {
               Mieter-Stammdaten
             </div>
             <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">
-              Mieter anlegen
+              {editingTenantId ? "Mieter bearbeiten" : "Mieter anlegen"}
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
               Neue Mieterdaten werden in einer eigenen Stammdatenquelle gespeichert.
@@ -317,8 +375,18 @@ export default function MieterAnlegen() {
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 <Save size={17} />
-                {saving ? "Speichern..." : "Speichern"}
+                {saving ? "Speichern..." : editingTenantId ? "Änderungen speichern" : "Speichern"}
               </button>
+              {editingTenantId ? (
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 shadow-sm disabled:opacity-60"
+                >
+                  Abbrechen
+                </button>
+              ) : null}
               {status ? (
                 <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-700">
                   <CheckCircle2 size={17} />
@@ -346,6 +414,13 @@ export default function MieterAnlegen() {
                     <div className="mt-2 text-xs font-bold text-slate-400">
                       Aktualisiert {formatDate(tenant.updated_at)}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => startEditTenant(tenant)}
+                      className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-800"
+                    >
+                      Bearbeiten
+                    </button>
                   </div>
                 ))}
               </div>

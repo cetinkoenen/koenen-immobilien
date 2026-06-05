@@ -188,3 +188,35 @@ export async function createTenantWithContract(
     contract: contractData as TenantContract,
   };
 }
+
+export async function updateTenantProfile(id: string, tenantInput: TenantInput): Promise<TenantProfile> {
+  const userId = await getCurrentUserId();
+  const payload = {
+    tenant_number: cleanText(tenantInput.tenantNumber),
+    salutation: cleanText(tenantInput.salutation),
+    first_name: cleanText(tenantInput.firstName),
+    last_name: cleanText(tenantInput.lastName),
+    company_name: cleanText(tenantInput.companyName),
+    email: cleanText(tenantInput.email),
+    phone: cleanText(tenantInput.phone),
+    mobile: cleanText(tenantInput.mobile),
+    street: cleanText(tenantInput.street),
+    postal_code: cleanText(tenantInput.postalCode),
+    city: cleanText(tenantInput.city),
+    bank_name: cleanText(tenantInput.bankName),
+    iban: cleanText(tenantInput.iban),
+    notes: cleanText(tenantInput.notes),
+    status: tenantInput.status ?? "active",
+  };
+
+  const { data, error } = await supabase
+    .from("tenant_profiles")
+    .update(payload)
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as TenantProfile;
+}
