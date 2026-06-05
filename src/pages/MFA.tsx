@@ -57,9 +57,6 @@ export default function MFA() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
-  const qrIsSvg =
-    typeof enroll?.qr === "string" && enroll.qr.trim().startsWith("<svg");
-
   async function ensureLoggedIn(): Promise<boolean> {
     const { data, error } = await supabase.auth.getSession();
 
@@ -431,24 +428,20 @@ export default function MFA() {
           </div>
 
           {enroll?.qr ? (
-            qrIsSvg ? (
-              <div dangerouslySetInnerHTML={{ __html: enroll.qr }} />
-            ) : (
-              <img
-                alt="TOTP QR Code"
-                src={
-                  enroll.qr.startsWith("data:")
-                    ? enroll.qr
-                    : `data:image/svg+xml;utf8,${encodeURIComponent(enroll.qr)}`
-                }
-                style={{
-                  width: 220,
-                  height: 220,
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                }}
-              />
-            )
+            <img
+              alt="TOTP QR Code"
+              src={
+                enroll.qr.startsWith("data:")
+                  ? enroll.qr
+                  : `data:image/svg+xml;utf8,${encodeURIComponent(enroll.qr)}`
+              }
+              style={{
+                width: 220,
+                height: 220,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+              }}
+            />
           ) : (
             <div style={{ opacity: 0.7, fontSize: 13 }}>QR wird geladen…</div>
           )}

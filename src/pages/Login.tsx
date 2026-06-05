@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
+import { clearAppSessionStorage } from "../lib/security";
 
 function getFromPath(locationState: unknown): string {
   const from = (
@@ -92,8 +93,7 @@ export default function Login() {
 
     try {
       await supabase.auth.signOut();
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAppSessionStorage();
       setInfo(
         "Session wurde zurückgesetzt. Du solltest jetzt die Login-Seite sehen.",
       );
