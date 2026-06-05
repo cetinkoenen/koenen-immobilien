@@ -390,3 +390,67 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .tenant-row.is-vacant .tenant-status span { background: #e4e4e7 !important; color: #3f3f46 !important; border: 1px solid #d4d4d8; }
 .tenant-row.is-vacant .tenant-amount b { color: #52525b !important; }
 .tenant-summary-lines .gray { color: #52525b; }
+
+/* Smartphone-Feinschliff fuer Live-Nutzung ueber die URL. */
+* { box-sizing: border-box; }
+html, body, #root { max-width: 100%; overflow-x: hidden; }
+@media (max-width: 640px) {
+  main.mx-auto { padding-left: 10px !important; padding-right: 10px !important; }
+  .tenant-page,
+  .portfolio-page {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  .tenant-hero,
+  .portfolio-hero,
+  .tenant-card,
+  .tenant-summary,
+  .portfolio-object-card,
+  .app-card {
+    border-radius: 18px !important;
+  }
+  .tenant-card-head h2,
+  .tenant-summary h2 {
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+  }
+  .tenant-card-head strong {
+    white-space: normal !important;
+    word-break: break-word;
+  }
+  .tenant-actions a,
+  .portfolio-actions button,
+  button,
+  a[role="button"] {
+    min-height: 42px;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+    max-width: 100%;
+  }
+  table {
+    font-size: 12px;
+  }
+  th,
+  td {
+    vertical-align: top;
+  }
+  .tenant-row-top {
+    grid-template-columns: 1fr !important;
+  }
+  .tenant-fields {
+    grid-template-columns: 1fr !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  .tenant-donut {
+    width: 112px !important;
+    height: 112px !important;
+  }
+  .tenant-donut div {
+    width: 70px !important;
+    height: 70px !important;
+  }
+}

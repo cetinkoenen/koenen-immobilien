@@ -204,14 +204,14 @@ function AppShell() {
   return (
     <div className="min-h-screen bg-[#f6f1e8] text-slate-950">
       <header className="sticky top-0 z-30 border-b border-[#e7ddcf] bg-[#f6f1e8]/88 backdrop-blur-xl">
-        <div className="mx-auto max-w-[1760px] px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-5">
+        <div className="mx-auto max-w-[1760px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
+          <div className="flex items-center justify-between gap-3 sm:gap-5">
             <NavLink
               to="/"
               className="flex min-w-0 items-center gap-3"
               title="Zur Hauptseite"
             >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#e3d8ca] bg-[#f3eadc] shadow-sm">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#e3d8ca] bg-[#f3eadc] shadow-sm sm:h-14 sm:w-14">
                 <img
                   src={logo}
                   alt="Könen Immobilien"
@@ -219,10 +219,10 @@ function AppShell() {
                 />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs sm:tracking-[0.18em]">
                   Property App
                 </div>
-                <div className="text-lg font-semibold leading-tight text-slate-950 sm:text-2xl">
+                <div className="max-w-[220px] truncate text-base font-semibold leading-tight text-slate-950 sm:max-w-none sm:text-2xl">
                   Immobilien-Finanzübersicht
                 </div>
               </div>
@@ -248,7 +248,7 @@ function AppShell() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm xl:hidden"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm sm:h-12 sm:w-12 xl:hidden"
               aria-label={mobileMenuOpen ? "Menü schließen" : "Menü öffnen"}
               aria-expanded={mobileMenuOpen}
             >
@@ -257,7 +257,7 @@ function AppShell() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="mt-4 rounded-[24px] border border-[#e7ddcf] bg-white/76 p-3 shadow-sm xl:hidden">
+            <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-[#e7ddcf] bg-white/90 p-3 shadow-sm xl:hidden">
               <nav className="grid gap-2">
                 {navItems.map((item) => (
                   <NavLink
