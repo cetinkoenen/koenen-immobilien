@@ -60,6 +60,12 @@ export function isVacancyActiveInRange(vacancy: Pick<UnitVacancy, "start_date" |
   return true;
 }
 
+export function isVacancyInRange(vacancy: Pick<UnitVacancy, "start_date" | "end_date">, start: string, end: string): boolean {
+  if (vacancy.start_date > end) return false;
+  if (vacancy.end_date && vacancy.end_date < start) return false;
+  return true;
+}
+
 export async function listVacancies(filters: VacancyFilters = {}): Promise<UnitVacancy[]> {
   const userId = await getCurrentUserId();
   let query = supabase

@@ -12,7 +12,7 @@ import {
   type PropertyExtraInfo,
 } from "../services/propertyExtraService";
 import {
-  isVacancyActiveInRange,
+  isVacancyInRange,
   listDerivedVacanciesFromEndedRentals,
   listVacancies,
   type UnitVacancy,
@@ -52,6 +52,12 @@ function shiftIsoDateByMonths(value: string, months: number): string {
   return toIso(new Date(year, month - 1 + months, day));
 }
 
+function shiftIsoDateByDays(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return toIso(new Date(year, month - 1, day + days));
+}
+
 function bookingDayOfMonth(value: string | null | undefined): number | null {
   if (!value) return null;
   const day = Number(value.slice(8, 10));
@@ -78,6 +84,10 @@ function normalizeReferenceText(value: string | null | undefined): string {
     .replace(/[ü]/g, "u")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function compactReferenceText(value: string | null | undefined): string {
+  return normalizeReferenceText(value).replace(/\s+/g, "");
 }
 
 function bookingReferenceText(booking: FinanceEntry): string {
@@ -369,7 +379,37 @@ function vacancyMatchesUnit(vacancy: UnitVacancy, object: { id: string; code: st
 
   const unitRef = normalizeReferenceText(unit.ref);
   const unitTitle = normalizeReferenceText(unit.title);
-  return vacancyUnit.includes(unitRef) || unitRef.includes(vacancyUnit) || vacancyUnit.includes(unitTitle) || unitTitle.includes(vacancyUnit);
+  const compactVacancyUnit = compactReferenceText(vacancy.unit_label);
+  const compactUnitRef = compactReferenceText(unit.ref);
+  const compactUnitTitle = compactReferenceText(unit.title);
+  const combinedUnitText = normalizeReferenceText(`${unit.ref} ${unit.title}`);
+
+  if (vacancyUnit.includes(unitRef) || unitRef.includes(vacancyUnit) || vacancyUnit.includes(unitTitle) || unitTitle.includes(vacancyUnit)) return true;
+  if (compactVacancyUnit && (compactUnitRef.includes(compactVacancyUnit) || compactUnitTitle.includes(compactVacancyUnit))) return true;
+
+  const vacancyTokens = referenceTokens(vacancy.unit_label);
+  return vacancyTokens.some((token) => combinedUnitText.includes(token) || compactUnitRef.includes(token));
+}
+
+function isEndedTenancyVacancySignal(vacancy: UnitVacancy): boolean {
+  if (!vacancy.end_date) return false;
+  if (vacancy.vacancy_type === "contract_ended" || vacancy.vacancy_type === "notice") return true;
+  const text = normalizeReferenceText(`${vacancy.reason ?? ""} ${vacancy.notes ?? ""}`);
+  return text.includes("kundigung") || text.includes("kuendigung") || text.includes("mietende") || text.includes("mietzeitraum") || text.includes("auszug");
+}
+
+function deriveOpenVacancyAfterEndedTenancy(vacancy: UnitVacancy, monthEnd: string): UnitVacancy | null {
+  if (vacancy.status !== "ended" || !isEndedTenancyVacancySignal(vacancy)) return null;
+  const startDate = shiftIsoDateByDays(vacancy.end_date!, 1);
+  if (startDate > monthEnd) return null;
+  return {
+    ...vacancy,
+    id: `manual-ended-tenancy-${vacancy.id}`,
+    status: "active",
+    start_date: startDate,
+    end_date: null,
+    reason: vacancy.reason ? `Leerstand nach ${vacancy.reason}` : "Leerstand nach beendetem Mietzeitraum",
+  };
 }
 
 function DonutChart({ paid, missing, vacant }: { paid: number; missing: number; vacant: number }) {
@@ -460,12 +500,15 @@ export default function Mietuebersicht() {
         const propertyIds = sourceObjects.map((object) => object.id);
         const labelByPropertyId = Object.fromEntries(sourceObjects.map((object) => [object.id, object.label]));
         const [manualRows, derivedRows] = await Promise.all([
-          listVacancies({ from: month.start, to: month.end }),
+          listVacancies(),
           listDerivedVacanciesFromEndedRentals(propertyIds, month.start, month.end, labelByPropertyId),
         ]);
         if (cancelled) return;
-        const activeRows = [...manualRows, ...derivedRows].filter((row) => isVacancyActiveInRange(row, month.start, month.end));
-        setVacancies(activeRows);
+        const derivedManualRows = manualRows
+          .map((row) => deriveOpenVacancyAfterEndedTenancy(row, month.end))
+          .filter((row): row is UnitVacancy => Boolean(row));
+        const monthRows = [...manualRows, ...derivedManualRows, ...derivedRows].filter((row) => isVacancyInRange(row, month.start, month.end));
+        setVacancies(monthRows);
       } catch (error) {
         if (cancelled) return;
         console.warn("Leerstände konnten nicht geladen werden:", error);
