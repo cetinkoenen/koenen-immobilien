@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useMemo, useState, type CSSProperties } from "react";
 import {
   NavLink,
   Navigate,
@@ -10,26 +10,6 @@ import {
 } from "react-router-dom";
 import { ArrowRight, Building2, Menu, X } from "lucide-react";
 
-import EntryAdd from "./pages/EntryAdd";
-import Monate from "./pages/Monate";
-import Portfolio from "./pages/Portfolio";
-import Auswertung from "./pages/Auswertung";
-import SteuerCenter from "./pages/SteuerCenter";
-import NebenkostenTiefgarage from "./pages/NebenkostenTiefgarage";
-import NebenkostenWohnungen from "./pages/NebenkostenWohnungen";
-import Mietuebersicht from "./pages/Mietuebersicht";
-import MieterAnlegen from "./pages/MieterAnlegen";
-import Leerstand from "./pages/Leerstand";
-import Darlehensuebersicht from "./pages/Darlehensuebersicht";
-import Datenpruefung from "./pages/Datenpruefung";
-import PortfolioAddress from "./pages/portfolio/PortfolioAddress";
-import PortfolioDetails from "./pages/portfolio/PortfolioDetails";
-import PortfolioEnergy from "./pages/portfolio/PortfolioEnergy";
-import PortfolioFinance from "./pages/portfolio/PortfolioFinance";
-import PortfolioPropertyLayout from "./pages/portfolio/PortfolioPropertyLayout";
-import PortfolioRenting from "./pages/portfolio/PortfolioRenting";
-import PortfolioObjectDetail from "./pages/portfolio/PortfolioObjectDetail";
-import PortfolioFinanceModules from "./pages/portfolio/PortfolioFinanceModules";
 import Login from "./pages/Login";
 import MFA from "./pages/MFA";
 import AuthCallback from "./pages/AuthCallback";
@@ -41,6 +21,37 @@ import { clearAppSessionStorage } from "./lib/security";
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider } from "./state/AppDataContext";
 import "./App.css";
+
+const EntryAdd = lazy(() => import("./pages/EntryAdd"));
+const Monate = lazy(() => import("./pages/Monate"));
+const Portfolio = lazy(() => import("./pages/Portfolio"));
+const Auswertung = lazy(() => import("./pages/Auswertung"));
+const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
+const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
+const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
+const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
+const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
+const Leerstand = lazy(() => import("./pages/Leerstand"));
+const Darlehensuebersicht = lazy(() => import("./pages/Darlehensuebersicht"));
+const Datenpruefung = lazy(() => import("./pages/Datenpruefung"));
+const PortfolioAddress = lazy(() => import("./pages/portfolio/PortfolioAddress"));
+const PortfolioDetails = lazy(() => import("./pages/portfolio/PortfolioDetails"));
+const PortfolioEnergy = lazy(() => import("./pages/portfolio/PortfolioEnergy"));
+const PortfolioFinance = lazy(() => import("./pages/portfolio/PortfolioFinance"));
+const PortfolioPropertyLayout = lazy(() => import("./pages/portfolio/PortfolioPropertyLayout"));
+const PortfolioRenting = lazy(() => import("./pages/portfolio/PortfolioRenting"));
+const PortfolioObjectDetail = lazy(() => import("./pages/portfolio/PortfolioObjectDetail"));
+const PortfolioFinanceModules = lazy(() => import("./pages/portfolio/PortfolioFinanceModules"));
+
+function RouteFallback() {
+  return (
+    <div className="mx-auto max-w-[1760px] px-3 py-6 sm:px-5 lg:px-8">
+      <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm font-black text-slate-600 shadow-sm">
+        Seite wird geladen...
+      </div>
+    </div>
+  );
+}
 
 function navLinkStyle(isActive: boolean): CSSProperties {
   return {
@@ -289,11 +300,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Login />} />
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/mfa" element={<MFA />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/mfa" element={<MFA />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
       <Route element={<ProtectedAppShell />}>
         <Route
@@ -383,7 +395,8 @@ export default function App() {
         <Route path="/darlehensuebersicht/:propertyId" element={<Darlehensuebersicht />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
