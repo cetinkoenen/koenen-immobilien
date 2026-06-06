@@ -276,7 +276,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
       .select("id,property_name,category,status,title")
       .in("status", ["fehlt", "läuft_bald_ab", "abgelaufen"])
       .limit(8),
-    listVacancies({ from: period.start, to: period.end }).catch(() => [] as UnitVacancy[]),
+    listVacancies().catch(() => [] as UnitVacancy[]),
   ]);
 
   if (contractsRes.error) throw contractsRes.error;
@@ -342,6 +342,9 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   const expectedTotal = openPosts.reduce((sum, row) => sum + (row.status === "vacant" ? 0 : row.expectedAmount), 0);
   const paidTotal = openPosts.reduce((sum, row) => sum + row.paidAmount, 0);
   const openTotal = openPosts.reduce((sum, row) => sum + row.openAmount, 0);
+  const activeVacancyCount = vacancyRows.filter((vacancy) =>
+    isVacancyEffectivelyActiveInRange(vacancy, period.start, period.end),
+  ).length;
 
   return {
     periodLabel: period.label,
@@ -354,7 +357,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     paidCount: openPosts.filter((row) => row.status === "paid").length,
     partialCount: openPosts.filter((row) => row.status === "partial").length,
     missingCount: openPosts.filter((row) => row.status === "missing").length,
-    vacantCount: openPosts.filter((row) => row.status === "vacant").length,
+    vacantCount: activeVacancyCount,
     openPosts: openPosts.sort((a, b) => b.openAmount - a.openAmount),
     tasks: taskRes.error
       ? []
