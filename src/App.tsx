@@ -23,6 +23,7 @@ import { AppDataProvider } from "./state/AppDataContext";
 import "./App.css";
 
 const EntryAdd = lazy(() => import("./pages/EntryAdd"));
+const Cockpit = lazy(() => import("./pages/Cockpit"));
 const Monate = lazy(() => import("./pages/Monate"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
@@ -32,6 +33,7 @@ const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
+const Mahnwesen = lazy(() => import("./pages/Mahnwesen"));
 const Darlehensuebersicht = lazy(() => import("./pages/Darlehensuebersicht"));
 const Datenpruefung = lazy(() => import("./pages/Datenpruefung"));
 const PortfolioAddress = lazy(() => import("./pages/portfolio/PortfolioAddress"));
@@ -186,6 +188,7 @@ function AppShell() {
 
   const navItems = useMemo<Array<{ to: string; label: string; end?: boolean }>>(
     () => [
+      { to: "/cockpit", label: "Cockpit" },
       { to: "/portfolio", label: "Portfolio" },
       { to: "/buchhaltung", label: "Buchhaltung" },
       { to: "/steuer", label: "Steuer" },
@@ -194,6 +197,7 @@ function AppShell() {
       { to: "/mieteruebersicht", label: "Mieter prüfen" },
       { to: "/mieter-anlegen", label: "Mieter anlegen" },
       { to: "/leerstand", label: "Leerstand" },
+      { to: "/mahnwesen", label: "Mahnwesen" },
       { to: "/darlehensuebersicht", label: "Darlehen" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
@@ -310,8 +314,9 @@ export default function App() {
       <Route element={<ProtectedAppShell />}>
         <Route
           path="/dashboard"
-          element={<Navigate to="/portfolio" replace />}
+          element={<Cockpit />}
         />
+        <Route path="/cockpit" element={<Cockpit />} />
 
         <Route path="/portfolio" element={<Portfolio />} />
         <Route
@@ -370,6 +375,7 @@ export default function App() {
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/mieter-anlegen" element={<MieterAnlegen />} />
         <Route path="/leerstand" element={<Leerstand />} />
+        <Route path="/mahnwesen" element={<Mahnwesen />} />
         <Route
           path="/entry-add"
           element={<Navigate to="/buchungen" replace />}
