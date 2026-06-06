@@ -45,6 +45,23 @@ function cleanText(value: string | null | undefined): string | null {
   return cleaned ? cleaned : null;
 }
 
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ß", "ss")
+    .replace(/[ä]/g, "ae")
+    .replace(/[ö]/g, "oe")
+    .replace(/[ü]/g, "ue")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 async function getCurrentUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
@@ -64,6 +81,40 @@ export function isVacancyInRange(vacancy: Pick<UnitVacancy, "start_date" | "end_
   if (vacancy.start_date > end) return false;
   if (vacancy.end_date && vacancy.end_date < start) return false;
   return true;
+}
+
+export function isEndedTenancyVacancySignal(vacancy: Pick<UnitVacancy, "end_date" | "vacancy_type" | "reason" | "notes">): boolean {
+  if (!vacancy.end_date) return false;
+  if (vacancy.vacancy_type === "contract_ended" || vacancy.vacancy_type === "notice") return true;
+  const text = normalizeText(`${vacancy.reason ?? ""} ${vacancy.notes ?? ""}`);
+  return text.includes("kuendigung") || text.includes("kundigung") || text.includes("mietende") || text.includes("mietzeitraum") || text.includes("auszug");
+}
+
+export function effectiveVacancyStartDate(vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status" | "vacancy_type" | "reason" | "notes">): string {
+  if (vacancy.status === "ended" && isEndedTenancyVacancySignal(vacancy)) {
+    return addDays(vacancy.end_date!, 1);
+  }
+  return vacancy.start_date;
+}
+
+export function isVacancyEffectivelyActiveInRange(
+  vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status" | "vacancy_type" | "reason" | "notes">,
+  start: string,
+  end: string,
+): boolean {
+  if (vacancy.status === "ended" && isEndedTenancyVacancySignal(vacancy)) {
+    return effectiveVacancyStartDate(vacancy) <= end;
+  }
+  return isVacancyActiveInRange(vacancy, start, end);
+}
+
+export function effectiveVacancyStatusForRange(
+  vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status" | "vacancy_type" | "reason" | "notes">,
+  start: string,
+  end: string,
+): VacancyStatus {
+  if (isVacancyEffectivelyActiveInRange(vacancy, start, end)) return "active";
+  return vacancy.status;
 }
 
 export async function listVacancies(filters: VacancyFilters = {}): Promise<UnitVacancy[]> {

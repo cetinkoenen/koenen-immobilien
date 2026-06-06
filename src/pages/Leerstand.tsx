@@ -5,7 +5,9 @@ import { useAppData } from "../state/AppDataContext";
 import {
   archiveVacancy,
   createVacancy,
-  isVacancyActiveInRange,
+  effectiveVacancyStartDate,
+  effectiveVacancyStatusForRange,
+  isVacancyEffectivelyActiveInRange,
   listVacancies,
   type UnitVacancy,
   type VacancyStatus,
@@ -157,7 +159,7 @@ export default function Leerstand() {
     return { from, to };
   }, []);
 
-  const activeCount = filteredRows.filter((row) => isVacancyActiveInRange(row, currentMonth.from, currentMonth.to)).length;
+  const activeCount = filteredRows.filter((row) => isVacancyEffectivelyActiveInRange(row, currentMonth.from, currentMonth.to)).length;
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-5">
@@ -271,21 +273,25 @@ export default function Leerstand() {
                 {loading ? (
                   <tr><td colSpan={6} className="px-4 py-5 font-bold text-slate-500">Leerstände werden geladen...</td></tr>
                 ) : filteredRows.length ? (
-                  filteredRows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100">
-                      <td className="px-4 py-4 font-black text-slate-950">{row.object_label || row.object_code || row.property_id}</td>
-                      <td className="px-4 py-4 font-bold text-slate-700">{row.unit_label || "Gesamte Immobilie"}</td>
-                      <td className="px-4 py-4 font-semibold text-slate-700">{formatDate(row.start_date)} bis {formatDate(row.end_date)}</td>
-                      <td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
-                      <td className="px-4 py-4 text-sm font-semibold text-slate-600">{row.reason || row.notes || "—"}</td>
-                      <td className="px-4 py-4">
-                        <button type="button" onClick={() => void handleArchive(row.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
-                          <Trash2 size={14} />
-                          Archivieren
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  filteredRows.map((row) => {
+                    const effectiveStatus = effectiveVacancyStatusForRange(row, currentMonth.from, currentMonth.to);
+                    const effectiveStart = effectiveVacancyStartDate(row);
+                    return (
+                      <tr key={row.id} className="border-b border-slate-100">
+                        <td className="px-4 py-4 font-black text-slate-950">{row.object_label || row.object_code || row.property_id}</td>
+                        <td className="px-4 py-4 font-bold text-slate-700">{row.unit_label || "Gesamte Immobilie"}</td>
+                        <td className="px-4 py-4 font-semibold text-slate-700">{formatDate(effectiveStart)} bis {effectiveStatus === "active" ? "offen" : formatDate(row.end_date)}</td>
+                        <td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(effectiveStatus)}`}>{statusLabel(effectiveStatus)}</span></td>
+                        <td className="px-4 py-4 text-sm font-semibold text-slate-600">{row.reason || row.notes || "—"}</td>
+                        <td className="px-4 py-4">
+                          <button type="button" onClick={() => void handleArchive(row.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
+                            <Trash2 size={14} />
+                            Archivieren
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr><td colSpan={6} className="px-4 py-5 font-bold text-slate-500">Keine Leerstände für die aktuelle Auswahl.</td></tr>
                 )}
