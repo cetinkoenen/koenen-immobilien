@@ -188,25 +188,34 @@ function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
 
-  const navItems = useMemo<Array<{ to: string; label: string; end?: boolean }>>(
+  const navItems = useMemo<Array<{ to: string; label: string; group: string; end?: boolean }>>(
     () => [
-      { to: "/cockpit", label: "Cockpit" },
-      { to: "/portfolio", label: "Portfolio" },
-      { to: "/buchhaltung", label: "Buchhaltung" },
-      { to: "/buchungen", label: "Neue Buchung" },
-      { to: "/transaktionsregeln", label: "Regeln" },
-      { to: "/steuer", label: "Steuer" },
-      { to: "/auswertungen", label: "Auswertungen" },
-      { to: "/mieteruebersicht", label: "Mieter prüfen" },
-      { to: "/mieter-anlegen", label: "Mieter anlegen" },
-      { to: "/leerstand", label: "Leerstand" },
-      { to: "/ein-auszug", label: "Ein/Auszug" },
-      { to: "/mahnwesen", label: "Mahnwesen" },
-      { to: "/darlehensuebersicht", label: "Darlehen" },
-      { to: "/nebenkosten", label: "NK-Abrechnungen" },
-      { to: "/datenpruefung", label: "Datenprüfung" },
+      { to: "/cockpit", label: "Cockpit", group: "Überblick" },
+      { to: "/portfolio", label: "Portfolio", group: "Überblick" },
+      { to: "/buchhaltung", label: "Buchhaltung", group: "Finanzen" },
+      { to: "/buchungen", label: "Neue Buchung", group: "Finanzen" },
+      { to: "/transaktionsregeln", label: "Regeln", group: "Finanzen" },
+      { to: "/steuer", label: "Steuer", group: "Finanzen" },
+      { to: "/auswertungen", label: "Auswertungen", group: "Finanzen" },
+      { to: "/mieteruebersicht", label: "Mieter prüfen", group: "Mieter" },
+      { to: "/mieter-anlegen", label: "Mieter anlegen", group: "Mieter" },
+      { to: "/leerstand", label: "Leerstand", group: "Mieter" },
+      { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter" },
+      { to: "/mahnwesen", label: "Mahnwesen", group: "Mieter" },
+      { to: "/darlehensuebersicht", label: "Darlehen", group: "Verwaltung" },
+      { to: "/nebenkosten", label: "NK-Abrechnungen", group: "Verwaltung" },
+      { to: "/datenpruefung", label: "Datenprüfung", group: "Verwaltung" },
     ],
     [],
+  );
+
+  const mobileNavGroups = useMemo(
+    () =>
+      ["Überblick", "Finanzen", "Mieter", "Verwaltung"].map((group) => ({
+        group,
+        items: navItems.filter((item) => item.group === group),
+      })),
+    [navItems],
   );
 
   return (
@@ -266,24 +275,33 @@ function AppShell() {
 
           {mobileMenuOpen && (
             <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-[#e7ddcf] bg-white/90 p-3 shadow-sm xl:hidden">
-              <nav className="grid gap-2">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      [
-                        "rounded-2xl border px-4 py-3 text-base font-extrabold shadow-sm transition",
-                        isActive
-                          ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-                          : "border-slate-200 bg-white text-slate-900",
-                      ].join(" ")
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
+              <nav className="grid gap-4">
+                {mobileNavGroups.map(({ group, items }) => (
+                  <div key={group} className="grid gap-2">
+                    <div className="px-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      {group}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {items.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.end}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={({ isActive }) =>
+                            [
+                              "flex min-h-12 items-center justify-center rounded-2xl border px-3 py-3 text-center text-sm font-extrabold leading-tight shadow-sm transition",
+                              isActive
+                                ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                                : "border-slate-200 bg-white text-slate-900",
+                            ].join(" ")
+                          }
+                        >
+                          {item.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </nav>
 

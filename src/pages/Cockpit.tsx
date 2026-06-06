@@ -5,6 +5,7 @@ import { NavLink } from "react-router-dom";
 import {
   loadCockpitSnapshot,
   type CockpitSnapshot,
+  type OpenPostRow,
   type OpenPostStatus,
 } from "../services/professionalCockpitService";
 
@@ -127,7 +128,15 @@ export default function Cockpit() {
                 </NavLink>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="block divide-y divide-slate-100 md:hidden">
+                {snapshot.openPosts.length ? (
+                  snapshot.openPosts.map((row) => <OpenPostCard key={row.contractId} row={row} />)
+                ) : (
+                  <div className="px-4 py-6 text-sm font-bold text-slate-500">Keine Sollstellungen aus Mietverträgen gefunden.</div>
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[1040px] table-fixed border-collapse">
                   <colgroup>
                     <col className="w-[150px]" />
@@ -232,6 +241,47 @@ function Metric({ title, value, sub, tone = "slate" }: { title: string; value: s
       <div className={`mt-3 text-2xl font-black ${valueClass}`}>{value}</div>
       <div className="mt-2 text-xs font-bold text-slate-500">{sub}</div>
     </div>
+  );
+}
+
+function OpenPostCard({ row }: { row: OpenPostRow }) {
+  return (
+    <article className="space-y-4 px-4 py-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-base font-black text-slate-950" title={row.objectLabel}>
+            {row.objectLabel}
+          </div>
+          <div className="mt-1 text-xs font-bold text-slate-500">{row.unitLabel || row.objectCode || "Einheit"}</div>
+        </div>
+        <span className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-black ${statusClass(row.status)}`}>
+          {statusLabel(row.status)}
+        </span>
+      </div>
+
+      <div className="truncate text-sm font-bold text-slate-700" title={row.tenantName}>
+        {row.tenantName}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500">Soll</div>
+          <div className="mt-1 whitespace-nowrap text-sm font-black tabular-nums text-slate-950">
+            {row.status === "vacant" ? "—" : eur(row.expectedAmount)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500">Bezahlt</div>
+          <div className="mt-1 whitespace-nowrap text-sm font-black tabular-nums text-emerald-700">{eur(row.paidAmount)}</div>
+        </div>
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500">Offen</div>
+          <div className="mt-1 whitespace-nowrap text-sm font-black tabular-nums text-rose-700">
+            {row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
