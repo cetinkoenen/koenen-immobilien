@@ -123,8 +123,12 @@ export default function Cockpit() {
                   <h2 className="text-xl font-black text-slate-950">Offene Posten</h2>
                   <p className="mt-1 text-sm font-semibold text-slate-500">Soll-Ist-Abgleich aus Mietverträgen und Buchungen.</p>
                 </div>
-                <NavLink to="/mieteruebersicht" className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm">
-                  Mieter prüfen <ArrowRight size={15} />
+                <NavLink
+                  to="/mieteruebersicht"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-900 shadow-sm transition hover:bg-slate-50"
+                >
+                  <span>Mieter prüfen</span>
+                  <ArrowRight size={15} />
                 </NavLink>
               </div>
 
