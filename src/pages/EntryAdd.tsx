@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
@@ -9,6 +10,14 @@ type DropdownRow = {
   objekt_code: string;
   label: string;
   /** Kompatibilität: neuere v_object_dropdown-Views liefern object_id/property_id getrennt. */
+  object_id?: string | null;
+  property_id?: string | null;
+};
+
+type ObjectDropdownResponse = {
+  value: string | null;
+  objekt_code: string | null;
+  label: string | null;
   object_id?: string | null;
   property_id?: string | null;
 };
@@ -94,13 +103,15 @@ export default function EntryAdd() {
         return;
       }
 
-      const list = ((data ?? []) as any[])
-        .filter((x: any) => (x?.object_id || x?.value) && x?.objekt_code && x?.label)
-        .map((x: any) => ({
+      const list = ((data ?? []) as ObjectDropdownResponse[])
+        .filter((x) => (x.object_id || x.value) && x.objekt_code && x.label)
+        .map((x) => ({
           ...x,
           // Wichtig: finance_entry.object_id verweist auf public.objects.id.
           // In neueren Backend-Views ist value teilweise property_id; deshalb immer object_id bevorzugen.
           value: String(x.object_id ?? x.value),
+          objekt_code: String(x.objekt_code),
+          label: String(x.label),
           object_id: x.object_id == null ? null : String(x.object_id),
           property_id: x.property_id == null ? null : String(x.property_id),
         })) as DropdownRow[];
@@ -181,8 +192,9 @@ export default function EntryAdd() {
       setCategory("");
       setNote("");
       setTaxRelevant(true);
-    } catch (e: any) {
-      setMsg(`❌ Speichern fehlgeschlagen: ${e?.message ?? String(e)}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setMsg(`❌ Speichern fehlgeschlagen: ${message}`);
     } finally {
       setSaving(false);
     }
@@ -199,17 +211,39 @@ export default function EntryAdd() {
       }}
     >
       <header>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 28,
-            fontWeight: 950,
-            letterSpacing: "-0.03em",
-            color: "#111827",
-          }}
-        >
-          Buchung erfassen
-        </h1>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 28,
+              fontWeight: 950,
+              letterSpacing: "-0.03em",
+              color: "#111827",
+            }}
+          >
+            Buchung erfassen
+          </h1>
+          <Link
+            to="/transaktionsregeln"
+            style={{
+              minHeight: 42,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 14px",
+              borderRadius: 14,
+              border: "1px solid #d8d2c7",
+              background: "#ffffff",
+              color: "#111827",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 900,
+              boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
+            }}
+          >
+            Transaktionsregeln
+          </Link>
+        </div>
 
         <div style={{ marginTop: 8, opacity: 0.7, fontSize: 15 }}>
           Neue Einnahme oder Ausgabe für ein Objekt anlegen

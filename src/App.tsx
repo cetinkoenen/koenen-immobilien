@@ -35,6 +35,7 @@ const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
 const Mahnwesen = lazy(() => import("./pages/Mahnwesen"));
 const EinAuszug = lazy(() => import("./pages/EinAuszug"));
+const Transaktionsregeln = lazy(() => import("./pages/Transaktionsregeln"));
 const Darlehensuebersicht = lazy(() => import("./pages/Darlehensuebersicht"));
 const Datenpruefung = lazy(() => import("./pages/Datenpruefung"));
 const PortfolioAddress = lazy(() => import("./pages/portfolio/PortfolioAddress"));
@@ -200,6 +201,7 @@ function AppShell() {
       { to: "/leerstand", label: "Leerstand" },
       { to: "/mahnwesen", label: "Mahnwesen" },
       { to: "/ein-auszug", label: "Ein/Auszug" },
+      { to: "/transaktionsregeln", label: "Regeln" },
       { to: "/darlehensuebersicht", label: "Darlehen" },
       { to: "/nebenkosten", label: "NK-Abrechnungen" },
       { to: "/datenpruefung", label: "Datenprüfung" },
@@ -379,6 +381,7 @@ export default function App() {
         <Route path="/leerstand" element={<Leerstand />} />
         <Route path="/mahnwesen" element={<Mahnwesen />} />
         <Route path="/ein-auszug" element={<EinAuszug />} />
+        <Route path="/transaktionsregeln" element={<Transaktionsregeln />} />
         <Route
           path="/entry-add"
           element={<Navigate to="/buchungen" replace />}
