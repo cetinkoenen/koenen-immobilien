@@ -112,6 +112,23 @@ type ObjectRow = {
   label: string | null;
 };
 
+type TaskRow = {
+  id: string | number;
+  title: string | null;
+  category: string | null;
+  priority: string | number | null;
+  due_date: string | null;
+  property_name: string | null;
+};
+
+type DocumentIssueRow = {
+  id: string | number;
+  property_name: string | null;
+  category: string | null;
+  status: string | null;
+  title: string | null;
+};
+
 function toMoney(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -182,13 +199,29 @@ function isRentPayment(row: FinanceRow): boolean {
   return text.includes("miete") || text.includes("pacht") || text.includes("garage") || text.includes("stellplatz");
 }
 
-function bookingMatchesContract(row: FinanceRow, contract: ContractRow): boolean {
-  if (row.object_id && contract.property_id && String(row.object_id) === String(contract.property_id)) return true;
-  if (row.objekt_code && contract.object_code && normalize(row.objekt_code) === normalize(contract.object_code)) return true;
+function bookingHasContractObject(row: FinanceRow, contract: ContractRow): boolean {
+  return (
+    Boolean(row.object_id && contract.property_id && String(row.object_id) === String(contract.property_id)) ||
+    Boolean(row.objekt_code && contract.object_code && normalize(row.objekt_code) === normalize(contract.object_code))
+  );
+}
+
+function unitMatchesBookingText(row: FinanceRow, contract: ContractRow): boolean {
   const unit = compact(contract.unit_label);
-  if (!unit) return true;
+  if (!unit) return false;
   const text = compact(`${row.category ?? ""} ${row.note ?? ""}`);
   return text.includes(unit);
+}
+
+function contractObjectKey(contract: ContractRow): string {
+  return `${contract.property_id ?? ""}::${normalize(contract.object_code)}`;
+}
+
+function bookingMatchesContract(row: FinanceRow, contract: ContractRow, requiresUnitMatch: boolean): boolean {
+  const objectMatches = bookingHasContractObject(row, contract);
+  if (!objectMatches) return false;
+  if (!requiresUnitMatch) return true;
+  return unitMatchesBookingText(row, contract);
 }
 
 function vacancyMatchesContract(vacancy: UnitVacancy, contract: ContractRow): boolean {
@@ -258,11 +291,17 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     const effectiveDate = bookingEffectiveMonthDate(row.booking_date);
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));
   });
+  const contractCountByObject = contracts.reduce<Record<string, number>>((result, contract) => {
+    const key = contractObjectKey(contract);
+    result[key] = (result[key] ?? 0) + 1;
+    return result;
+  }, {});
 
   const openPosts = contracts
     .map<OpenPostRow | null>((contract) => {
       const expectedAmount = expectedRent(contract);
       if (expectedAmount <= 0) return null;
+      const requiresUnitMatch = (contractCountByObject[contractObjectKey(contract)] ?? 0) > 1;
 
       const isVacant = vacancyRows.some(
         (vacancy) =>
@@ -272,7 +311,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
       const paidAmount = isVacant
         ? 0
         : payments
-            .filter((payment) => bookingMatchesContract(payment, contract))
+            .filter((payment) => bookingMatchesContract(payment, contract, requiresUnitMatch))
             .reduce((sum, payment) => sum + toMoney(payment.amount), 0);
       const openAmount = Math.max(expectedAmount - paidAmount, 0);
       const status: OpenPostStatus = isVacant
@@ -319,7 +358,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     openPosts: openPosts.sort((a, b) => b.openAmount - a.openAmount),
     tasks: taskRes.error
       ? []
-      : ((taskRes.data ?? []) as any[]).map((task) => ({
+      : ((taskRes.data ?? []) as TaskRow[]).map((task) => ({
           id: String(task.id),
           title: String(task.title ?? "Aufgabe"),
           category: String(task.category ?? "allgemein"),
@@ -329,7 +368,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
         })),
     documentIssues: docsRes.error
       ? []
-      : ((docsRes.data ?? []) as any[]).map((doc) => ({
+      : ((docsRes.data ?? []) as DocumentIssueRow[]).map((doc) => ({
           id: String(doc.id),
           propertyName: doc.property_name ?? "Unbekanntes Objekt",
           category: String(doc.category ?? "sonstiges"),
