@@ -57,7 +57,10 @@ export default function Cockpit() {
   }
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const riskyPosts = useMemo(
@@ -112,20 +115,28 @@ export default function Cockpit() {
             <Metric title="Leerstand" value={String(snapshot.vacantCount)} sub="aktuell dokumentiert" tone="gray" />
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+          <section className="grid gap-5 2xl:grid-cols-[minmax(1040px,1fr)_minmax(360px,420px)]">
             <div className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-slate-200 p-5 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-black text-slate-950">Offene Posten</h2>
                   <p className="mt-1 text-sm font-semibold text-slate-500">Soll-Ist-Abgleich aus Mietverträgen und Buchungen.</p>
                 </div>
-                <NavLink to="/mieteruebersicht" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white">
+                <NavLink to="/mieteruebersicht" className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm">
                   Mieter prüfen <ArrowRight size={15} />
                 </NavLink>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[940px] border-collapse">
+                <table className="w-full min-w-[1040px] table-fixed border-collapse">
+                  <colgroup>
+                    <col className="w-[150px]" />
+                    <col className="w-[270px]" />
+                    <col className="w-[250px]" />
+                    <col className="w-[140px]" />
+                    <col className="w-[140px]" />
+                    <col className="w-[150px]" />
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                       <th className="px-4 py-3">Status</th>
@@ -146,13 +157,15 @@ export default function Cockpit() {
                             </span>
                           </td>
                           <td className="px-4 py-4">
-                            <div className="font-black text-slate-950">{row.objectLabel}</div>
+                            <div className="truncate font-black text-slate-950" title={row.objectLabel}>{row.objectLabel}</div>
                             <div className="mt-1 text-xs font-bold text-slate-500">{row.unitLabel || row.objectCode || "Einheit"}</div>
                           </td>
-                          <td className="px-4 py-4 font-bold text-slate-700">{row.tenantName}</td>
-                          <td className="px-4 py-4 text-right font-black text-slate-900">{row.status === "vacant" ? "—" : eur(row.expectedAmount)}</td>
-                          <td className="px-4 py-4 text-right font-black text-emerald-700">{eur(row.paidAmount)}</td>
-                          <td className="px-4 py-4 text-right font-black text-rose-700">{row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}</td>
+                          <td className="px-4 py-4 font-bold text-slate-700">
+                            <div className="truncate" title={row.tenantName}>{row.tenantName}</div>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right font-black tabular-nums text-slate-900">{row.status === "vacant" ? "—" : eur(row.expectedAmount)}</td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right font-black tabular-nums text-emerald-700">{eur(row.paidAmount)}</td>
+                          <td className="whitespace-nowrap px-5 py-4 text-right font-black tabular-nums text-rose-700">{row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}</td>
                         </tr>
                       ))
                     ) : (
