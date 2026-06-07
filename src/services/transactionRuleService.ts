@@ -132,6 +132,38 @@ export async function createTransactionRule(input: TransactionRuleInput): Promis
   return data as TransactionRule;
 }
 
+export async function updateTransactionRule(id: string, input: TransactionRuleInput): Promise<TransactionRule> {
+  const userId = await getCurrentUserId();
+  const name = cleanText(input.name);
+  const matchText = cleanText(input.matchText);
+
+  if (!name) throw new Error("Bitte einen Regelnamen eingeben.");
+  if (!matchText) throw new Error("Bitte einen Suchtext eingeben.");
+
+  const { data, error } = await supabase
+    .from("transaction_rules")
+    .update({
+      name,
+      match_text: matchText,
+      property_id: cleanText(input.propertyId),
+      object_code: cleanText(input.objectCode),
+      unit_label: cleanText(input.unitLabel),
+      entry_type: input.entryType ?? null,
+      category: cleanText(input.category),
+      tax_relevant: typeof input.taxRelevant === "boolean" ? input.taxRelevant : null,
+      priority: Number.isFinite(input.priority) ? input.priority : 100,
+      is_active: input.isActive ?? true,
+      notes: cleanText(input.notes),
+    })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as TransactionRule;
+}
+
 export async function updateTransactionRuleActive(id: string, isActive: boolean): Promise<TransactionRule> {
   const userId = await getCurrentUserId();
   const { data, error } = await supabase
@@ -144,6 +176,17 @@ export async function updateTransactionRuleActive(id: string, isActive: boolean)
 
   if (error) throw error;
   return data as TransactionRule;
+}
+
+export async function deleteTransactionRule(id: string): Promise<void> {
+  const userId = await getCurrentUserId();
+  const { error } = await supabase
+    .from("transaction_rules")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) throw error;
 }
 
 export async function listRuleCandidateEntries(from: string, to: string): Promise<FinanceEntryForRules[]> {

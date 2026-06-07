@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, Loader2, Play, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
+import { CheckCircle2, Loader2, Pencil, Play, RefreshCw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 import {
   applyRulePreview,
   createTransactionRule,
+  deleteTransactionRule,
   formatRuleAmount,
   listRuleCandidateEntries,
   listTransactionRules,
   previewRuleMatches,
+  updateTransactionRule,
   updateTransactionRuleActive,
   type RuleEntryType,
   type RulePreviewRow,
@@ -66,6 +68,7 @@ export default function Transaktionsregeln() {
   const [from, setFrom] = useState(`${currentYear}-01-01`);
   const [to, setTo] = useState(() => isoDate(new Date()));
   const [form, setForm] = useState<RuleForm>(initialForm);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,7 +122,7 @@ export default function Transaktionsregeln() {
     try {
       const taxRelevant =
         form.taxRelevant === "yes" ? true : form.taxRelevant === "no" ? false : null;
-      await createTransactionRule({
+      const payload = {
         name: form.name,
         matchText: form.matchText,
         entryType: form.entryType || null,
@@ -127,15 +130,65 @@ export default function Transaktionsregeln() {
         taxRelevant,
         objectCode: form.objectCode,
         priority: Number(form.priority || 100),
+        isActive: editingRuleId ? rules.find((rule) => rule.id === editingRuleId)?.is_active : true,
         notes: form.notes,
-      });
+      };
+
+      if (editingRuleId) {
+        await updateTransactionRule(editingRuleId, payload);
+      } else {
+        await createTransactionRule(payload);
+      }
+
       setForm(initialForm);
-      setMessage("Regel wurde gespeichert.");
+      setEditingRuleId(null);
+      setPreview([]);
+      setMessage(editingRuleId ? "Regel wurde aktualisiert." : "Regel wurde gespeichert.");
       await loadRules();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Regel konnte nicht gespeichert werden.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function editRule(rule: TransactionRule) {
+    setEditingRuleId(rule.id);
+    setForm({
+      name: rule.name ?? "",
+      matchText: rule.match_text ?? "",
+      entryType: rule.entry_type ?? "",
+      category: rule.category ?? "",
+      taxRelevant: rule.tax_relevant === true ? "yes" : rule.tax_relevant === false ? "no" : "keep",
+      objectCode: rule.object_code ?? "",
+      priority: String(rule.priority ?? 100),
+      notes: rule.notes ?? "",
+    });
+    setMessage(`Regel "${rule.name}" wird bearbeitet.`);
+    setError(null);
+  }
+
+  function cancelEdit() {
+    setEditingRuleId(null);
+    setForm(initialForm);
+    setMessage(null);
+    setError(null);
+  }
+
+  async function removeRule(rule: TransactionRule) {
+    const confirmed = window.confirm(`Regel "${rule.name}" wirklich löschen? Diese Aktion löscht nur die Regel, nicht die Buchungen.`);
+    if (!confirmed) return;
+
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteTransactionRule(rule.id);
+      if (editingRuleId === rule.id) cancelEdit();
+      setRules((current) => current.filter((item) => item.id !== rule.id));
+      setPreview((current) => current.filter((row) => row.rule.id !== rule.id));
+      setMessage("Regel wurde gelöscht. Buchungen bleiben unverändert.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Regel konnte nicht gelöscht werden.");
     }
   }
 
@@ -201,7 +254,19 @@ export default function Transaktionsregeln() {
 
       <div className="grid gap-6 xl:grid-cols-[480px_minmax(0,1fr)]">
         <form onSubmit={submitRule} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <h2 className="text-2xl font-black text-slate-950">Neue Regel</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-2xl font-black text-slate-950">{editingRuleId ? "Regel bearbeiten" : "Neue Regel"}</h2>
+            {editingRuleId ? (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700"
+              >
+                <X size={15} />
+                Abbrechen
+              </button>
+            ) : null}
+          </div>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="text-sm font-black text-slate-700">Name</span>
@@ -291,7 +356,7 @@ export default function Transaktionsregeln() {
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-              Regel speichern
+              {editingRuleId ? "Änderungen speichern" : "Regel speichern"}
             </button>
           </div>
         </form>
@@ -375,6 +440,24 @@ export default function Transaktionsregeln() {
                         <span>Typ: {entryTypeLabel(rule.entry_type)}</span>
                         <span>Kategorie: {rule.category || "nicht ändern"}</span>
                         <span>Steuer: {taxLabel(rule.tax_relevant)}</span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editRule(rule)}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-800 shadow-sm"
+                        >
+                          <Pencil size={15} />
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeRule(rule)}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-800 shadow-sm"
+                        >
+                          <Trash2 size={15} />
+                          Löschen
+                        </button>
                       </div>
                     </div>
                   ))
