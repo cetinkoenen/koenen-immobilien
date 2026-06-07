@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   NavLink,
   Navigate,
@@ -57,30 +57,13 @@ function RouteFallback() {
   );
 }
 
-function navLinkStyle(isActive: boolean): CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 126,
-    height: 44,
-    padding: "0 16px",
-    borderRadius: 14,
-    textDecoration: "none",
-    fontWeight: 850,
-    fontSize: 13,
-    lineHeight: 1,
-    letterSpacing: "-0.01em",
-    transition:
-      "background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease",
-    border: isActive ? "1px solid #c8c7ff" : "1px solid #d8d2c7",
-    background: isActive ? "#eef0ff" : "rgba(255,255,255,0.78)",
-    color: isActive ? "#3730a3" : "#111827",
-    whiteSpace: "nowrap",
-    boxShadow: isActive
-      ? "0 3px 9px rgba(71, 85, 105, 0.12)"
-      : "0 2px 6px rgba(71, 85, 105, 0.10)",
-  };
+function desktopNavLinkClass(isActive: boolean): string {
+  return [
+    "inline-flex h-10 min-w-[108px] items-center justify-center rounded-xl border px-3 text-center text-xs font-black leading-tight no-underline shadow-sm transition",
+    isActive
+      ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+      : "border-[#d8d2c7] bg-white/80 text-slate-900 hover:bg-white",
+  ].join(" ");
 }
 
 
@@ -209,7 +192,7 @@ function AppShell() {
     [],
   );
 
-  const mobileNavGroups = useMemo(
+  const navGroups = useMemo(
     () =>
       ["Überblick", "Finanzen", "Mieter", "Verwaltung"].map((group) => ({
         group,
@@ -246,16 +229,25 @@ function AppShell() {
             </NavLink>
 
             <div className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex">
-              <nav className="flex max-w-[1120px] flex-wrap justify-center gap-2.5">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    style={({ isActive }) => navLinkStyle(isActive)}
-                  >
-                    {item.label}
-                  </NavLink>
+              <nav className="grid max-w-[1180px] flex-1 grid-cols-4 gap-3">
+                {navGroups.map(({ group, items }) => (
+                  <div key={group} className="min-w-0">
+                    <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      {group}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {items.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.end}
+                          className={({ isActive }) => desktopNavLinkClass(isActive)}
+                        >
+                          {item.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </nav>
               <BackupButton />
@@ -276,7 +268,7 @@ function AppShell() {
           {mobileMenuOpen && (
             <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-[#e7ddcf] bg-white/90 p-3 shadow-sm xl:hidden">
               <nav className="grid gap-4">
-                {mobileNavGroups.map(({ group, items }) => (
+                {navGroups.map(({ group, items }) => (
                   <div key={group} className="grid gap-2">
                     <div className="px-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
                       {group}
