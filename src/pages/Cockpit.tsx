@@ -127,7 +127,7 @@ export default function Cockpit() {
                   to="/mieteruebersicht"
                   className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-900 shadow-sm transition hover:bg-slate-50"
                 >
-                  <span>Mieter prüfen</span>
+                  <span>Mieteingang</span>
                   <ArrowRight size={15} />
                 </NavLink>
               </div>

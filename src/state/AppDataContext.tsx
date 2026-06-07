@@ -461,7 +461,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             }))
         : [];
 
-      // Fallback ist bewusst aus den Buchungen berechnet, damit Mieterübersicht
+      // Fallback ist bewusst aus den Buchungen berechnet, damit Mieteingang
       // und Portfolio auch funktionieren, wenn die View v_mieteingaenge_monat
       // keine Berechtigung hat.
       // Single Source of Truth im Frontend: Mietmonate werden immer nach der Hausverwaltungs-Regel berechnet.

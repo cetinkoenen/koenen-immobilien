@@ -438,7 +438,7 @@ export default function MieterAnlegen() {
             </div>
             <p className="mt-2">
               Diese Seite schreibt nur in die neuen Mieter-Tabellen. Alte Mieterdaten in Portfolio,
-              Mieterübersicht und Vermietung bleiben zunächst unverändert sichtbar.
+              Mieteingang und Vermietung bleiben zunächst unverändert sichtbar.
             </p>
           </section>
         </aside>

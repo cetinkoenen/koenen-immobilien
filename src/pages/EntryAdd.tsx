@@ -187,7 +187,7 @@ export default function EntryAdd() {
 
       clearAppDataCache();
       emitFinanceEntryChanged();
-      setMsg("✅ Buchung erfolgreich gespeichert. Mieterübersicht und Auswertungen werden aktualisiert.");
+      setMsg("✅ Buchung erfolgreich gespeichert. Mieteingang und Auswertungen werden aktualisiert.");
       setAmount("");
       setCategory("");
       setNote("");

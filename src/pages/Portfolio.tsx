@@ -542,7 +542,7 @@ export default function Portfolio() {
                   </section>
 
                   <section className="portfolio-edit-box wide">
-                    <h3>Mieterübersicht</h3>
+                    <h3>Mieteingang</h3>
                     <div className="portfolio-input-grid four">
                       <label>Name<input value={extra.firstName} onChange={(e) => updateExtra(row.property_id, "firstName", e.target.value)} placeholder="Name" /></label>
                       <label>Nachname<input value={extra.lastName} onChange={(e) => updateExtra(row.property_id, "lastName", e.target.value)} placeholder="Nachname" /></label>

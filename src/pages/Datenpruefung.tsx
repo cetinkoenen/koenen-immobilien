@@ -347,7 +347,7 @@ export default function Datenpruefung() {
       if (portfolioLoan && latestBalance !== null && portfolioBalance !== null && Math.abs(portfolioBalance - latestBalance) > 1) notes.push("Portfolio-Restschuld weicht von der Darlehensübersicht ab.");
       if (previousLedger && latestLedger && latestLedger.balance > previousLedger.balance + 1) notes.push("Restschuld steigt gegenüber dem Vorjahr.");
       if (duplicateYears.length) notes.push(`Doppelte Darlehensjahre: ${duplicateYears.join(", ")}.`);
-      if (incomesFromEntries.length && rentalRows.length === 0) notes.push("Income vorhanden, aber Mieterübersicht leer.");
+      if (incomesFromEntries.length && rentalRows.length === 0) notes.push("Income vorhanden, aber Mieteingang leer.");
 
       const capexTotal = capexRows.reduce((sum, row) => sum + toNumber(row.amount), 0);
       const incomeTotal = incomesFromEntries.reduce((sum, row) => sum + toNumber(row.einnahmen), 0) + incomeRows.reduce((sum, row) => sum + toNumber(row.annual_rent) + toNumber(row.other_income), 0);

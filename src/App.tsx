@@ -197,7 +197,7 @@ function AppShell() {
       { to: "/transaktionsregeln", label: "Regeln", group: "Finanzen" },
       { to: "/steuer", label: "Steuer", group: "Finanzen" },
       { to: "/auswertungen", label: "Auswertungen", group: "Finanzen" },
-      { to: "/mieteruebersicht", label: "Mieter prüfen", group: "Mieter" },
+      { to: "/mieteruebersicht", label: "Mieteingang", group: "Mieter" },
       { to: "/mieter-anlegen", label: "Mieter anlegen", group: "Mieter" },
       { to: "/leerstand", label: "Leerstand", group: "Mieter" },
       { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter" },

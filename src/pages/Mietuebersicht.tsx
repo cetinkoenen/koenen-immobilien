@@ -3,26 +3,35 @@ import { NavLink } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
-  emptyPropertyExtra,
-  fetchPropertyExtras,
-  loadLocalTenantExtras,
-  mergeLocalSources,
-  migrateLocalExtrasToSupabase,
-  writeLocalTenantExtras,
-  type PropertyExtraInfo,
-} from "../services/propertyExtraService";
-import {
   isVacancyInRange,
   listDerivedVacanciesFromEndedRentals,
   listVacancies,
   type UnitVacancy,
 } from "../services/vacancyService";
 
-type TenantInfo = Pick<PropertyExtraInfo, "firstName" | "lastName" | "phone" | "email">;
+type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
 type PaymentStatus = "paid" | "missing" | "vacant";
 type OverviewRow = { objectId: string; objectCode: string | null; tenantKey: string; label: string; unitLabel?: string; referenceLabel?: string; paidAmount: number; lastBookingDate: string | null; status: PaymentStatus; vacancyReason?: string | null };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
+
+type TenantContractProfileRow = {
+  id: string;
+  property_id: string | null;
+  object_code: string | null;
+  unit_label: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+  tenant_profiles?: {
+    first_name: string | null;
+    last_name: string | null;
+    company_name: string | null;
+    email: string | null;
+    phone: string | null;
+    mobile: string | null;
+  } | null;
+};
 
 function toIso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -264,7 +273,7 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
     ];
 
     // Rosensteinstraße hat laut Bestand nur 3 Garagen/Stellplätze und keine Wohnung.
-    // Daher darf in der Mieterübersicht keine zusätzliche Zeile "Wohnung / Hauptmiete"
+    // Daher darf im Mieteingang keine zusätzliche Zeile "Wohnung / Hauptmiete"
     // erzeugt werden; die drei Garagen behalten ihre bisherigen Matcher/Funktionen.
     return garages.map((garage) => ({
       ref: garage.ref,
@@ -292,10 +301,12 @@ function isGarageLikeBooking(booking: FinanceEntry): boolean {
   return text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz");
 }
 
-function attributedRentDateForUnit(booking: FinanceEntry, _objectLabel: string, _unitRef: string): string | null {
+function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, unitRef: string): string | null {
+  void objectLabel;
+  void unitRef;
   if (!booking.booking_date) return null;
 
-  // Dauerregel für die Verknüpfung Monate/Buchungen -> Mieterübersicht:
+  // Dauerregel für die Verknüpfung Monate/Buchungen -> Mieteingang:
   // Wenn ab dem 25. Monatstag ein Zahlungseingang mit Referenz/Kategorie "Miete" gebucht wird,
   // zählt dieser Eingang automatisch als Miete für den Folgemonat.
   // Beispiel: 672,33 € am 30.04. mit Referenz "Miete" zählt als Mai-Miete.
@@ -314,7 +325,7 @@ function rentAmountKey(amount: number): string {
 function pickMostLikelySingleRentBooking(currentCandidates: FinanceEntry[], historicalCandidates: FinanceEntry[]): FinanceEntry[] {
   if (currentCandidates.length <= 1) return currentCandidates;
 
-  // Miete für eine Einheit soll in der Mieterübersicht nicht als Summe mehrerer
+  // Miete für eine Einheit soll im Mieteingang nicht als Summe mehrerer
   // Bankbuchungen erscheinen. Wenn im Buchungsfenster mehrere mögliche Treffer
   // existieren, nehmen wir den wiederkehrenden Monatsbetrag bzw. den besten
   // Einzel-Treffer. So werden z. B. zusätzliche Zahlungen am Monatsende nicht
@@ -350,20 +361,6 @@ function pickMostLikelySingleRentBooking(currentCandidates: FinanceEntry[], hist
     .pop();
   const latest = latestDate ? source.filter((booking) => booking.booking_date === latestDate) : source;
   return [latest.sort((a, b) => a.amount - b.amount)[0]];
-}
-
-function toTenantInfo(extra: Partial<PropertyExtraInfo> | undefined): TenantInfo {
-  return {
-    firstName: extra?.firstName ?? "",
-    lastName: extra?.lastName ?? "",
-    phone: extra?.phone ?? "",
-    email: extra?.email ?? "",
-  };
-}
-
-function loadStoredTenants(): Record<string, TenantInfo> {
-  const extras = loadLocalTenantExtras();
-  return Object.fromEntries(Object.entries(extras).map(([key, value]) => [key, toTenantInfo(value)]));
 }
 
 function vacancyMatchesUnit(vacancy: UnitVacancy, object: { id: string; code: string | null; label: string }, unit: UnitDefinition): boolean {
@@ -412,6 +409,45 @@ function deriveOpenVacancyAfterEndedTenancy(vacancy: UnitVacancy, monthEnd: stri
   };
 }
 
+function isContractInMonth(contract: TenantContractProfileRow, start: string, end: string): boolean {
+  if (contract.status === "vacant") return false;
+  if (contract.start_date && contract.start_date > end) return false;
+  if (contract.end_date && contract.end_date < start) return false;
+  return contract.status !== "ended" || !contract.end_date || contract.end_date >= start;
+}
+
+function contractMatchesUnit(contract: TenantContractProfileRow, object: { id: string; code: string | null; label: string }, unit: UnitDefinition): boolean {
+  const propertyMatch =
+    String(contract.property_id ?? "") === String(object.id) ||
+    normalizeReferenceText(contract.object_code) === normalizeReferenceText(object.code) ||
+    normalizeReferenceText(contract.object_code) === normalizeReferenceText(object.label);
+  if (!propertyMatch) return false;
+
+  const contractUnit = compactReferenceText(contract.unit_label);
+  if (!contractUnit) return true;
+  const unitRef = compactReferenceText(unit.ref);
+  const unitTitle = compactReferenceText(unit.title);
+  const contractUnitText = normalizeReferenceText(contract.unit_label);
+  const isContractGarage = contractUnitText.includes("garage") || contractUnitText.includes("tiefgarage") || contractUnitText.includes("stellplatz") || contractUnitText.includes("tg") || contractUnitText.includes("p250") || contractUnitText.includes("p253") || contractUnitText.includes("p254");
+
+  if (unitRef === "hauptmiete") return !isContractGarage;
+  if (unitRef === "wohnung") return !isContractGarage;
+  if (unitRef === "garage") return isContractGarage;
+
+  return contractUnit.includes(unitRef) || unitRef.includes(contractUnit) || contractUnit.includes(unitTitle) || unitTitle.includes(contractUnit);
+}
+
+function tenantInfoFromContract(contract: TenantContractProfileRow | undefined): TenantInfo {
+  const tenant = contract?.tenant_profiles;
+  if (!tenant) return emptyTenant;
+  return {
+    firstName: tenant.company_name || tenant.first_name || "",
+    lastName: tenant.company_name ? "" : tenant.last_name || "",
+    phone: tenant.phone || tenant.mobile || "",
+    email: tenant.email || "",
+  };
+}
+
 function DonutChart({ paid, missing, vacant }: { paid: number; missing: number; vacant: number }) {
   const total = paid + missing + vacant;
   const paidPercent = total > 0 ? Math.round((paid / total) * 100) : 0;
@@ -428,7 +464,7 @@ function DonutChart({ paid, missing, vacant }: { paid: number; missing: number; 
 
 export default function Mietuebersicht() {
   // Ab dem 25. gebuchte Mieten zählen fachlich zum Folgemonat.
-  // Deshalb startet die Mieterübersicht ab dem 25. automatisch im Folgemonat,
+  // Deshalb startet der Mieteingang ab dem 25. automatisch im Folgemonat,
   // damit z. B. eine am 29.05. gebuchte "Juni 2026"-Miete sofort sichtbar ist.
   const [monthOffset, setMonthOffset] = useState(() => (new Date().getDate() >= 25 ? 1 : 0));
   const month = useMemo(() => {
@@ -438,8 +474,7 @@ export default function Mietuebersicht() {
   const appData = useAppData();
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
-  const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>(() => loadStoredTenants());
-  const [, setFullExtras] = useState<Record<string, PropertyExtraInfo>>(() => mergeLocalSources());
+  const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
 
   const sourceObjects = useMemo(() => {
@@ -468,7 +503,7 @@ export default function Mietuebersicht() {
         return;
       }
 
-      setMonthBookings(((data ?? []) as any[]).map((row) => ({
+      setMonthBookings(((data ?? []) as Array<Partial<FinanceEntry>>).map((row) => ({
         id: row.id ?? null,
         object_id: row.object_id == null ? null : String(row.object_id),
         objekt_code: row.objekt_code ?? null,
@@ -528,51 +563,55 @@ export default function Mietuebersicht() {
   }, [sourceObjects, month.start, month.end]);
 
   useEffect(() => {
-    const ids = sourceObjects.map((object) => object.id).filter(Boolean);
-    if (!ids.length) return;
+    if (!sourceObjects.length) return;
 
     let cancelled = false;
 
-    async function loadSavedTenants() {
-      const local = mergeLocalSources();
+    async function loadTenantContracts() {
       try {
-        const remote = await fetchPropertyExtras(ids);
+        const { data, error } = await supabase
+          .from("tenant_contracts")
+          .select("id,property_id,object_code,unit_label,start_date,end_date,status,tenant_profiles(first_name,last_name,company_name,email,phone,mobile)")
+          .eq("is_deleted", false)
+          .in("status", ["active", "planned", "ended"])
+          .order("start_date", { ascending: false, nullsFirst: false });
+
+        if (error) throw error;
         if (cancelled) return;
 
-        const mergedExtras: Record<string, PropertyExtraInfo> = {};
-        const mergedTenants: Record<string, TenantInfo> = {};
+        const contracts = ((data ?? []) as unknown as TenantContractProfileRow[]).filter((contract) =>
+          isContractInMonth(contract, month.start, month.end),
+        );
+        const nextTenantInfo: Record<string, TenantInfo> = {};
 
-        for (const id of ids) {
-          mergedExtras[id] = { ...emptyPropertyExtra, ...(local[id] ?? {}), ...(remote[id] ?? {}) };
-          mergedTenants[id] = toTenantInfo(mergedExtras[id]);
+        for (const object of sourceObjects) {
+          const units = getUnitDefinitions(object.label);
+          for (const unit of units) {
+            const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
+            const contract = contracts.find((candidate) => contractMatchesUnit(candidate, object, unit));
+            nextTenantInfo[tenantKey] = tenantInfoFromContract(contract);
+            if (units.length === 1) nextTenantInfo[object.id] = nextTenantInfo[tenantKey];
+          }
         }
 
-        setFullExtras((prev) => ({ ...prev, ...mergedExtras }));
-        setTenantInfo((prev) => ({ ...prev, ...mergedTenants }));
-        writeLocalTenantExtras({ ...local, ...mergedExtras });
-        setStatus((prev) => ({ ...prev, __global: "Mieterdaten aus Supabase geladen." }));
-
-        void migrateLocalExtrasToSupabase(ids, local, remote).catch((error) => {
-          console.warn("Lokale Mieterdaten konnten nicht automatisch übernommen werden:", error);
-        });
-      } catch (error: any) {
+        setTenantInfo(nextTenantInfo);
+        setStatus((prev) => ({ ...prev, __global: "Mieterdaten aus tenant_profiles/tenant_contracts geladen." }));
+      } catch (error) {
         if (cancelled) return;
-        const tenants = Object.fromEntries(Object.entries(local).map(([id, value]) => [id, toTenantInfo(value)]));
-        setFullExtras((prev) => ({ ...local, ...prev }));
-        setTenantInfo((prev) => ({ ...tenants, ...prev }));
+        setTenantInfo({});
         setStatus((prev) => ({
           ...prev,
-          __global: "Supabase-Speichertabelle nicht erreichbar. Lokale Mieterdaten bleiben sichtbar.",
+          __global: "Mieterstammdaten konnten nicht geladen werden. Bitte tenant_profiles/tenant_contracts prüfen.",
         }));
-        console.warn("Mietuebersicht extra load failed:", error);
+        console.warn("Mietuebersicht tenant contract load failed:", error);
       }
     }
 
-    void loadSavedTenants();
+    void loadTenantContracts();
     return () => {
       cancelled = true;
     };
-  }, [sourceObjects]);
+  }, [sourceObjects, month.start, month.end]);
 
   const rows = useMemo<OverviewRow[]>(
     () =>
@@ -631,7 +670,7 @@ export default function Mietuebersicht() {
           }
 
           // Falls eine positive Objekt-Einnahme nicht eindeutig einer Garage/TG zugeordnet werden kann,
-          // wird sie der Hauptmiete/Wohnung zugeordnet, damit die Mieterübersicht nicht fälschlich „FEHLT" zeigt.
+          // wird sie der Hauptmiete/Wohnung zugeordnet, damit der Mieteingang nicht fälschlich „FEHLT" zeigt.
           if (units.length > 1 && unit.ref === "hauptmiete" && unitBookings.length === 0) {
             unitBookings = relevantBookings.filter((booking) => {
               const text = normalizeReferenceText(bookingReferenceText(booking));
@@ -671,7 +710,7 @@ export default function Mietuebersicht() {
   return (
     <div className="tenant-page">
       <header className="tenant-hero">
-        <h1>Mieter prüfen</h1>
+        <h1>Mieteingang</h1>
         <p>
           Diese Seite kontrolliert Mieteingänge aus den vorhandenen Buchungen. Neue
           Mieterstammdaten werden zentral unter „Mieter anlegen“ gepflegt.
@@ -702,7 +741,7 @@ export default function Mietuebersicht() {
           </div>
 
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
-          {appData.loading && <div className="tenant-message">Mieterübersicht wird geladen…</div>}
+          {appData.loading && <div className="tenant-message">Mieteingang wird geladen…</div>}
 
           {!appData.loading && rows.length > 0 && (
             <div className="tenant-list">

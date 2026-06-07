@@ -693,7 +693,7 @@ export default function Portfolio() {
                   </section>
 
                   <section className="portfolio-edit-box wide">
-                    <h3>Mieterübersicht</h3>
+                    <h3>Mieteingang</h3>
                     <div className="portfolio-input-grid four">
                       <label>
                         Name

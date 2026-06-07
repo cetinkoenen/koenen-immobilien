@@ -1660,7 +1660,7 @@ function PhaseTwoObjectFileDashboard() {
       subtitle: "Wichtige operative Risiken werden sichtbarer: Mietstatus, Cashflow, fehlende Daten, offene Abrechnungen und Darlehensentwicklung.",
       status: "Kontrolle",
       tone: "amber",
-      actionLabel: "Mieterübersicht öffnen",
+      actionLabel: "Mieteingang öffnen",
       to: "/mieteruebersicht",
       items: [
         "Mietcheck und Objekt-Jahresübersicht bleiben zentral erreichbar",
@@ -1700,7 +1700,7 @@ function ProfessionalWorkflowBoard() {
     { area: "Finanzen", master: "Monate / Buchungen", output: "Cashflow, Einnahmen, Ausgaben, Kategorien", status: "Single Source" },
     { area: "Darlehen", master: "property_loan_ledger", output: "Restschuld, Tilgung, Verlauf, Darlehensübersicht", status: "Zentral" },
     { area: "Capex", master: "Monate mit Sanierung/Reparatur/Modernisierung", output: "Capex-Auswertung, Objektakte, Jahreswerte", status: "Referenziert" },
-    { area: "Vermietung", master: "Portfolio / Mieterübersicht", output: "Mieter, Kaltmiete, Nebenkosten, Mietcheck", status: "Objektbezogen" },
+    { area: "Vermietung", master: "Portfolio / Mieteingang", output: "Mieter, Kaltmiete, Nebenkosten, Mietcheck", status: "Objektbezogen" },
     { area: "Nebenkosten", master: "NK-Wohnungen / NK-Tiefgaragen", output: "Abrechnung, Archiv, PDF, Referenzunterlagen", status: "Workflow" },
     { area: "Dokumente", master: "Objektakte / Uploads", output: "Exposé, Verträge, Rechnungen, WEG, Energieausweis", status: "Vorbereitet" },
   ];
@@ -1958,7 +1958,7 @@ function ObjectWorkspacePhaseTwoA() {
                   <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
                     {activeTab === "uebersicht" ? "Hier werden künftig Stammdaten, aktuelle KPIs, Statusampeln und die wichtigsten Aktionen der Immobilie gebündelt." : null}
                     {activeTab === "finanzen" ? "Finanzdaten bleiben mit den bestehenden Modulen verknüpft: Darlehensübersicht, Finance pro Jahr, Income und Capex." : null}
-                    {activeTab === "vermietung" ? "Mieterinformationen, Mietstatus und Mietcheck werden fachlich mit Portfolio und Mieterübersicht verbunden." : null}
+                    {activeTab === "vermietung" ? "Mieterinformationen, Mietstatus und Mietcheck werden fachlich mit Portfolio und Mieteingang verbunden." : null}
                     {activeTab === "nk" ? "Nebenkostenabrechnungen, Freigaben und PDF-Archive werden objektbezogen zusammengeführt." : null}
                     {activeTab === "dokumente" ? "Dokumente werden nach Objekt, Kategorie und Jahr strukturiert: Mietvertrag, Rechnung, NK, Darlehen, WEG und Energie." : null}
                     {activeTab === "historie" ? "Die Timeline zeigt später Kauf, Sanierungen, Mieterwechsel, Sondertilgungen, NK-Abschlüsse und Dokumentenereignisse." : null}
@@ -2268,7 +2268,7 @@ function PhaseTwoBAutomationCenter() {
         id: `rent-${name}`,
         title: "Mietzahlung prüfen",
         objectName: name,
-        detail: `Für ${currentMonthKey} wurde noch keine Miet-/Garagenbuchung erkannt. Bitte Mieterübersicht bzw. Monate prüfen.`,
+        detail: `Für ${currentMonthKey} wurde noch keine Miet-/Garagenbuchung erkannt. Bitte Mieteingang bzw. Buchhaltung prüfen.`,
         priority: today.getDate() > 14 ? "hoch" : "mittel",
         tone: today.getDate() > 14 ? "red" : "amber",
         source: "Mietcheck-Regel",
