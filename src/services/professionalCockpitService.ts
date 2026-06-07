@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import {
+  effectiveVacancyStartDate,
   isVacancyEffectivelyActiveInRange,
   listVacancies,
   type UnitVacancy,
@@ -29,6 +30,11 @@ export type CockpitTask = {
   priority: string;
   dueDate: string | null;
   propertyName: string | null;
+  description: string | null;
+  checklistGroups: Array<{
+    title: string;
+    items: string[];
+  }>;
 };
 
 export type CockpitDocumentIssue = {
@@ -115,10 +121,14 @@ type ObjectRow = {
 type TaskRow = {
   id: string | number;
   title: string | null;
+  description: string | null;
   category: string | null;
   priority: string | number | null;
   due_date: string | null;
   property_name: string | null;
+  meta?: {
+    checklist_groups?: Array<{ title?: string; items?: string[] }>;
+  } | null;
 };
 
 type DocumentIssueRow = {
@@ -247,11 +257,157 @@ function buildObjectLabelMap(rows: ObjectRow[]): Record<string, string> {
   return result;
 }
 
+function moveOutChecklistGroups(): CockpitTask["checklistGroups"] {
+  return [
+    {
+      title: "1. Am Auszugstag",
+      items: [
+        "Gemeinsamen Übergabetermin mit Mieter vereinbaren.",
+        "Auszugsprotokoll erstellen und von beiden Parteien unterschreiben lassen.",
+        "Zustand von Wänden, Böden, Türen und Fenstern prüfen.",
+        "Mängel und vereinbarte Schönheitsreparaturen schriftlich festhalten.",
+        "Fotodokumentation aller Räume und Schäden erstellen.",
+        "Alle Schlüssel inkl. Keller, Briefkasten und Garage zählen und protokollieren.",
+      ],
+    },
+    {
+      title: "2. Zählerstände",
+      items: [
+        "Heizungswerte aller Messgeräte notieren.",
+        "Stromzählerstand dokumentieren.",
+        "Warm- und Kaltwasserzähler dokumentieren.",
+        "Zählernummern den richtigen Einheiten zuordnen.",
+        "Zählerstände zeitnah an Versorger bzw. Verwaltung melden.",
+      ],
+    },
+    {
+      title: "3. Nach dem Auszug",
+      items: [
+        "Neue Anschrift des Mieters hinterlegen.",
+        "Kaution bis zur Klärung möglicher Ansprüche einbehalten.",
+        "Angemessenen Kautionsanteil für ausstehende Nebenkostenabrechnung zurückhalten.",
+        "Auf beschlossene Hausgeldabrechnung der Hausverwaltung warten.",
+      ],
+    },
+    {
+      title: "4. Finale Abrechnung",
+      items: [
+        "Nebenkostenabrechnung auf Basis der Hausgeldabrechnung erstellen.",
+        "Nur umlagefähige Kosten laut Mietvertrag berücksichtigen.",
+        "Unterjährige Wohndauer zeitanteilig berechnen.",
+        "Abrechnung innerhalb der gesetzlichen Frist zusenden.",
+        "Restkaution nach Verrechnung von Nachzahlungen, Guthaben oder Schäden auszahlen.",
+      ],
+    },
+  ];
+}
+
+function checklistDescription(): string {
+  return moveOutChecklistGroups()
+    .map((group) => `${group.title}\n${group.items.map((item) => `- ${item}`).join("\n")}`)
+    .join("\n\n");
+}
+
+function effectiveVacancyTaskKey(vacancy: UnitVacancy): string {
+  return `unit_vacancy:${vacancy.id}:move_out_checklist`;
+}
+
+function asUuid(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : null;
+}
+
+function taskLabelForVacancy(vacancy: UnitVacancy, objectLabels: Record<string, string>): string {
+  return (
+    vacancy.object_label ||
+    objectLabels[vacancy.property_id ?? ""] ||
+    objectLabels[vacancy.object_code ?? ""] ||
+    vacancy.object_code ||
+    "Unbekanntes Objekt"
+  );
+}
+
+async function ensureMoveOutChecklistTasks(
+  vacancies: UnitVacancy[],
+  objectLabels: Record<string, string>,
+  periodStart: string,
+  periodEnd: string,
+): Promise<void> {
+  const activeVacancies = vacancies.filter((vacancy) =>
+    isVacancyEffectivelyActiveInRange(vacancy, periodStart, periodEnd),
+  );
+  if (!activeVacancies.length) return;
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from("property_tasks")
+    .select("id,meta,status")
+    .eq("category", "leerstand")
+    .in("status", ["offen", "in_bearbeitung"]);
+
+  if (existingError) {
+    console.warn("Leerstand-Aufgaben konnten nicht geprüft werden.", existingError);
+    return;
+  }
+
+  const existingKeys = new Set(
+    ((existingRows ?? []) as Array<{ meta?: { source_key?: string } | null }>).map((row) => row.meta?.source_key).filter(Boolean),
+  );
+  const checklistGroups = moveOutChecklistGroups();
+  const description = checklistDescription();
+
+  for (const vacancy of activeVacancies) {
+    const sourceKey = effectiveVacancyTaskKey(vacancy);
+    if (existingKeys.has(sourceKey)) continue;
+
+    const propertyName = taskLabelForVacancy(vacancy, objectLabels);
+    const unitSuffix = vacancy.unit_label ? ` · ${vacancy.unit_label}` : "";
+    const effectiveStart = effectiveVacancyStartDate(vacancy);
+
+    const { error: insertError } = await supabase.from("property_tasks").insert({
+      property_id: asUuid(vacancy.property_id),
+      portfolio_property_id: null,
+      objekt_code: vacancy.object_code,
+      property_name: propertyName,
+      title: `Auszug organisieren: ${propertyName}${unitSuffix}`,
+      description,
+      category: "leerstand",
+      priority: "hoch",
+      status: "offen",
+      due_date: effectiveStart,
+      source: "system",
+      meta: {
+        source: "unit_vacancies",
+        source_key: sourceKey,
+        vacancy_id: vacancy.id,
+        vacancy_property_id: vacancy.property_id,
+        unit_label: vacancy.unit_label,
+        checklist_groups: checklistGroups,
+      },
+    });
+    if (insertError) {
+      console.warn("Leerstand-Aufgabe konnte nicht angelegt werden.", insertError);
+      continue;
+    }
+    existingKeys.add(sourceKey);
+  }
+}
+
+function normalizeChecklistGroups(meta: TaskRow["meta"]): CockpitTask["checklistGroups"] {
+  return (meta?.checklist_groups ?? [])
+    .map((group) => ({
+      title: String(group.title ?? "Checkliste"),
+      items: Array.isArray(group.items)
+        ? group.items.map((item) => String(item).trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 export async function loadCockpitSnapshot(baseDate = new Date()): Promise<CockpitSnapshot> {
   const period = monthRange(baseDate);
   const previousWindowStart = isoDate(new Date(baseDate.getFullYear(), baseDate.getMonth() - 1, 25));
 
-  const [contractsRes, objectsRes, paymentsRes, taskRes, docsRes, vacancyRows] = await Promise.all([
+  const [contractsRes, objectsRes, paymentsRes, docsRes, vacancyRows] = await Promise.all([
     supabase
       .from("tenant_contracts")
       .select("*,tenant_profiles(first_name,last_name,company_name,tenant_number)")
@@ -265,12 +421,6 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
       .eq("entry_type", "income")
       .gte("booking_date", previousWindowStart)
       .lte("booking_date", period.end),
-    supabase
-      .from("property_tasks")
-      .select("id,title,category,priority,due_date,property_name,status")
-      .in("status", ["offen", "in_bearbeitung"])
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(8),
     supabase
       .from("property_documents")
       .select("id,property_name,category,status,title")
@@ -287,6 +437,15 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     isContractRelevant(contract, period.start, period.end),
   );
   const objectLabels = buildObjectLabelMap((objectsRes.data ?? []) as ObjectRow[]);
+  await ensureMoveOutChecklistTasks(vacancyRows, objectLabels, period.start, period.end);
+
+  const taskRes = await supabase
+    .from("property_tasks")
+    .select("id,title,description,category,priority,due_date,property_name,status,meta")
+    .in("status", ["offen", "in_bearbeitung"])
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(8);
+
   const payments = ((paymentsRes.data ?? []) as FinanceRow[]).filter((row) => {
     const effectiveDate = bookingEffectiveMonthDate(row.booking_date);
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));
@@ -368,6 +527,8 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
           priority: String(task.priority ?? "mittel"),
           dueDate: task.due_date ?? null,
           propertyName: task.property_name ?? null,
+          description: task.description ?? null,
+          checklistGroups: normalizeChecklistGroups(task.meta),
         })),
     documentIssues: docsRes.error
       ? []

@@ -4,6 +4,7 @@ import { NavLink } from "react-router-dom";
 
 import {
   loadCockpitSnapshot,
+  type CockpitTask,
   type CockpitSnapshot,
   type OpenPostRow,
   type OpenPostStatus,
@@ -201,15 +202,7 @@ export default function Cockpit() {
                     : ["Keine kritischen offenen Mieten im aktuellen Monat."]
                 }
               />
-              <InfoPanel
-                icon={<Bell size={18} />}
-                title="Aufgaben"
-                rows={
-                  snapshot.tasks.length
-                    ? snapshot.tasks.map((task) => `${task.title}${task.dueDate ? ` · ${dateDE(task.dueDate)}` : ""}`)
-                    : ["Keine offenen Aufgaben gefunden."]
-                }
-              />
+              <TaskPanel tasks={snapshot.tasks} />
               <InfoPanel
                 icon={<FileWarning size={18} />}
                 title="Dokumente"
@@ -302,6 +295,49 @@ function InfoPanel({ icon, title, rows }: { icon: ReactNode; title: string; rows
             {row}
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function TaskPanel({ tasks }: { tasks: CockpitTask[] }) {
+  return (
+    <section className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
+        <Bell size={18} />
+        Aufgaben
+      </h2>
+      <div className="mt-4 space-y-3">
+        {tasks.length ? (
+          tasks.map((task) => (
+            <article key={task.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+              <div className="text-sm font-black leading-5 text-slate-800">
+                {task.title}
+                {task.dueDate ? <span className="block pt-1 text-xs font-bold text-slate-500">Fällig: {dateDE(task.dueDate)}</span> : null}
+              </div>
+              {task.checklistGroups.length ? (
+                <div className="mt-3 space-y-3">
+                  {task.checklistGroups.map((group) => (
+                    <div key={`${task.id}-${group.title}`}>
+                      <div className="text-xs font-black uppercase tracking-wide text-slate-600">{group.title}</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-600">
+                        {group.items.map((item) => (
+                          <li key={`${group.title}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : task.description ? (
+                <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{task.description}</p>
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+            Keine offenen Aufgaben gefunden.
+          </div>
+        )}
       </div>
     </section>
   );
