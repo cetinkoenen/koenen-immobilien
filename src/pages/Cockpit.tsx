@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowRight, Bell, CheckCircle2, FileWarning, RefreshCw, WalletCards } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bell, CheckCircle2, ChevronDown, FileWarning, RefreshCw, WalletCards } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import {
   loadCockpitSnapshot,
+  updateCockpitTaskChecklistItem,
   type CockpitTask,
   type CockpitSnapshot,
   type OpenPostRow,
@@ -38,6 +39,10 @@ function statusClass(status: OpenPostStatus): string {
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
+function checklistItemKey(groupTitle: string, item: string): string {
+  return `${groupTitle}::${item}`;
+}
+
 export default function Cockpit() {
   const [snapshot, setSnapshot] = useState<CockpitSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +69,34 @@ export default function Cockpit() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  async function handleTaskChecklistChange(taskId: string, itemKey: string, done: boolean) {
+    setSnapshot((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        tasks: current.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                checklistDone: {
+                  ...task.checklistDone,
+                  [itemKey]: done,
+                },
+              }
+            : task,
+        ),
+      };
+    });
+
+    try {
+      await updateCockpitTaskChecklistItem(taskId, itemKey, done);
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : String(saveError);
+      setError(`Aufgaben-Checkliste konnte nicht gespeichert werden: ${message}`);
+      void load();
+    }
+  }
 
   const riskyPosts = useMemo(
     () => (snapshot?.openPosts ?? []).filter((row) => row.status === "missing" || row.status === "partial"),
@@ -202,7 +235,7 @@ export default function Cockpit() {
                     : ["Keine kritischen offenen Mieten im aktuellen Monat."]
                 }
               />
-              <TaskPanel tasks={snapshot.tasks} />
+              <TaskPanel tasks={snapshot.tasks} onChecklistChange={handleTaskChecklistChange} />
               <InfoPanel
                 icon={<FileWarning size={18} />}
                 title="Dokumente"
@@ -300,7 +333,24 @@ function InfoPanel({ icon, title, rows }: { icon: ReactNode; title: string; rows
   );
 }
 
-function TaskPanel({ tasks }: { tasks: CockpitTask[] }) {
+function TaskPanel({
+  tasks,
+  onChecklistChange,
+}: {
+  tasks: CockpitTask[];
+  onChecklistChange: (taskId: string, itemKey: string, done: boolean) => void | Promise<void>;
+}) {
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => new Set());
+
+  function toggleTask(taskId: string) {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
   return (
     <section className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
@@ -309,30 +359,69 @@ function TaskPanel({ tasks }: { tasks: CockpitTask[] }) {
       </h2>
       <div className="mt-4 space-y-3">
         {tasks.length ? (
-          tasks.map((task) => (
-            <article key={task.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
-              <div className="text-sm font-black leading-5 text-slate-800">
-                {task.title}
-                {task.dueDate ? <span className="block pt-1 text-xs font-bold text-slate-500">Fällig: {dateDE(task.dueDate)}</span> : null}
-              </div>
-              {task.checklistGroups.length ? (
-                <div className="mt-3 space-y-3">
-                  {task.checklistGroups.map((group) => (
-                    <div key={`${task.id}-${group.title}`}>
-                      <div className="text-xs font-black uppercase tracking-wide text-slate-600">{group.title}</div>
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-600">
-                        {group.items.map((item) => (
-                          <li key={`${group.title}-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              ) : task.description ? (
-                <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{task.description}</p>
-              ) : null}
-            </article>
-          ))
+          tasks.map((task) => {
+            const totalItems = task.checklistGroups.reduce((sum, group) => sum + group.items.length, 0);
+            const doneItems = task.checklistGroups.reduce(
+              (sum, group) =>
+                sum +
+                group.items.filter((item) => task.checklistDone[checklistItemKey(group.title, item)]).length,
+              0,
+            );
+            const isExpanded = expandedTaskIds.has(task.id);
+
+            return (
+              <article key={task.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => toggleTask(task.id)}
+                  className="flex w-full items-start justify-between gap-3 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-black leading-5 text-slate-800">{task.title}</span>
+                    <span className="mt-1 block text-xs font-bold text-slate-500">
+                      {task.dueDate ? `Fällig: ${dateDE(task.dueDate)} · ` : ""}
+                      {totalItems ? `${doneItems}/${totalItems} erledigt` : "Keine Checkliste"}
+                    </span>
+                  </span>
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600">
+                    <ChevronDown className={`transition ${isExpanded ? "rotate-180" : ""}`} size={17} />
+                  </span>
+                </button>
+
+                {isExpanded && task.checklistGroups.length ? (
+                  <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+                    {task.checklistGroups.map((group) => (
+                      <div key={`${task.id}-${group.title}`}>
+                        <div className="text-xs font-black uppercase tracking-wide text-slate-600">{group.title}</div>
+                        <div className="mt-2 space-y-2">
+                          {group.items.map((item) => {
+                            const itemKey = checklistItemKey(group.title, item);
+                            const isDone = Boolean(task.checklistDone[itemKey]);
+                            return (
+                              <label
+                                key={itemKey}
+                                className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-slate-700"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isDone}
+                                  onChange={(event) => void onChecklistChange(task.id, itemKey, event.currentTarget.checked)}
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                                />
+                                <span className={isDone ? "text-slate-400 line-through" : "text-slate-700"}>{item}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : isExpanded && task.description ? (
+                  <p className="mt-3 border-t border-slate-200 pt-3 text-xs font-semibold leading-5 text-slate-600">{task.description}</p>
+                ) : null}
+              </article>
+            );
+          })
         ) : (
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
             Keine offenen Aufgaben gefunden.

@@ -31,10 +31,21 @@ export type CockpitTask = {
   dueDate: string | null;
   propertyName: string | null;
   description: string | null;
+  checklistDone: Record<string, boolean>;
   checklistGroups: Array<{
     title: string;
     items: string[];
   }>;
+};
+
+type TaskMeta = {
+  source?: string;
+  source_key?: string;
+  vacancy_id?: string;
+  vacancy_property_id?: string | null;
+  unit_label?: string | null;
+  checklist_done?: Record<string, boolean>;
+  checklist_groups?: Array<{ title?: string; items?: string[] }>;
 };
 
 export type CockpitDocumentIssue = {
@@ -126,9 +137,7 @@ type TaskRow = {
   priority: string | number | null;
   due_date: string | null;
   property_name: string | null;
-  meta?: {
-    checklist_groups?: Array<{ title?: string; items?: string[] }>;
-  } | null;
+  meta?: TaskMeta | null;
 };
 
 type DocumentIssueRow = {
@@ -381,6 +390,7 @@ async function ensureMoveOutChecklistTasks(
         vacancy_id: vacancy.id,
         vacancy_property_id: vacancy.property_id,
         unit_label: vacancy.unit_label,
+        checklist_done: {},
         checklist_groups: checklistGroups,
       },
     });
@@ -401,6 +411,12 @@ function normalizeChecklistGroups(meta: TaskRow["meta"]): CockpitTask["checklist
         : [],
     }))
     .filter((group) => group.items.length > 0);
+}
+
+function normalizeChecklistDone(meta: TaskRow["meta"]): Record<string, boolean> {
+  const raw = meta?.checklist_done;
+  if (!raw || typeof raw !== "object") return {};
+  return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, Boolean(value)]));
 }
 
 export async function loadCockpitSnapshot(baseDate = new Date()): Promise<CockpitSnapshot> {
@@ -528,6 +544,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
           dueDate: task.due_date ?? null,
           propertyName: task.property_name ?? null,
           description: task.description ?? null,
+          checklistDone: normalizeChecklistDone(task.meta),
           checklistGroups: normalizeChecklistGroups(task.meta),
         })),
     documentIssues: docsRes.error
@@ -539,6 +556,31 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
           detail: doc.title || doc.status || "Dokument prüfen",
         })),
   };
+}
+
+export async function updateCockpitTaskChecklistItem(taskId: string, itemKey: string, done: boolean): Promise<void> {
+  const { data, error: loadError } = await supabase
+    .from("property_tasks")
+    .select("meta")
+    .eq("id", taskId)
+    .single();
+
+  if (loadError) throw loadError;
+
+  const meta = ((data?.meta ?? {}) as TaskMeta) || {};
+  const checklistDone = { ...(meta.checklist_done ?? {}), [itemKey]: done };
+
+  const { error: updateError } = await supabase
+    .from("property_tasks")
+    .update({
+      meta: {
+        ...meta,
+        checklist_done: checklistDone,
+      },
+    })
+    .eq("id", taskId);
+
+  if (updateError) throw updateError;
 }
 
 export async function createPaymentReminderDraft(
