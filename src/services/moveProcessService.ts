@@ -166,11 +166,41 @@ export async function createMoveProcess(input: MoveProcessInput): Promise<MovePr
   return data as MoveProcess;
 }
 
-export async function updateMoveProcessStatus(id: string, status: MoveProcessStatus): Promise<MoveProcess> {
+export async function saveMoveProcess(input: MoveProcessInput & { id?: string | null }): Promise<MoveProcess> {
+  if (!input.id) return createMoveProcess(input);
+
   const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("move_processes")
-    .update({ status })
+    .update({
+      tenant_id: cleanText(input.tenantId),
+      tenant_contract_id: cleanText(input.tenantContractId),
+      property_id: cleanText(input.propertyId),
+      object_code: cleanText(input.objectCode),
+      unit_label: cleanText(input.unitLabel),
+      process_type: input.processType,
+      status: input.status === "erledigt" ? "archiviert" : input.status,
+      handover_date: cleanText(input.handoverDate),
+      meter_readings: input.meterReadings,
+      deposit_status: cleanText(input.depositStatus),
+      checklist: input.checklist,
+      notes: cleanText(input.notes),
+    })
+    .eq("id", input.id)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as MoveProcess;
+}
+
+export async function updateMoveProcessStatus(id: string, status: MoveProcessStatus): Promise<MoveProcess> {
+  const userId = await getCurrentUserId();
+  const nextStatus = status === "erledigt" ? "archiviert" : status;
+  const { data, error } = await supabase
+    .from("move_processes")
+    .update({ status: nextStatus })
     .eq("id", id)
     .eq("user_id", userId)
     .select("*")

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, CheckCircle2, ClipboardCheck, KeyRound, Loader2, RefreshCw, Save } from "lucide-react";
+import { CalendarDays, CheckCircle2, ClipboardCheck, KeyRound, Loader2, Pencil, RefreshCw, RotateCcw, Save } from "lucide-react";
 
 import {
-  createMoveProcess,
   listMoveContractOptions,
   listMoveProcesses,
+  saveMoveProcess,
   updateMoveProcessStatus,
   type MoveChecklist,
   type MoveContractOption,
@@ -104,6 +104,39 @@ function contractLabel(contract: MoveContractOption): string {
   return `${contract.tenantName} · ${object}${unit}`;
 }
 
+function normalizeChecklist(checklist: MoveChecklist | null | undefined): Required<MoveChecklist> {
+  return {
+    schluessel: Boolean(checklist?.schluessel),
+    zaehler: Boolean(checklist?.zaehler),
+    kaution: Boolean(checklist?.kaution),
+    bescheinigung: Boolean(checklist?.bescheinigung),
+    protokoll: Boolean(checklist?.protokoll),
+    fotos: Boolean(checklist?.fotos),
+    dokumente: Boolean(checklist?.dokumente),
+  };
+}
+
+function processToForm(process: MoveProcess): FormState {
+  return {
+    tenantContractId: process.tenant_contract_id ?? "",
+    propertyId: process.property_id ?? "",
+    objectCode: process.object_code ?? "",
+    unitLabel: process.unit_label ?? "",
+    processType: process.process_type,
+    status: process.status,
+    handoverDate: process.handover_date ?? "",
+    depositStatus: process.deposit_status ?? "",
+    notes: process.notes ?? "",
+    meterReadings: {
+      strom: process.meter_readings?.strom ?? "",
+      wasser: process.meter_readings?.wasser ?? "",
+      heizung: process.meter_readings?.heizung ?? "",
+      gas: process.meter_readings?.gas ?? "",
+    },
+    checklist: normalizeChecklist(process.checklist),
+  };
+}
+
 export default function EinAuszug() {
   const [contracts, setContracts] = useState<MoveContractOption[]>([]);
   const [processes, setProcesses] = useState<MoveProcess[]>([]);
@@ -112,6 +145,7 @@ export default function EinAuszug() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const openCount = useMemo(
     () => processes.filter((process) => process.status === "offen" || process.status === "in_bearbeitung").length,
@@ -154,7 +188,8 @@ export default function EinAuszug() {
     setSuccess(null);
     try {
       const selectedContract = contracts.find((item) => item.id === form.tenantContractId);
-      await createMoveProcess({
+      await saveMoveProcess({
+        id: editingId,
         tenantId: selectedContract?.tenant_id ?? null,
         tenantContractId: form.tenantContractId || null,
         propertyId: form.propertyId,
@@ -169,7 +204,8 @@ export default function EinAuszug() {
         notes: form.notes,
       });
       setForm(initialForm);
-      setSuccess("Ein-/Auszug wurde dokumentiert.");
+      setEditingId(null);
+      setSuccess(editingId ? "Ein-/Auszug wurde aktualisiert." : "Ein-/Auszug wurde dokumentiert.");
       await loadData();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Ein-/Auszug konnte nicht gespeichert werden.");
@@ -186,6 +222,21 @@ export default function EinAuszug() {
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : "Status konnte nicht geändert werden.");
     }
+  }
+
+  function startEdit(process: MoveProcess) {
+    setEditingId(process.id);
+    setForm(processToForm(process));
+    setSuccess(null);
+    setError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetEditor() {
+    setEditingId(null);
+    setForm(initialForm);
+    setSuccess(null);
+    setError(null);
   }
 
   return (
@@ -225,7 +276,18 @@ export default function EinAuszug() {
 
       <div className="grid gap-6 xl:grid-cols-[520px_minmax(0,1fr)]">
         <form onSubmit={handleSubmit} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <h2 className="text-2xl font-black text-slate-950">Vorgang anlegen</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-black text-slate-950">{editingId ? "Vorgang bearbeiten" : "Vorgang anlegen"}</h2>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={resetEditor}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700"
+              >
+                Neu
+              </button>
+            ) : null}
+          </div>
 
           <div className="mt-5 space-y-4">
             <label className="block">
@@ -375,7 +437,7 @@ export default function EinAuszug() {
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-              Vorgang speichern
+              {editingId ? "Änderungen speichern" : "Vorgang speichern"}
             </button>
           </div>
         </form>
@@ -456,14 +518,22 @@ export default function EinAuszug() {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap gap-2">
-                            {process.status !== "erledigt" && (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(process)}
+                              className="inline-flex h-10 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-800"
+                            >
+                              <Pencil size={15} />
+                              Bearbeiten
+                            </button>
+                            {process.status !== "archiviert" && (
                               <button
                                 type="button"
                                 onClick={() => void changeStatus(process.id, "erledigt")}
                                 className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-800"
                               >
                                 <CheckCircle2 size={15} />
-                                Erledigt
+                                Erledigen
                               </button>
                             )}
                             {process.status !== "archiviert" && (
@@ -473,6 +543,16 @@ export default function EinAuszug() {
                                 className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700"
                               >
                                 Archivieren
+                              </button>
+                            )}
+                            {process.status === "archiviert" && (
+                              <button
+                                type="button"
+                                onClick={() => void changeStatus(process.id, "in_bearbeitung")}
+                                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700"
+                              >
+                                <RotateCcw size={15} />
+                                Zurücksetzen
                               </button>
                             )}
                           </div>

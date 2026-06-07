@@ -76,6 +76,7 @@ export default function EntryAdd() {
   const [category, setCategory] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [taxRelevant, setTaxRelevant] = useState<boolean>(true);
+  const [nkRelevant, setNkRelevant] = useState<boolean>(false);
 
   const [saving, setSaving] = useState<boolean>(false);
   const [loadingObjects, setLoadingObjects] = useState<boolean>(true);
@@ -144,6 +145,7 @@ export default function EntryAdd() {
     setCategory("");
     setNote("");
     setTaxRelevant(true);
+    setNkRelevant(false);
     setMsg(null);
   }
 
@@ -177,6 +179,7 @@ export default function EntryAdd() {
         category: category.trim() || null,
         note: note.trim() || null,
         tax_relevant: taxRelevant,
+        nk_relevant: nkRelevant,
       };
 
       const { error } = await supabase.from("finance_entry").insert(payload);
@@ -192,6 +195,7 @@ export default function EntryAdd() {
       setCategory("");
       setNote("");
       setTaxRelevant(true);
+      setNkRelevant(false);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       setMsg(`❌ Speichern fehlgeschlagen: ${message}`);
@@ -357,28 +361,50 @@ export default function EntryAdd() {
             />
           </label>
 
-          <label
-            style={{
-              ...fieldLabelStyle(),
-              alignSelf: "end",
-              minHeight: 44,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 12px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              background: "#f8fafc",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={taxRelevant}
-              onChange={(event) => setTaxRelevant(event.target.checked)}
-              style={{ width: 18, height: 18 }}
-            />
-            Steuerrelevant
-          </label>
+          <div style={{ alignSelf: "end", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <label
+              style={{
+                ...fieldLabelStyle(),
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 12px",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#f8fafc",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={taxRelevant}
+                onChange={(event) => setTaxRelevant(event.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              St.
+            </label>
+            <label
+              style={{
+                ...fieldLabelStyle(),
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 12px",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#f8fafc",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={nkRelevant}
+                onChange={(event) => setNkRelevant(event.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              NK
+            </label>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Calculator, CheckCircle2, FileText, Home, Lock, Pencil, Plus, Printer, Trash2, UserSquare2, Warehouse } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 
 type AllocationType = "allocationKey" | "persons" | "directAmount" | "heatingDirect";
 
@@ -419,10 +420,13 @@ export default function NebenkostenWohnungen() {
   const currentYear = new Date().getFullYear();
   const [objects, setObjects] = useState<ObjectOption[]>([]); const [selectedObjectCode, setSelectedObjectCode] = useState(""); const [selectedYear, setSelectedYear] = useState(currentYear);
   const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]); const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
+  const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
+  const [nkLoading, setNkLoading] = useState(false);
   useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) setSelectedObjectCode(list[0].objekt_code); })(); return () => { alive = false; }; }, [selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
   const selectedConfig = useMemo(() => getPropertyBillingConfig(selectedObject), [selectedObject]);
   const co2EnabledForSelectedObject = selectedConfig.co2Enabled;
+  useEffect(() => { let alive = true; async function loadNk() { if (!selectedObjectCode) return; setNkLoading(true); try { const rows = await listNkRelevantEntries(selectedYear, selectedObjectCode); if (alive) setNkEntries(rows); } catch (err) { if (alive) setError(err instanceof Error ? err.message : String(err)); } finally { if (alive) setNkLoading(false); } } void loadNk(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear]);
   useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
   useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, billingRecords, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
@@ -432,6 +436,7 @@ export default function NebenkostenWohnungen() {
   function addCost() { if (locked) return; update(p => ({ ...p, costs: [...p.costs, { id: createId(), label: `Kostenart ${p.costs.length + 1}`, amount: 0, allocation: "allocationKey", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "" }] })); }
   function deleteCost(id: string) { if (locked) return; update(p => ({ ...p, costs: p.costs.filter(c => c.id !== id) })); }
   function restoreObjectDefaults() { if (locked) return; const fresh = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); update(p => ({ ...p, apartments: p.apartments.length ? p.apartments.map((a, i) => ({ ...a, area: i === 0 ? fresh.apartments[0].area : a.area, allocationKey: i === 0 ? fresh.apartments[0].allocationKey : a.allocationKey })) : fresh.apartments, costs: fresh.costs, heating: fresh.heating, meta: { ...p.meta, attachmentReferences: fresh.meta.attachmentReferences } })); }
+  function importNkEntries() { if (locked || nkEntries.length === 0) return; const grouped = new Map<string, { label: string; amount: number; note: string }>(); for (const entry of nkEntries) { if (entry.entry_type !== "expense") continue; const label = entry.category?.trim() || "NK-Buchung"; const current = grouped.get(label) ?? { label, amount: 0, note: "Automatisch aus markierten Buchungen übernommen." }; current.amount += Math.abs(entry.amount); grouped.set(label, current); } const nextRows = Array.from(grouped.values()).map(row => ({ id: createId(), label: row.label, amount: roundMoney(row.amount), allocation: "allocationKey" as AllocationType, totalKey: selectedConfig.defaultTotalKey || 1000, apartmentKey: selectedConfig.defaultApartmentKey || 0, directAmount: 0, prorateByOccupancy: false, note: row.note })); if (!nextRows.length) return; update(p => ({ ...p, costs: [...p.costs, ...nextRows] })); setStatus(`${nextRows.length} NK-Kostenarten aus Buchhaltung übernommen.`); }
   const co2TotalKg = roundMoney(workspace.heating.totalConsumptionKwh * workspace.heating.emissionFactor); const co2PerSqm = workspace.heating.heatedArea > 0 ? co2TotalKg / workspace.heating.heatedArea : 0; const co2Stage = getCo2Stage(co2PerSqm);
   const isHeatingCostRow = (row: CostRow) => {
     const label = row.label.toLowerCase();
@@ -895,6 +900,19 @@ export default function NebenkostenWohnungen() {
               <span className="rounded-full bg-white px-3 py-1 text-slate-700">Standard-Schlüssel: {formatFlex(selectedConfig.defaultApartmentKey)} / {formatFlex(selectedConfig.defaultTotalKey)}</span>
               <span className="rounded-full bg-white px-3 py-1 text-slate-700">CO₂: {co2EnabledForSelectedObject ? "aktiv" : "nicht aktiv"}</span>
               <button type="button" onClick={restoreObjectDefaults} disabled={locked} className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-indigo-700 disabled:opacity-50">Objekt-Defaults laden</button>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-slate-950">NK-Automatik aus Buchhaltung</div>
+                <div className="mt-1">
+                  {nkLoading ? "Lade markierte NK-Buchungen..." : `${nkEntries.length} markierte Buchungen · Ausgaben ${formatCurrency(nkEntries.filter(e => e.entry_type === "expense").reduce((s, e) => s + Math.abs(e.amount), 0))} · Vorauszahlungen/Erstattungen ${formatCurrency(nkEntries.filter(e => e.entry_type === "income").reduce((s, e) => s + Math.abs(e.amount), 0))}`}
+                </div>
+              </div>
+              <button type="button" onClick={importNkEntries} disabled={locked || nkEntries.length === 0} className="rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50">
+                NK-Buchungen übernehmen
+              </button>
             </div>
           </div>
           {(status || error || loading || saving) && <div className="mt-4 text-sm"><span className="text-slate-500">{loading ? "Lade… " : saving ? "Speichere… " : status}</span>{error && <span className="ml-3 text-rose-600">{error}</span>}</div>}

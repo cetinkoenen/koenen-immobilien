@@ -17,6 +17,7 @@ type EntryRow = {
   note: string | null;
   entry_type: EntryType;
   tax_relevant: boolean | null;
+  nk_relevant: boolean | null;
 };
 
 type DropdownRow = {
@@ -316,6 +317,7 @@ export default function Monate() {
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editTaxRelevant, setEditTaxRelevant] = useState<boolean>(false);
+  const [editNkRelevant, setEditNkRelevant] = useState<boolean>(false);
 
   const [editCategoryMode, setEditCategoryMode] = useState<"existing" | "new">("existing");
   const [editCategorySelect, setEditCategorySelect] = useState("");
@@ -363,7 +365,7 @@ export default function Monate() {
   async function fetchEntriesForRange(from: string, to: string, code: string) {
     let query = supabase
       .from("finance_entry")
-      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
       .eq("is_deleted", false)
       .gte("booking_date", from)
       .lt("booking_date", to)
@@ -386,6 +388,7 @@ export default function Monate() {
       note: r.note ?? null,
       entry_type: r.entry_type === "expense" ? "expense" : "income",
       tax_relevant: typeof r.tax_relevant === "boolean" ? r.tax_relevant : null,
+      nk_relevant: typeof r.nk_relevant === "boolean" ? r.nk_relevant : null,
     }));
     return entries;
   }
@@ -746,6 +749,7 @@ export default function Monate() {
     setEditAmount(String(row.amount));
     setEditNote(row.note ?? "");
     setEditTaxRelevant(Boolean(row.tax_relevant));
+    setEditNkRelevant(Boolean(row.nk_relevant));
 
     if (!rawCategory) {
       setEditCategoryMode("existing");
@@ -801,6 +805,7 @@ export default function Monate() {
         category: string | null;
         note: string | null;
         tax_relevant: boolean;
+        nk_relevant: boolean;
       } = {
         entry_type: editType,
         booking_date: editDate,
@@ -808,6 +813,7 @@ export default function Monate() {
         category: resolvedCategory || null,
         note: editNote.trim() || null,
         tax_relevant: editTaxRelevant,
+        nk_relevant: editNkRelevant,
       };
 
       const { error } = await supabase
@@ -847,6 +853,24 @@ export default function Monate() {
     emitFinanceEntryChanged();
   }
 
+  async function updateNkRelevant(row: EntryRow, value: boolean) {
+    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: value } : item)));
+
+    const { error } = await supabase
+      .from("finance_entry")
+      .update({ nk_relevant: value })
+      .eq("id", row.id);
+
+    if (error) {
+      setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: row.nk_relevant } : item)));
+      alert(`NK-Relevanz konnte nicht gespeichert werden: ${error.message}`);
+      return;
+    }
+
+    clearAppDataCache();
+    emitFinanceEntryChanged();
+  }
+
   async function exportYearCsv() {
     if (!Number.isFinite(year) || year < 1900 || year > 3000) {
       alert("Bitte ein gültiges Jahr eingeben.");
@@ -877,11 +901,12 @@ export default function Monate() {
               maximumFractionDigits: 2,
             }),
             Notiz: r.note?.trim() || "",
-            Steuerrelevant: r.tax_relevant ? "Ja" : "Nein",
+            St: r.tax_relevant ? "Ja" : "Nein",
+            NK: r.nk_relevant ? "Ja" : "Nein",
           };
         });
 
-      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "Steuerrelevant"];
+      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", "NK"];
       const csv = toCsv(exportRows, headers);
       const objectPart = code && code !== "ALL" ? `${sanitizeFilenamePart(code)}_` : "alle_objekte_";
       const filename = `jahresuebersicht_${objectPart}${year}.csv`;
@@ -910,11 +935,12 @@ export default function Monate() {
           maximumFractionDigits: 2,
         }),
         Notiz: r.note?.trim() || "",
-        Steuerrelevant: r.tax_relevant ? "Ja" : "Nein",
+        St: r.tax_relevant ? "Ja" : "Nein",
+        NK: r.nk_relevant ? "Ja" : "Nein",
       };
     });
 
-    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "Steuerrelevant"];
+    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", "NK"];
     const csv = toCsv(exportRows, headers);
 
     const monthPart = String(month).padStart(2, "0");
@@ -1482,7 +1508,10 @@ export default function Monate() {
                   Notiz
                 </th>
                 <th style={{ textAlign: "center", padding: 10, fontSize: 12, opacity: 0.75 }}>
-                  Steuer
+                  St.
+                </th>
+                <th style={{ textAlign: "center", padding: 10, fontSize: 12, opacity: 0.75 }}>
+                  NK
                 </th>
                 <th style={{ padding: 10, width: 140 }} />
               </tr>
@@ -1491,13 +1520,13 @@ export default function Monate() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: 12, opacity: 0.7 }}>
+                  <td colSpan={10} style={{ padding: 12, opacity: 0.7 }}>
                     Lädt…
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: 12, opacity: 0.7 }}>
+                  <td colSpan={10} style={{ padding: 12, opacity: 0.7 }}>
                     Keine Einträge für die aktuelle Filterung.
                   </td>
                 </tr>
@@ -1584,6 +1613,16 @@ export default function Monate() {
                         />
                       </td>
 
+                      <td style={{ padding: 10, textAlign: "center", whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(r.nk_relevant)}
+                          onChange={(event) => void updateNkRelevant(r, event.target.checked)}
+                          title="Nebenkostenabrechnung relevant Ja/Nein"
+                          style={{ width: 18, height: 18 }}
+                        />
+                      </td>
+
                       <td style={{ padding: 10, textAlign: "right", whiteSpace: "nowrap" }}>
                         <button
                           onClick={() => openEdit(r)}
@@ -1627,7 +1666,7 @@ export default function Monate() {
                 <td style={{ padding: 10, textAlign: "right", fontWeight: 950, color: totals.net < 0 ? "#991b1b" : "#166534", whiteSpace: "nowrap" }}>
                   {formatEUR(totals.net)}
                 </td>
-                <td colSpan={3} style={{ padding: 10, fontSize: 12, opacity: 0.7 }}>
+                <td colSpan={4} style={{ padding: 10, fontSize: 12, opacity: 0.7 }}>
                   Einnahmen {formatEUR(totals.income)} · Ausgaben {formatEUR(totals.expense)}
                 </td>
               </tr>
@@ -1832,27 +1871,50 @@ export default function Monate() {
             />
           </label>
 
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 13,
-              fontWeight: 900,
-              padding: "10px 12px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              background: "#f8fafc",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={editTaxRelevant}
-              onChange={(event) => setEditTaxRelevant(event.target.checked)}
-              style={{ width: 18, height: 18 }}
-            />
-            Steuerrelevant
-          </label>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 13,
+                fontWeight: 900,
+                padding: "10px 12px",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#f8fafc",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={editTaxRelevant}
+                onChange={(event) => setEditTaxRelevant(event.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              St.
+            </label>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 13,
+                fontWeight: 900,
+                padding: "10px 12px",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#f8fafc",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={editNkRelevant}
+                onChange={(event) => setEditNkRelevant(event.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              NK
+            </label>
+          </div>
 
           <div style={{ display: "flex", gap: 10 }}>
             <button

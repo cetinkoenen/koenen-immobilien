@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
 
@@ -622,10 +623,31 @@ export default function NebenkostenTiefgarage() {
   const [records, setRecords] = useState<BillingYearData[]>(() => loadStoredYears());
   const [activeYear, setActiveYear] = useState<number>(() => loadStoredYears()[0]?.year ?? new Date().getFullYear());
   const [newYearInput, setNewYearInput] = useState<string>(String(new Date().getFullYear() + 1));
+  const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
+  const [nkLoading, setNkLoading] = useState(false);
 
   useEffect(() => {
     saveStoredYears(records);
   }, [records]);
+
+  useEffect(() => {
+    let alive = true;
+    async function loadNk() {
+      setNkLoading(true);
+      try {
+        const rows = await listNkRelevantEntries(activeYear);
+        if (alive) setNkEntries(rows);
+      } catch {
+        if (alive) setNkEntries([]);
+      } finally {
+        if (alive) setNkLoading(false);
+      }
+    }
+    void loadNk();
+    return () => {
+      alive = false;
+    };
+  }, [activeYear]);
 
   const activeRecord = useMemo(() => {
     return records.find((record) => record.year === activeYear) ?? records[0] ?? buildDefaultYear(new Date().getFullYear());
@@ -687,6 +709,28 @@ export default function NebenkostenTiefgarage() {
     updateActiveRecord({
       [section]: [...activeRecord[section], nextRow],
     } as Partial<BillingYearData>);
+  }
+
+  function importNkEntriesToTg() {
+    const grouped = new Map<string, number>();
+    for (const entry of nkEntries) {
+      if (entry.entry_type !== "expense") continue;
+      const label = entry.category?.trim() || "NK-Buchung";
+      grouped.set(label, roundMoney((grouped.get(label) ?? 0) + Math.abs(entry.amount)));
+    }
+
+    const rows: CostRow[] = Array.from(grouped.entries()).map(([label, amount]) => ({
+      id: createId(),
+      label,
+      totalCost: amount,
+      key: "Einheiten",
+      totalUnits: activeRecord.totalUnits || null,
+      yourUnits: activeRecord.yourUnits || null,
+      note: "Automatisch aus markierten NK-Buchungen übernommen.",
+    }));
+
+    if (!rows.length) return;
+    updateActiveRecord({ apportionableRows: [...activeRecord.apportionableRows, ...rows] });
   }
 
   function createNewYear() {
@@ -815,6 +859,22 @@ export default function NebenkostenTiefgarage() {
               Aktives Jahr zurücksetzen
             </button>
           </div>
+        </div>
+      </section>
+
+      <section style={pageStyles.section}>
+        <div style={pageStyles.sectionHeader}>
+          <div>
+            <h2 style={pageStyles.sectionTitle}>NK-Automatik aus Buchhaltung</h2>
+            <div style={pageStyles.mutedText}>
+              {nkLoading
+                ? "Lade markierte NK-Buchungen..."
+                : `${nkEntries.length} markierte Buchungen im Jahr ${activeYear} · Ausgaben ${formatCurrency(nkEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0))}`}
+            </div>
+          </div>
+          <button type="button" style={pageStyles.primaryButton} onClick={importNkEntriesToTg} disabled={nkEntries.length === 0}>
+            NK-Buchungen übernehmen
+          </button>
         </div>
       </section>
 
