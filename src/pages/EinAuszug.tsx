@@ -240,24 +240,24 @@ export default function EinAuszug() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-5">
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
-              <KeyRound size={16} />
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-slate-600">
+              <KeyRound size={15} />
               Ein-/Auszug
             </div>
-            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
+            <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
               Übergaben professionell dokumentieren
             </h1>
-            <p className="mt-4 max-w-4xl text-base font-medium leading-8 text-slate-600">
+            <p className="mt-3 max-w-4xl text-sm font-medium leading-6 text-slate-600">
               Dokumentiere Einzug, Auszug und Mieterwechsel mit Termin, Einheit, Zählerständen, Kaution und Checkliste.
               Bestehende Buchungen, Mietzeiträume und Portfolio-Werte werden dabei nicht verändert.
             </p>
           </div>
-          <div className="inline-flex w-fit items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 shadow-sm">
-            <ClipboardCheck size={20} />
+          <div className="inline-flex w-fit items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm">
+            <ClipboardCheck size={18} />
             Offene Vorgänge: {openCount}
           </div>
         </div>
@@ -274,10 +274,10 @@ export default function EinAuszug() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[520px_minmax(0,1fr)]">
-        <form onSubmit={handleSubmit} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <form onSubmit={handleSubmit} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-slate-950">{editingId ? "Vorgang bearbeiten" : "Vorgang anlegen"}</h2>
+            <h2 className="text-xl font-black text-slate-950">{editingId ? "Vorgang bearbeiten" : "Vorgang anlegen"}</h2>
             {editingId ? (
               <button
                 type="button"
@@ -289,13 +289,13 @@ export default function EinAuszug() {
             ) : null}
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 space-y-3">
             <label className="block">
               <span className="text-sm font-black text-slate-700">Bestehender Mietvertrag</span>
               <select
                 value={form.tenantContractId}
                 onChange={(event) => selectContract(event.target.value)}
-                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               >
                 <option value="">Manuell / bitte auswählen</option>
                 {contracts.map((contract) => (
@@ -312,7 +312,7 @@ export default function EinAuszug() {
                 <select
                   value={form.processType}
                   onChange={(event) => setForm((current) => ({ ...current, processType: event.target.value as MoveProcessType }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 >
                   <option value="auszug">Auszug</option>
                   <option value="einzug">Einzug</option>
@@ -324,7 +324,7 @@ export default function EinAuszug() {
                 <select
                   value={form.status}
                   onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as MoveProcessStatus }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 >
                   <option value="offen">Offen</option>
                   <option value="in_bearbeitung">In Bearbeitung</option>
@@ -340,7 +340,7 @@ export default function EinAuszug() {
                 <input
                   value={form.objectCode}
                   onChange={(event) => setForm((current) => ({ ...current, objectCode: event.target.value }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                   placeholder="z. B. Rosenstein Str. 25"
                 />
               </label>
@@ -349,7 +349,7 @@ export default function EinAuszug() {
                 <input
                   value={form.unitLabel}
                   onChange={(event) => setForm((current) => ({ ...current, unitLabel: event.target.value }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                   placeholder="z. B. Wohnung, P254"
                 />
               </label>
@@ -362,7 +362,7 @@ export default function EinAuszug() {
                   type="date"
                   value={form.handoverDate}
                   onChange={(event) => setForm((current) => ({ ...current, handoverDate: event.target.value }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
               <label className="block">
@@ -370,7 +370,7 @@ export default function EinAuszug() {
                 <input
                   value={form.depositStatus}
                   onChange={(event) => setForm((current) => ({ ...current, depositStatus: event.target.value }))}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                   placeholder="z. B. offen, geprüft, auszahlen"
                 />
               </label>
@@ -389,7 +389,7 @@ export default function EinAuszug() {
                         meterReadings: { ...current.meterReadings, [key]: event.target.value },
                       }))
                     }
-                    className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-bold capitalize outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold capitalize outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     placeholder={key}
                   />
                 ))}
@@ -402,7 +402,7 @@ export default function EinAuszug() {
                 {checklistItems.map((item) => (
                   <label
                     key={item.key}
-                    className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700"
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700"
                   >
                     <input
                       type="checkbox"
@@ -413,7 +413,7 @@ export default function EinAuszug() {
                           checklist: { ...current.checklist, [item.key]: event.target.checked },
                         }))
                       }
-                      className="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                     />
                     {item.label}
                   </label>
@@ -426,7 +426,7 @@ export default function EinAuszug() {
               <textarea
                 value={form.notes}
                 onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                className="mt-2 min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 placeholder="z. B. Schäden, fehlende Unterlagen, Rückfragen"
               />
             </label>
@@ -434,7 +434,7 @@ export default function EinAuszug() {
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
               {editingId ? "Änderungen speichern" : "Vorgang speichern"}
@@ -442,10 +442,10 @@ export default function EinAuszug() {
           </div>
         </form>
 
-        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 p-5 md:flex-row md:items-center md:justify-between md:p-6">
+        <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between md:p-5">
             <div>
-              <h2 className="text-2xl font-black text-slate-950">Ein-/Auszug Übersicht</h2>
+              <h2 className="text-xl font-black text-slate-950">Ein-/Auszug Übersicht</h2>
               <p className="mt-1 text-sm font-semibold text-slate-500">
                 Zentrale Liste für Übergaben, Mieterwechsel und offene Aufgaben.
               </p>
@@ -453,7 +453,7 @@ export default function EinAuszug() {
             <button
               type="button"
               onClick={() => void loadData()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-900 shadow-sm"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-900 shadow-sm"
             >
               <RefreshCw size={17} />
               Neu laden
@@ -471,16 +471,25 @@ export default function EinAuszug() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full text-left">
+              <table className="w-full min-w-[820px] table-fixed text-left">
+                <colgroup>
+                  <col className="w-[120px]" />
+                  <col className="w-[170px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[180px]" />
+                </colgroup>
                 <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
                   <tr>
-                    <th className="px-5 py-4">Vorgang</th>
-                    <th className="px-5 py-4">Immobilie</th>
-                    <th className="px-5 py-4">Termin</th>
-                    <th className="px-5 py-4">Checkliste</th>
-                    <th className="px-5 py-4">Kaution</th>
-                    <th className="px-5 py-4">Status</th>
-                    <th className="px-5 py-4">Aktion</th>
+                    <th className="px-3 py-3">Vorgang</th>
+                    <th className="px-3 py-3">Immobilie</th>
+                    <th className="px-3 py-3">Termin</th>
+                    <th className="px-3 py-3">Checkliste</th>
+                    <th className="px-3 py-3">Kaution</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3">Aktion</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
@@ -488,51 +497,53 @@ export default function EinAuszug() {
                     const progress = checklistProgress(process.checklist ?? {});
                     return (
                       <tr key={process.id} className="align-top">
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-3">
                           <div className="font-black text-slate-950">{typeLabel(process.process_type)}</div>
                           <div className="mt-1 text-xs font-bold text-slate-500">{process.unit_label || "Einheit offen"}</div>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="font-black text-slate-950">{process.object_code || process.property_id || "Objekt offen"}</div>
-                          {process.notes && <div className="mt-1 max-w-72 text-xs font-semibold text-slate-500">{process.notes}</div>}
+                        <td className="px-3 py-3">
+                          <div className="truncate font-black text-slate-950" title={process.object_code || process.property_id || "Objekt offen"}>{process.object_code || process.property_id || "Objekt offen"}</div>
+                          {process.notes && <div className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500" title={process.notes}>{process.notes}</div>}
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-3">
                           <div className="inline-flex items-center gap-2 font-bold text-slate-700">
                             <CalendarDays size={16} />
                             {formatDate(process.handover_date)}
                           </div>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-3">
                           <div className="font-black text-slate-800">
                             {progress.done}/{progress.total}
                           </div>
-                          <div className="mt-2 h-2 w-32 overflow-hidden rounded-full bg-slate-100">
+                          <div className="mt-2 h-2 w-20 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress.percent}%` }} />
                           </div>
                         </td>
-                        <td className="px-5 py-4 font-bold text-slate-700">{process.deposit_status || "-"}</td>
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-3 font-bold text-slate-700">
+                          <div className="truncate" title={process.deposit_status || "-"}>{process.deposit_status || "-"}</div>
+                        </td>
+                        <td className="px-3 py-3">
                           <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(process.status)}`}>
                             {statusLabel(process.status)}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-wrap gap-2">
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col gap-2 min-[1400px]:flex-row min-[1400px]:flex-wrap">
                             <button
                               type="button"
                               onClick={() => startEdit(process)}
-                              className="inline-flex h-10 items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-800"
+                              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-2 text-xs font-black text-blue-800"
                             >
-                              <Pencil size={15} />
+                              <Pencil size={14} />
                               Bearbeiten
                             </button>
                             {process.status !== "archiviert" && (
                               <button
                                 type="button"
                                 onClick={() => void changeStatus(process.id, "erledigt")}
-                                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-800"
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2 text-xs font-black text-emerald-800"
                               >
-                                <CheckCircle2 size={15} />
+                                <CheckCircle2 size={14} />
                                 Erledigen
                               </button>
                             )}
@@ -540,7 +551,7 @@ export default function EinAuszug() {
                               <button
                                 type="button"
                                 onClick={() => void changeStatus(process.id, "archiviert")}
-                                className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700"
+                                className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-xs font-black text-slate-700"
                               >
                                 Archivieren
                               </button>
@@ -549,9 +560,9 @@ export default function EinAuszug() {
                               <button
                                 type="button"
                                 onClick={() => void changeStatus(process.id, "in_bearbeitung")}
-                                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700"
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-xs font-black text-slate-700"
                               >
-                                <RotateCcw size={15} />
+                                <RotateCcw size={14} />
                                 Zurücksetzen
                               </button>
                             )}
