@@ -48,6 +48,15 @@ type TaskMeta = {
   checklist_groups?: Array<{ title?: string; items?: string[] }>;
 };
 
+type ExistingTaskRow = {
+  id: string;
+  title: string | null;
+  due_date: string | null;
+  property_name: string | null;
+  objekt_code: string | null;
+  meta?: TaskMeta | null;
+};
+
 export type CockpitDocumentIssue = {
   id: string;
   propertyName: string;
@@ -349,7 +358,7 @@ async function ensureMoveOutChecklistTasks(
 
   const { data: existingRows, error: existingError } = await supabase
     .from("property_tasks")
-    .select("id,meta,status")
+    .select("id,title,due_date,property_name,objekt_code,meta,status")
     .eq("category", "leerstand")
     .in("status", ["offen", "in_bearbeitung"]);
 
@@ -358,26 +367,45 @@ async function ensureMoveOutChecklistTasks(
     return;
   }
 
-  const existingKeys = new Set(
-    ((existingRows ?? []) as Array<{ meta?: { source_key?: string } | null }>).map((row) => row.meta?.source_key).filter(Boolean),
+  const existingTasks = (existingRows ?? []) as ExistingTaskRow[];
+  const existingKeys = new Set(existingTasks.map((row) => row.meta?.source_key).filter(Boolean));
+  const existingVacancyIds = new Set(existingTasks.map((row) => row.meta?.vacancy_id).filter(Boolean));
+  const existingNaturalKeys = new Set(
+    existingTasks.map((row) =>
+      normalizeTaskNaturalKey({
+        title: row.title,
+        dueDate: row.due_date,
+        propertyName: row.property_name,
+        objectCode: row.objekt_code,
+      }),
+    ),
   );
   const checklistGroups = moveOutChecklistGroups();
   const description = checklistDescription();
 
   for (const vacancy of activeVacancies) {
     const sourceKey = effectiveVacancyTaskKey(vacancy);
-    if (existingKeys.has(sourceKey)) continue;
-
     const propertyName = taskLabelForVacancy(vacancy, objectLabels);
     const unitSuffix = vacancy.unit_label ? ` · ${vacancy.unit_label}` : "";
     const effectiveStart = effectiveVacancyStartDate(vacancy);
+    const title = `Auszug organisieren: ${propertyName}${unitSuffix}`;
+    const naturalKey = normalizeTaskNaturalKey({
+      title,
+      dueDate: effectiveStart,
+      propertyName,
+      objectCode: vacancy.object_code,
+    });
+
+    if (existingKeys.has(sourceKey) || existingVacancyIds.has(vacancy.id) || existingNaturalKeys.has(naturalKey)) {
+      continue;
+    }
 
     const { error: insertError } = await supabase.from("property_tasks").insert({
       property_id: asUuid(vacancy.property_id),
       portfolio_property_id: null,
       objekt_code: vacancy.object_code,
       property_name: propertyName,
-      title: `Auszug organisieren: ${propertyName}${unitSuffix}`,
+      title,
       description,
       category: "leerstand",
       priority: "hoch",
@@ -395,11 +423,28 @@ async function ensureMoveOutChecklistTasks(
       },
     });
     if (insertError) {
+      if (insertError.code === "23505") continue;
       console.warn("Leerstand-Aufgabe konnte nicht angelegt werden.", insertError);
       continue;
     }
     existingKeys.add(sourceKey);
+    existingVacancyIds.add(vacancy.id);
+    existingNaturalKeys.add(naturalKey);
   }
+}
+
+function normalizeTaskNaturalKey({
+  title,
+  dueDate,
+  propertyName,
+  objectCode,
+}: {
+  title: string | null;
+  dueDate: string | null;
+  propertyName: string | null;
+  objectCode: string | null;
+}): string {
+  return [title, dueDate, propertyName, objectCode].map((part) => normalize(part)).join("::");
 }
 
 function normalizeChecklistGroups(meta: TaskRow["meta"]): CockpitTask["checklistGroups"] {
@@ -417,6 +462,21 @@ function normalizeChecklistDone(meta: TaskRow["meta"]): Record<string, boolean> 
   const raw = meta?.checklist_done;
   if (!raw || typeof raw !== "object") return {};
   return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, Boolean(value)]));
+}
+
+function uniqueTasks(tasks: CockpitTask[]): CockpitTask[] {
+  const seen = new Set<string>();
+  return tasks.filter((task) => {
+    const key = normalizeTaskNaturalKey({
+      title: task.title,
+      dueDate: task.dueDate,
+      propertyName: task.propertyName,
+      objectCode: null,
+    });
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function loadCockpitSnapshot(baseDate = new Date()): Promise<CockpitSnapshot> {
@@ -536,7 +596,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     openPosts: openPosts.sort((a, b) => b.openAmount - a.openAmount),
     tasks: taskRes.error
       ? []
-      : ((taskRes.data ?? []) as TaskRow[]).map((task) => ({
+      : uniqueTasks(((taskRes.data ?? []) as TaskRow[]).map((task) => ({
           id: String(task.id),
           title: String(task.title ?? "Aufgabe"),
           category: String(task.category ?? "allgemein"),
@@ -546,7 +606,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
           description: task.description ?? null,
           checklistDone: normalizeChecklistDone(task.meta),
           checklistGroups: normalizeChecklistGroups(task.meta),
-        })),
+        }))),
     documentIssues: docsRes.error
       ? []
       : ((docsRes.data ?? []) as DocumentIssueRow[]).map((doc) => ({
