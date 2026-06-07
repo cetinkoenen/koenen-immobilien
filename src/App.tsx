@@ -8,7 +8,27 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import { ArrowRight, Building2, Menu, X } from "lucide-react";
+import {
+  ArrowRight,
+  BarChart3,
+  Bell,
+  Building2,
+  DoorOpen,
+  Euro,
+  Gauge,
+  KeyRound,
+  Landmark,
+  Menu,
+  PlusCircle,
+  ReceiptText,
+  Settings2,
+  ShieldCheck,
+  UserPlus,
+  Users,
+  WalletCards,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 import Login from "./pages/Login";
 import MFA from "./pages/MFA";
@@ -57,14 +77,21 @@ function RouteFallback() {
   );
 }
 
-function desktopNavLinkClass(isActive: boolean): string {
+function sidebarNavLinkClass(isActive: boolean): string {
   return [
-    "inline-flex h-10 min-w-[108px] items-center justify-center rounded-xl border px-3 text-center text-xs font-black leading-tight no-underline shadow-sm transition",
+    "group flex min-h-11 items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-black no-underline transition",
     isActive
-      ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-      : "border-[#d8d2c7] bg-white/80 text-slate-900 hover:bg-white",
+      ? "bg-white/12 text-white shadow-[inset_3px_0_0_#8b7cf6]"
+      : "text-slate-300 hover:bg-white/8 hover:text-white",
   ].join(" ");
 }
+
+const groupAccent: Record<string, string> = {
+  Überblick: "text-sky-300",
+  Finanzen: "text-violet-300",
+  Mieter: "text-emerald-300",
+  Verwaltung: "text-amber-300",
+};
 
 
 function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
@@ -72,7 +99,7 @@ function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
   return <Navigate to={propertyId ? `/portfolio/${encodeURIComponent(propertyId)}/${section}` : "/portfolio"} replace />;
 }
 
-function LogoutButton() {
+function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boolean; compact?: boolean }) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -88,13 +115,18 @@ function LogoutButton() {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="hidden h-[46px] items-center rounded-2xl border border-[#d8d2c7] bg-white/65 px-4 text-sm font-semibold text-slate-600 2xl:inline-flex">
-        {user?.email ?? "Eingeloggt"}
-      </span>
+      {showEmail ? (
+        <span className="hidden h-[46px] items-center rounded-2xl border border-[#d8d2c7] bg-white/65 px-4 text-sm font-semibold text-slate-600 2xl:inline-flex">
+          {user?.email ?? "Eingeloggt"}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={handleLogout}
-        className="inline-flex h-[46px] w-[116px] items-center justify-center rounded-2xl border border-[#d8d2c7] bg-white/75 px-4 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-white"
+        className={[
+          "inline-flex h-[46px] items-center justify-center rounded-2xl border border-[#d8d2c7] bg-white/75 px-4 text-sm font-extrabold text-slate-900 shadow-sm transition hover:bg-white",
+          compact ? "flex-1" : "w-[116px]",
+        ].join(" ")}
       >
         Logout
       </button>
@@ -171,23 +203,23 @@ function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
 
-  const navItems = useMemo<Array<{ to: string; label: string; group: string; end?: boolean }>>(
+  const navItems = useMemo<Array<{ to: string; label: string; group: string; icon: LucideIcon; end?: boolean }>>(
     () => [
-      { to: "/cockpit", label: "Cockpit", group: "Überblick" },
-      { to: "/portfolio", label: "Portfolio", group: "Überblick" },
-      { to: "/buchhaltung", label: "Buchhaltung", group: "Finanzen" },
-      { to: "/buchungen", label: "Neue Buchung", group: "Finanzen" },
-      { to: "/transaktionsregeln", label: "Regeln", group: "Finanzen" },
-      { to: "/steuer", label: "Steuer", group: "Finanzen" },
-      { to: "/auswertungen", label: "Auswertungen", group: "Finanzen" },
-      { to: "/mieteruebersicht", label: "Mieteingang", group: "Mieter" },
-      { to: "/mieter-anlegen", label: "Mieter anlegen", group: "Mieter" },
-      { to: "/leerstand", label: "Leerstand", group: "Mieter" },
-      { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter" },
-      { to: "/mahnwesen", label: "Mahnwesen", group: "Mieter" },
-      { to: "/darlehensuebersicht", label: "Darlehen", group: "Verwaltung" },
-      { to: "/nebenkosten", label: "NK-Abrechnungen", group: "Verwaltung" },
-      { to: "/datenpruefung", label: "Datenprüfung", group: "Verwaltung" },
+      { to: "/cockpit", label: "Cockpit", group: "Überblick", icon: Gauge },
+      { to: "/portfolio", label: "Portfolio", group: "Überblick", icon: Building2 },
+      { to: "/buchhaltung", label: "Buchhaltung", group: "Finanzen", icon: WalletCards },
+      { to: "/buchungen", label: "Neue Buchung", group: "Finanzen", icon: PlusCircle },
+      { to: "/transaktionsregeln", label: "Regeln", group: "Finanzen", icon: Settings2 },
+      { to: "/steuer", label: "Steuer", group: "Finanzen", icon: Euro },
+      { to: "/auswertungen", label: "Auswertungen", group: "Finanzen", icon: BarChart3 },
+      { to: "/mieteruebersicht", label: "Mieteingang", group: "Mieter", icon: Users },
+      { to: "/mieter-anlegen", label: "Mieter anlegen", group: "Mieter", icon: UserPlus },
+      { to: "/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
+      { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
+      { to: "/mahnwesen", label: "Mahnwesen", group: "Mieter", icon: Bell },
+      { to: "/darlehensuebersicht", label: "Darlehen", group: "Verwaltung", icon: Landmark },
+      { to: "/nebenkosten", label: "NK-Abrechnungen", group: "Verwaltung", icon: ReceiptText },
+      { to: "/datenpruefung", label: "Datenprüfung", group: "Verwaltung", icon: ShieldCheck },
     ],
     [],
   );
@@ -203,7 +235,71 @@ function AppShell() {
 
   return (
     <div className="min-h-screen bg-[#f6f1e8] text-slate-950">
-      <header className="sticky top-0 z-30 border-b border-[#e7ddcf] bg-[#f6f1e8]/88 backdrop-blur-xl">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-slate-800 bg-[#101827] text-white shadow-2xl xl:flex">
+        <NavLink
+          to="/cockpit"
+          className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
+          title="Zum Cockpit"
+        >
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
+            <img src={logo} alt="Könen Immobilien" className="h-full w-full object-cover" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Property App
+            </div>
+            <div className="mt-1 truncate text-base font-black leading-tight text-white">
+              Immobilien-Verwaltung
+            </div>
+          </div>
+        </NavLink>
+
+        <nav className="flex-1 space-y-5 overflow-y-auto px-4 py-5">
+          {navGroups.map(({ group, items }) => (
+            <div key={group}>
+              <div className={`mb-2 px-3 text-[11px] font-black uppercase tracking-[0.16em] ${groupAccent[group] ?? "text-slate-400"}`}>
+                {group}
+              </div>
+              <div className="space-y-1">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      className={({ isActive }) => sidebarNavLinkClass(isActive)}
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon
+                            size={19}
+                            className={isActive ? "text-white" : "text-slate-400 transition group-hover:text-white"}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="border-t border-white/10 p-4">
+          <div className="mb-3 rounded-2xl border border-white/10 bg-white/6 px-3 py-2 text-xs font-bold text-slate-300">
+            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Angemeldet</div>
+            <div className="mt-1 truncate">{user?.email ?? "Eingeloggt"}</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <BackupButton />
+            <LogoutButton showEmail={false} compact />
+          </div>
+        </div>
+      </aside>
+
+      <header className="sticky top-0 z-30 border-b border-[#e7ddcf] bg-[#f6f1e8]/88 backdrop-blur-xl xl:hidden">
         <div className="mx-auto max-w-[1760px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
           <div className="flex items-center justify-between gap-3 sm:gap-5">
             <NavLink
@@ -228,36 +324,10 @@ function AppShell() {
               </div>
             </NavLink>
 
-            <div className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex">
-              <nav className="grid max-w-[1180px] flex-1 grid-cols-4 gap-3">
-                {navGroups.map(({ group, items }) => (
-                  <div key={group} className="min-w-0">
-                    <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                      {group}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {items.map((item) => (
-                        <NavLink
-                          key={item.to}
-                          to={item.to}
-                          end={item.end}
-                          className={({ isActive }) => desktopNavLinkClass(isActive)}
-                        >
-                          {item.label}
-                        </NavLink>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </nav>
-              <BackupButton />
-              <LogoutButton />
-            </div>
-
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm sm:h-12 sm:w-12 xl:hidden"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm sm:h-12 sm:w-12"
               aria-label={mobileMenuOpen ? "Menü schließen" : "Menü öffnen"}
               aria-expanded={mobileMenuOpen}
             >
@@ -274,24 +344,28 @@ function AppShell() {
                       {group}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {items.map((item) => (
-                        <NavLink
-                          key={item.to}
-                          to={item.to}
-                          end={item.end}
-                          onClick={() => setMobileMenuOpen(false)}
-                          className={({ isActive }) =>
-                            [
-                              "flex min-h-12 items-center justify-center rounded-2xl border px-3 py-3 text-center text-sm font-extrabold leading-tight shadow-sm transition",
-                              isActive
-                                ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-                                : "border-slate-200 bg-white text-slate-900",
-                            ].join(" ")
-                          }
-                        >
-                          {item.label}
-                        </NavLink>
-                      ))}
+                      {items.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <NavLink
+                            key={item.to}
+                            to={item.to}
+                            end={item.end}
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              [
+                                "flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center text-sm font-extrabold leading-tight shadow-sm transition",
+                                isActive
+                                  ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                                  : "border-slate-200 bg-white text-slate-900",
+                              ].join(" ")
+                            }
+                          >
+                            <Icon size={16} />
+                            <span>{item.label}</span>
+                          </NavLink>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -309,7 +383,7 @@ function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1760px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+      <main className="mx-auto max-w-[1760px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8 xl:ml-[286px] xl:max-w-none">
         <Outlet />
       </main>
     </div>
