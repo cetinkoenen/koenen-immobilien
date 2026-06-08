@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { AutomationAnalytics } from "./Automatisierung";
 import { useAppData } from "@/state/AppDataContext";
@@ -104,20 +104,20 @@ type AuswertungView =
 const AUSWERTUNG_NAV: Array<{
   key: AuswertungView;
   label: string;
-  group: "Überblick" | "Datenqualität" | "Reporting";
-  description: string;
 }> = [
-  { key: "cockpit", label: "Objektakte & Workflows", group: "Überblick", description: "Objektakten, Aufgaben und Verwaltungsabläufe" },
-  { key: "finanzen", label: "Finanzanalyse", group: "Überblick", description: "Cashflow, Einnahmen, Ausgaben und Kategorien" },
-  { key: "objektjahr", label: "Objekt-Jahresübersicht", group: "Überblick", description: "Jahreswerte und Mietcheck je Immobilie" },
-  { key: "business", label: "Business Intelligence 4C", group: "Überblick", description: "Portfolioanalyse und Performance-Kennzahlen" },
-  { key: "backend5b", label: "Backend 5B", group: "Datenqualität", description: "Backend-Masterdaten und Supabase-Anbindung" },
-  { key: "single-source", label: "Single Source 3A", group: "Datenqualität", description: "Quellenprüfung und Datenkonsistenz" },
-  { key: "stability", label: "Stabilität 3B", group: "Datenqualität", description: "Robustheit, Fehlerhinweise und Risiken" },
-  { key: "automation", label: "Automatisierung 2B", group: "Datenqualität", description: "Automatische Hinweise und Workflows" },
-  { key: "reporting4d", label: "Reporting/PDF 4D", group: "Reporting", description: "Berichte und PDF-Übergaben" },
-  { key: "reporting", label: "Archiv 2C", group: "Reporting", description: "Dokumente, Archiv und Nachweise" },
+  { key: "cockpit", label: "Objektakte & Workflows" },
+  { key: "finanzen", label: "Finanzanalyse" },
+  { key: "objektjahr", label: "Objekt-Jahresübersicht" },
+  { key: "business", label: "Business Intelligence 4C" },
+  { key: "backend5b", label: "Backend 5B" },
+  { key: "single-source", label: "Single Source 3A" },
+  { key: "stability", label: "Stabilität 3B" },
+  { key: "automation", label: "Automatisierung 2B" },
+  { key: "reporting4d", label: "Reporting/PDF 4D" },
+  { key: "reporting", label: "Archiv 2C" },
 ];
+
+const AUSWERTUNG_VIEW_KEYS = new Set<AuswertungView>(AUSWERTUNG_NAV.map((item) => item.key));
 
 const PIE_COLORS = [
   "#2563eb",
@@ -4517,9 +4517,9 @@ function PhaseFiveBBackendBindingCenter() {
 }
 
 export default function Auswertung() {
-  const [activeView, setActiveView] = useState<AuswertungView>("cockpit");
-  const activeNavItem = AUSWERTUNG_NAV.find((item) => item.key === activeView) ?? AUSWERTUNG_NAV[0];
-  const navGroups = Array.from(new Set(AUSWERTUNG_NAV.map((item) => item.group)));
+  const [searchParams] = useSearchParams();
+  const requestedView = searchParams.get("view") as AuswertungView | null;
+  const activeView: AuswertungView = requestedView && AUSWERTUNG_VIEW_KEYS.has(requestedView) ? requestedView : "cockpit";
 
   return (
     <div className="space-y-5">
@@ -4533,72 +4533,33 @@ export default function Auswertung() {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[290px_minmax(0,1fr)]">
-        <aside className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:self-start">
-          <div className="px-2 pb-3">
-            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Auswertung</div>
-            <div className="mt-1 text-lg font-black text-slate-950">{activeNavItem.label}</div>
-            <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{activeNavItem.description}</p>
-          </div>
-
-          <div className="grid gap-4">
-            {navGroups.map((group) => (
-              <div key={group}>
-                <div className="mb-2 px-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">{group}</div>
-                <div className="grid gap-2">
-                  {AUSWERTUNG_NAV.filter((item) => item.group === group).map((item) => {
-                    const active = activeView === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => setActiveView(item.key)}
-                        className={[
-                          "w-full rounded-2xl border px-4 py-3 text-left text-sm font-black transition",
-                          active
-                            ? "border-indigo-200 bg-indigo-50 text-indigo-800 shadow-sm"
-                            : "border-transparent bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50",
-                        ].join(" ")}
-                      >
-                        <span className="block">{item.label}</span>
-                        <span className={active ? "mt-1 block text-xs font-bold text-indigo-500" : "mt-1 block text-xs font-bold text-slate-400"}>{item.description}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        <section className="min-w-0 space-y-5">
-          {activeView === "cockpit" ? (
-            <PhaseTwoControlCenter />
-          ) : activeView === "backend5b" ? (
-            <PhaseFiveBBackendBindingCenter />
-          ) : activeView === "business" ? (
-            <PhaseFourCBusinessIntelligenceCenter />
-          ) : activeView === "single-source" ? (
-            <PhaseThreeASingleSourceCenter />
-          ) : activeView === "stability" ? (
-            <PhaseThreeBStabilityCenter />
-          ) : activeView === "automation" ? (
-            <PhaseTwoBAutomationCenter />
-          ) : activeView === "reporting4d" ? (
-            <PhaseFourDProfessionalReportingSystem />
-          ) : activeView === "reporting" ? (
-            <PhaseTwoCReportingCenter />
-          ) : activeView === "finanzen" ? (
-            <>
-              <WorkflowCenterCard />
-              <ObjectFinanceModuleButtons />
-              <AuswertungCore />
-            </>
-          ) : (
-            <AutomationAnalytics embedded />
-          )}
-        </section>
-      </div>
+      <section className="min-w-0 space-y-5">
+        {activeView === "cockpit" ? (
+          <PhaseTwoControlCenter />
+        ) : activeView === "backend5b" ? (
+          <PhaseFiveBBackendBindingCenter />
+        ) : activeView === "business" ? (
+          <PhaseFourCBusinessIntelligenceCenter />
+        ) : activeView === "single-source" ? (
+          <PhaseThreeASingleSourceCenter />
+        ) : activeView === "stability" ? (
+          <PhaseThreeBStabilityCenter />
+        ) : activeView === "automation" ? (
+          <PhaseTwoBAutomationCenter />
+        ) : activeView === "reporting4d" ? (
+          <PhaseFourDProfessionalReportingSystem />
+        ) : activeView === "reporting" ? (
+          <PhaseTwoCReportingCenter />
+        ) : activeView === "finanzen" ? (
+          <>
+            <WorkflowCenterCard />
+            <ObjectFinanceModuleButtons />
+            <AuswertungCore />
+          </>
+        ) : (
+          <AutomationAnalytics embedded />
+        )}
+      </section>
     </div>
   );
 }

@@ -1,10 +1,12 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import {
+  Link,
   NavLink,
   Navigate,
   Outlet,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -92,6 +94,19 @@ const groupAccent: Record<string, string> = {
   Mieter: "text-emerald-300",
   Verwaltung: "text-amber-300",
 };
+
+const auswertungSubNav = [
+  { view: "cockpit", label: "Objektakte & Workflows" },
+  { view: "finanzen", label: "Finanzanalyse" },
+  { view: "objektjahr", label: "Objekt-Jahresübersicht" },
+  { view: "business", label: "Business Intelligence 4C" },
+  { view: "backend5b", label: "Backend 5B" },
+  { view: "single-source", label: "Single Source 3A" },
+  { view: "stability", label: "Stabilität 3B" },
+  { view: "automation", label: "Automatisierung 2B" },
+  { view: "reporting4d", label: "Reporting/PDF 4D" },
+  { view: "reporting", label: "Archiv 2C" },
+];
 
 
 function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
@@ -202,6 +217,10 @@ function NebenkostenIndexPage() {
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
+  const location = useLocation();
+  const activeAuswertungView = location.pathname === "/auswertungen"
+    ? new URLSearchParams(location.search).get("view") ?? "cockpit"
+    : "";
 
   const navItems = useMemo<Array<{ to: string; label: string; group: string; icon: LucideIcon; end?: boolean }>>(
     () => [
@@ -264,22 +283,42 @@ function AppShell() {
                 {items.map((item) => {
                   const Icon = item.icon;
                   return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) => sidebarNavLinkClass(isActive)}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon
-                            size={19}
-                            className={isActive ? "text-white" : "text-slate-400 transition group-hover:text-white"}
-                          />
-                          <span className="truncate">{item.label}</span>
-                        </>
-                      )}
-                    </NavLink>
+                    <div key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) => sidebarNavLinkClass(isActive)}
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <Icon
+                              size={19}
+                              className={isActive ? "text-white" : "text-slate-400 transition group-hover:text-white"}
+                            />
+                            <span className="truncate">{item.label}</span>
+                          </>
+                        )}
+                      </NavLink>
+                      {item.to === "/auswertungen" && location.pathname === "/auswertungen" ? (
+                        <div className="ml-8 mt-1 grid gap-1 border-l border-white/10 pl-3">
+                          {auswertungSubNav.map((subItem) => {
+                            const active = activeAuswertungView === subItem.view;
+                            return (
+                              <Link
+                                key={subItem.view}
+                                to={`/auswertungen?view=${subItem.view}`}
+                                className={[
+                                  "rounded-xl px-3 py-2 text-xs font-extrabold no-underline transition",
+                                  active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/8 hover:text-white",
+                                ].join(" ")}
+                              >
+                                {subItem.label}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -347,23 +386,44 @@ function AppShell() {
                       {items.map((item) => {
                         const Icon = item.icon;
                         return (
-                          <NavLink
-                            key={item.to}
-                            to={item.to}
-                            end={item.end}
-                            onClick={() => setMobileMenuOpen(false)}
-                            className={({ isActive }) =>
-                              [
-                                "flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center text-sm font-extrabold leading-tight shadow-sm transition",
-                                isActive
-                                  ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-                                  : "border-slate-200 bg-white text-slate-900",
-                              ].join(" ")
-                            }
-                          >
-                            <Icon size={16} />
-                            <span>{item.label}</span>
-                          </NavLink>
+                          <div key={item.to} className={item.to === "/auswertungen" && location.pathname === "/auswertungen" ? "col-span-2" : ""}>
+                            <NavLink
+                              to={item.to}
+                              end={item.end}
+                              onClick={() => setMobileMenuOpen(false)}
+                              className={({ isActive }) =>
+                                [
+                                  "flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center text-sm font-extrabold leading-tight shadow-sm transition",
+                                  isActive
+                                    ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                                    : "border-slate-200 bg-white text-slate-900",
+                                ].join(" ")
+                              }
+                            >
+                              <Icon size={16} />
+                              <span>{item.label}</span>
+                            </NavLink>
+                            {item.to === "/auswertungen" && location.pathname === "/auswertungen" ? (
+                              <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                                {auswertungSubNav.map((subItem) => {
+                                  const active = activeAuswertungView === subItem.view;
+                                  return (
+                                    <Link
+                                      key={subItem.view}
+                                      to={`/auswertungen?view=${subItem.view}`}
+                                      onClick={() => setMobileMenuOpen(false)}
+                                      className={[
+                                        "rounded-xl px-3 py-2 text-center text-xs font-extrabold no-underline transition",
+                                        active ? "bg-indigo-100 text-indigo-800" : "bg-white text-slate-700",
+                                      ].join(" ")}
+                                    >
+                                      {subItem.label}
+                                    </Link>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
                         );
                       })}
                     </div>
