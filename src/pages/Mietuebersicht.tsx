@@ -737,7 +737,10 @@ export default function Mietuebersicht() {
                 <button type="button" onClick={() => setMonthOffset((value) => value + 1)} className="tenant-mini-button">Folgemonat →</button>
               </div>
             </div>
-            <strong>{formatCurrency(stats.amount)}</strong>
+            <div className="tenant-total-box">
+              <span>Summe Zahlungseingänge</span>
+              <strong>{formatCurrency(stats.amount)}</strong>
+            </div>
           </div>
 
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
@@ -757,14 +760,14 @@ export default function Mietuebersicht() {
                       <div className="tenant-amount"><small>Mieteingang</small><b>{vacant ? "Leerstand" : formatCurrency(row.paidAmount)}</b>{vacant && row.vacancyReason ? <small>{row.vacancyReason}</small> : null}</div>
                       <div className="tenant-date"><small>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
                     </div>
-                    <div className="tenant-fields">
-                      <input value={tenant.firstName} placeholder="Name" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
-                      <input value={tenant.lastName} placeholder="Nachname" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
-                      <input value={tenant.phone} placeholder="Telefon" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
-                      <input value={tenant.email} placeholder="E-Mail" type="email" readOnly disabled title="Mieterdaten werden zentral unter Mieter anlegen gepflegt" />
+                    <div className="tenant-contact-grid" title="Mieterdaten werden zentral unter Mieter anlegen gepflegt">
+                      <div><span>Vorname</span><b>{tenant.firstName || "—"}</b></div>
+                      <div><span>Nachname</span><b>{tenant.lastName || "—"}</b></div>
+                      <div><span>Telefon</span><b>{tenant.phone || "—"}</b></div>
+                      <div><span>E-Mail</span><b>{tenant.email || "—"}</b></div>
                     </div>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-                      <small>Mieterdaten sind hier nur lesbar · Pflege ueber Mieter anlegen</small>
+                    <div className="tenant-row-note">
+                      Mieterdaten sind hier nur lesbar · Pflege über Mieter anlegen
                     </div>
                   </article>
                 );
@@ -776,7 +779,10 @@ export default function Mietuebersicht() {
         </main>
 
         <aside className="tenant-summary">
-          <h2>Zusammenfassung</h2>
+          <div>
+            <h2>Zusammenfassung</h2>
+            <p>Mietstatus für {month.label}</p>
+          </div>
           <DonutChart paid={stats.paid} missing={stats.missing} vacant={stats.vacant} />
           <div className="tenant-summary-lines">
             <div><span>Bezahlt</span><b>{stats.paid}</b></div>
