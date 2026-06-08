@@ -201,8 +201,8 @@ export function buildMasterFinanceSnapshots(input: MasterDataInput, year = new D
     const expensesFromEntries = yearEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
     const incomeFromSummary = summaryRows.reduce((sum, row) => sum + toMasterNumber(row.einnahmen), 0);
     const expensesFromSummary = summaryRows.reduce((sum, row) => sum + toMasterNumber(row.ausgaben), 0);
-    const income = incomeFromEntries || incomeFromSummary;
-    const expenses = expensesFromEntries || expensesFromSummary;
+    const income = incomeFromEntries;
+    const expenses = expensesFromEntries;
     const capex = yearEntries.filter(isCapexEntry).reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
     const rentIncome = yearEntries.filter(isRentEntry).reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
 
@@ -219,7 +219,7 @@ export function buildMasterFinanceSnapshots(input: MasterDataInput, year = new D
     const issues: string[] = [];
     if (!portfolio && !loan) issues.push("Keine zentrale Portfolio-/Darlehensverknüpfung gefunden.");
     if (!chartSorted.length && latestBalance === null) issues.push("Keine Restschuld aus Darlehens-Ledger gefunden.");
-    if (!yearEntries.length && !summaryRows.length) issues.push(`Keine Finanzbuchungen/Jahressumme für ${year} gefunden.`);
+    if (!yearEntries.length) issues.push(`Keine Buchungen aus finance_entry für ${year} gefunden.`);
     if (incomeFromEntries && incomeFromSummary && Math.abs(incomeFromEntries - incomeFromSummary) > 1) issues.push("Einnahmen aus Buchungen und Jahresübersicht weichen ab.");
     if (expensesFromEntries && expensesFromSummary && Math.abs(expensesFromEntries - expensesFromSummary) > 1) issues.push("Ausgaben aus Buchungen und Jahresübersicht weichen ab.");
     if (portfolio?.last_balance && latestChart?.balance && Math.abs(toMasterNumber(portfolio.last_balance) - latestChart.balance) > 1) issues.push("Portfolio-Restschuld weicht vom letzten Ledger-Wert ab.");
@@ -242,8 +242,8 @@ export function buildMasterFinanceSnapshots(input: MasterDataInput, year = new D
       principalTotal: toMasterNumber(portfolio?.principal_total ?? loan?.principal_total),
       loanChart: chartSorted,
       sources: {
-        income: incomeFromEntries ? "entries" : incomeFromSummary ? "yearly_summary" : "none",
-        expenses: expensesFromEntries ? "entries" : expensesFromSummary ? "yearly_summary" : "none",
+        income: incomeFromEntries ? "entries" : "none",
+        expenses: expensesFromEntries ? "entries" : "none",
         capex: capex ? "entries" : "none",
         balance: latestChart ? "ledger_chart" : portfolio?.last_balance ? "portfolio" : loan?.last_balance ? "loan_dashboard" : "none",
       },

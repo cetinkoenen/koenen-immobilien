@@ -89,6 +89,10 @@ type TopTransactionRow = {
   amount: number;
 };
 
+type FinanceEntryViewRow = EntryRow & {
+  entry_type: EntryType;
+};
+
 type AuswertungView =
   | "cockpit"
   | "backend5b"
@@ -118,6 +122,28 @@ const AUSWERTUNG_NAV: Array<{
 ];
 
 const AUSWERTUNG_VIEW_KEYS = new Set<AuswertungView>(AUSWERTUNG_NAV.map((item) => item.key));
+
+function mapFinanceEntryRows(rows: unknown[]): FinanceEntryViewRow[] {
+  return rows.map((row) => {
+    const item = row as Partial<FinanceEntryViewRow>;
+    return {
+      id: Number(item.id ?? 0),
+      objekt_code: String(item.objekt_code ?? ""),
+      booking_date: String(item.booking_date ?? ""),
+      amount: Number(item.amount ?? 0),
+      category: item.category ?? null,
+      note: item.note ?? null,
+      entry_type: item.entry_type === "expense" ? "expense" : "income",
+    };
+  });
+}
+
+function splitFinanceEntries(rows: FinanceEntryViewRow[]) {
+  return {
+    incomeRows: rows.filter((row) => row.entry_type === "income"),
+    expenseRows: rows.filter((row) => row.entry_type === "expense"),
+  };
+}
 
 const PIE_COLORS = [
   "#2563eb",
@@ -2161,17 +2187,21 @@ function PhaseTwoBAutomationCenter() {
       setError(null);
 
       try {
-        const [objectsRes, incomeRes, expenseRes] = await Promise.all([
+        const [objectsRes, financeRes] = await Promise.all([
           supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }),
-          supabase.from("v_income_entries").select("id,objekt_code,booking_date,amount,category,note").gte("booking_date", startOfYear).lt("booking_date", tomorrow),
-          supabase.from("v_expense_entries").select("id,objekt_code,booking_date,amount,category,note").gte("booking_date", startOfYear).lt("booking_date", tomorrow),
+          supabase
+            .from("finance_entry")
+            .select("id,objekt_code,booking_date,amount,category,note,entry_type")
+            .eq("is_deleted", false)
+            .gte("booking_date", startOfYear)
+            .lt("booking_date", tomorrow)
+            .in("entry_type", ["income", "expense"]),
         ]);
 
         if (!alive) return;
 
         if (objectsRes.error) throw objectsRes.error;
-        if (incomeRes.error) throw incomeRes.error;
-        if (expenseRes.error) throw expenseRes.error;
+        if (financeRes.error) throw financeRes.error;
 
         setObjects(
           ((objectsRes.data ?? []) as DropdownRow[])
@@ -2179,8 +2209,9 @@ function PhaseTwoBAutomationCenter() {
             .filter((row) => !isHiddenTechnicalPropertyName(row.label))
             .sort((a, b) => a.label.localeCompare(b.label, "de"))
         );
-        setIncomeRows((incomeRes.data ?? []) as EntryRow[]);
-        setExpenseRows((expenseRes.data ?? []) as EntryRow[]);
+        const financeRows = splitFinanceEntries(mapFinanceEntryRows(financeRes.data ?? []));
+        setIncomeRows(financeRows.incomeRows);
+        setExpenseRows(financeRows.expenseRows);
         setLoading(false);
       } catch (e: any) {
         if (!alive) return;
@@ -2532,30 +2563,25 @@ function PhaseTwoCReportingCenter() {
     const to = `${safeYear + 1}-01-01`;
 
     try {
-      let incomeQuery = supabase
-        .from("v_income_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
+      let financeQuery = supabase
+        .from("finance_entry")
+        .select("id,objekt_code,booking_date,amount,category,note,entry_type")
+        .eq("is_deleted", false)
         .gte("booking_date", from)
-        .lt("booking_date", to);
-
-      let expenseQuery = supabase
-        .from("v_expense_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
-        .gte("booking_date", from)
-        .lt("booking_date", to);
+        .lt("booking_date", to)
+        .in("entry_type", ["income", "expense"]);
 
       if (objektCode !== "ALL") {
-        incomeQuery = incomeQuery.eq("objekt_code", objektCode);
-        expenseQuery = expenseQuery.eq("objekt_code", objektCode);
+        financeQuery = financeQuery.eq("objekt_code", objektCode);
       }
 
-      const [incomeResult, expenseResult] = await Promise.all([incomeQuery, expenseQuery]);
+      const result = await financeQuery;
 
-      if (incomeResult.error) throw incomeResult.error;
-      if (expenseResult.error) throw expenseResult.error;
+      if (result.error) throw result.error;
 
-      setIncomeRows((incomeResult.data ?? []) as EntryRow[]);
-      setExpenseRows((expenseResult.data ?? []) as EntryRow[]);
+      const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
+      setIncomeRows(financeRows.incomeRows);
+      setExpenseRows(financeRows.expenseRows);
     } catch (e: any) {
       setError(e?.message ?? String(e));
       setIncomeRows([]);
@@ -2863,30 +2889,25 @@ function PhaseFourDProfessionalReportingSystem() {
 
     (async () => {
       try {
-        let incomeQuery = supabase
-          .from("v_income_entries")
-          .select("id,objekt_code,booking_date,amount,category,note")
+        let financeQuery = supabase
+          .from("finance_entry")
+          .select("id,objekt_code,booking_date,amount,category,note,entry_type")
+          .eq("is_deleted", false)
           .gte("booking_date", from)
-          .lt("booking_date", to);
-
-        let expenseQuery = supabase
-          .from("v_expense_entries")
-          .select("id,objekt_code,booking_date,amount,category,note")
-          .gte("booking_date", from)
-          .lt("booking_date", to);
+          .lt("booking_date", to)
+          .in("entry_type", ["income", "expense"]);
 
         if (objektCode !== "ALL") {
-          incomeQuery = incomeQuery.eq("objekt_code", objektCode);
-          expenseQuery = expenseQuery.eq("objekt_code", objektCode);
+          financeQuery = financeQuery.eq("objekt_code", objektCode);
         }
 
-        const [incomeResult, expenseResult] = await Promise.all([incomeQuery, expenseQuery]);
-        if (incomeResult.error) throw incomeResult.error;
-        if (expenseResult.error) throw expenseResult.error;
+        const result = await financeQuery;
+        if (result.error) throw result.error;
 
         if (!alive) return;
-        setIncomeRows((incomeResult.data ?? []) as EntryRow[]);
-        setExpenseRows((expenseResult.data ?? []) as EntryRow[]);
+        const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
+        setIncomeRows(financeRows.incomeRows);
+        setExpenseRows(financeRows.expenseRows);
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message ?? String(e));
