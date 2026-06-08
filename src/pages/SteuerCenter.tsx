@@ -857,7 +857,7 @@ export default function SteuerCenter() {
   ] satisfies Array<{ label: string; value: string; relevance: ClassifiedEntry["relevance"] }>;
 
   return (
-    <div style={styles.page}>
+    <div className="tax-print-root" style={styles.page}>
       <section style={styles.hero}>
         <div style={styles.heroTop}>
           <div>
@@ -872,7 +872,7 @@ export default function SteuerCenter() {
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="tax-no-print" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button type="button" onClick={() => void loadEntries()} style={styles.button}>
               <RefreshCw size={16} />
               Aktualisieren
@@ -893,7 +893,7 @@ export default function SteuerCenter() {
         </div>
       </section>
 
-      <section style={styles.panel}>
+      <section className="tax-no-print" style={styles.panel}>
         <div style={styles.controls}>
           <label style={styles.label}>
             Jahr
@@ -972,7 +972,7 @@ export default function SteuerCenter() {
               </div>
             </div>
 
-            <div style={styles.actionRow}>
+            <div className="tax-no-print" style={styles.actionRow}>
               <button
                 type="button"
                 onClick={() => downloadAdvisorCsv(`steuerberater_jahresakte_${filenameObject}_${year}.csv`, {
