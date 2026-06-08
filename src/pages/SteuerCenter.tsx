@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { Download, FileText, Printer, RefreshCw, Search } from "lucide-react";
+import { CheckCircle2, Download, FileText, Info, Lightbulb, Printer, RefreshCw, Search } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
 import { parseLocaleNumber } from "../utils/numberParser";
@@ -153,6 +153,45 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 12,
+  },
+  explainerGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 12,
+  },
+  explainerCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    background: "#f8fafc",
+    padding: 14,
+  },
+  explainerTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 950,
+    color: "#0f172a",
+  },
+  explainerList: {
+    margin: "10px 0 0",
+    paddingLeft: 18,
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.55,
+  },
+  notice: {
+    marginTop: 12,
+    border: "1px solid #bfdbfe",
+    borderRadius: 16,
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    padding: 12,
+    fontSize: 13,
+    fontWeight: 800,
+    lineHeight: 1.55,
   },
   tableWrap: {
     overflowX: "auto",
@@ -703,6 +742,56 @@ export default function SteuerCenter() {
           Fehler beim Laden: {error}
         </section>
       ) : null}
+
+      <section style={styles.panel}>
+        <SectionHeading
+          title="Einordnung der Steuerzahlen"
+          subtitle="Diese Seite ist eine Arbeitsuebersicht fuer Anlage V und Steuerberater. Sie ersetzt keine Steuerberatung, macht aber sichtbar, welche Buchungen steuerlich wichtig sind."
+        />
+        <div style={styles.explainerGrid}>
+          <div style={styles.explainerCard}>
+            <h3 style={styles.explainerTitle}>
+              <Info size={17} />
+              Welche Quelle liefert die Zahlen?
+            </h3>
+            <ul style={styles.explainerList}>
+              <li><strong>Quelle:</strong> Alle Werte kommen aus der Buchhaltungstabelle <code>finance_entry</code>.</li>
+              <li><strong>Filter:</strong> Jahr, Objekt, Steuerstatus und Suche begrenzen die aktuell angezeigten Zahlen.</li>
+              <li><strong>Export:</strong> Der CSV-Export enthaelt genau die gefilterten Buchungen in der Tabelle.</li>
+            </ul>
+          </div>
+
+          <div style={styles.explainerCard}>
+            <h3 style={styles.explainerTitle}>
+              <CheckCircle2 size={17} />
+              Was bedeuten die Kennzahlen?
+            </h3>
+            <ul style={styles.explainerList}>
+              <li><strong>Steuer-Einnahmen:</strong> Als steuerrelevant erkannte Einnahmen, z. B. Miete oder NK-Vorauszahlung.</li>
+              <li><strong>Steuer-Ausgaben:</strong> Als steuerrelevant erkannte Werbungskosten, z. B. Zinsen, Grundsteuer, Reparaturen.</li>
+              <li><strong>Steuerlicher Ueberschuss:</strong> Steuer-Einnahmen minus Steuer-Ausgaben.</li>
+              <li><strong>Buchhaltungs-Netto:</strong> Alle gefilterten Einnahmen minus alle gefilterten Ausgaben, auch wenn sie steuerlich noch unklar sind.</li>
+            </ul>
+          </div>
+
+          <div style={styles.explainerCard}>
+            <h3 style={styles.explainerTitle}>
+              <Lightbulb size={17} />
+              Wie bekommst du die Steuer besser in den Griff?
+            </h3>
+            <ul style={styles.explainerList}>
+              <li><strong>Zu pruefen</strong> regelmaessig abarbeiten und auf steuerrelevant Ja/Nein setzen.</li>
+              <li>Kategorien sauber halten: Zinsen, Tilgung, Reparatur, Hausgeld, Grundsteuer, Versicherung getrennt buchen.</li>
+              <li>Belege je Objekt und Jahr ablegen, damit jede steuerliche Ausgabe belegbar bleibt.</li>
+              <li>Vor Jahresende offene Reparaturen, Zinsen, Nebenkosten und Hausgeldanteile pruefen.</li>
+            </ul>
+          </div>
+        </div>
+        <div style={styles.notice}>
+          Ziel fuer einen positiven Stand: Nicht nur weniger Steuer zahlen, sondern einen stabilen, belegbaren Ueberschuss je Objekt kennen.
+          Wenn der steuerliche Ueberschuss stark vom Buchhaltungs-Netto abweicht, sind meist Buchungen noch nicht klassifiziert, steuerlich unklar oder falsch kategorisiert.
+        </div>
+      </section>
 
       <section style={styles.grid3}>
         <MetricCard label="Steuer-Einnahmen" value={loading ? "..." : eur(totals.taxIncome)} tone="green" />
