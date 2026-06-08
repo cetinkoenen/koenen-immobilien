@@ -100,10 +100,24 @@ export type AppDataContextValue = {
   getYearlyFinanceSummaryByObjectCode: (objectCode: string | null | undefined, year: number) => YearlyFinanceSummaryRow | null;
 };
 
+type CachedAppData = {
+  objects?: AppObject[];
+  entries?: FinanceEntry[];
+  monthlyRentSummaries?: MonthlyRentSummaryRow[];
+  yearlyFinanceSummaries?: YearlyFinanceSummaryRow[];
+  portfolioRows?: PortfolioLoanRow[];
+  loanRows?: LoanDashboardRow[];
+  loanChartByPropertyId?: Record<string, LoanChartPoint[]>;
+};
+
 const AppDataContext = createContext<AppDataContextValue | null>(null);
 
 function toNumber(value: unknown): number {
   return parseLocaleNumber(value, 0);
+}
+
+function getErrorMessage(err: unknown, fallback = "Daten konnten nicht geladen werden."): string {
+  return err instanceof Error ? err.message : fallback;
 }
 
 function parseMaybeNumber(value: unknown): number | null {
@@ -407,22 +421,46 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [loanRows, setLoanRows] = useState<LoanDashboardRow[]>([]);
   const [loanChartByPropertyId, setLoanChartByPropertyId] = useState<Record<string, LoanChartPoint[]>>({});
 
+  const applyCachedData = useCallback((cached: CachedAppData) => {
+    setObjects(Array.isArray(cached.objects) ? cached.objects : []);
+    setEntries(Array.isArray(cached.entries) ? cached.entries : []);
+    setMonthlyRentSummaries(Array.isArray(cached.monthlyRentSummaries) ? cached.monthlyRentSummaries : []);
+    setYearlyFinanceSummaries(Array.isArray(cached.yearlyFinanceSummaries) ? cached.yearlyFinanceSummaries : []);
+    setPortfolioRows(Array.isArray(cached.portfolioRows) ? cached.portfolioRows : []);
+    setLoanRows(Array.isArray(cached.loanRows) ? cached.loanRows : []);
+    setLoanChartByPropertyId(cached.loanChartByPropertyId && typeof cached.loanChartByPropertyId === "object" ? cached.loanChartByPropertyId : {});
+  }, []);
+
+  const hydrateFromCache = useCallback(() => {
+    try {
+      const raw = window.localStorage.getItem(APP_DATA_CACHE_KEY);
+      if (!raw) return false;
+      const cached = JSON.parse(raw) as CachedAppData;
+      const hasUsefulData = Array.isArray(cached.objects) || Array.isArray(cached.entries) || Array.isArray(cached.portfolioRows);
+      if (!hasUsefulData) return false;
+      applyCachedData(cached);
+      setError(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [applyCachedData]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    const hydrated = hydrateFromCache();
+    setLoading(!hydrated);
     setError(null);
     try {
-      const [objectsRes, entriesRes, yearlyFinanceRes, portfolioRes, loanRes] = await Promise.all([
+      const [objectsRes, entriesRes, portfolioRes, loanRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
-        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,nk_relevant,is_deleted").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
-        supabase.from("v_objekt_finanz_summary_jahr").select("object_id,objekt_code,user_id,jahr,einnahmen,ausgaben,mieteingaenge"),
+        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,nk_relevant").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
       ]);
 
-      // Die Datenbank-Views für Monats-/Jahresauswertungen können je nach Supabase-RLS
-      // gesperrt sein. Das darf NICHT die komplette App blockieren.
-      // Objekt-, Buchungs- und Portfolio-Daten bleiben Pflicht; die Summaries werden
-      // bei fehlender View-Berechtigung sicher aus finance_entry berechnet.
+      // Objekt-, Buchungs- und Portfolio-Daten bleiben Pflicht. Monats- und
+      // Jahreswerte werden aus finance_entry berechnet, damit alle Seiten dieselbe
+      // Buchhaltungsquelle verwenden.
       const firstBlockingError = objectsRes.error || entriesRes.error || portfolioRes.error || loanRes.error;
       if (firstBlockingError) throw firstBlockingError;
 
@@ -451,28 +489,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       // Monatsmieten werden absichtlich aus finance_entry berechnet, damit die 25.-des-Monats-Regel überall gleich gilt.
 
-      const yearlyFromView = !yearlyFinanceRes.error
-        ? ((yearlyFinanceRes.data ?? []) as any[])
-            .filter((row) => row.object_id)
-            .map((row) => ({
-              object_id: String(row.object_id),
-              objekt_code: row.objekt_code ?? null,
-              user_id: row.user_id ?? null,
-              jahr: toNumber(row.jahr),
-              einnahmen: toNumber(row.einnahmen),
-              ausgaben: toNumber(row.ausgaben),
-              mieteingaenge: toNumber(row.mieteingaenge),
-            }))
-        : [];
-
-      // Fallback ist bewusst aus den Buchungen berechnet, damit Mieteingang
-      // und Portfolio auch funktionieren, wenn die View v_mieteingaenge_monat
-      // keine Berechtigung hat.
       // Single Source of Truth im Frontend: Mietmonate werden immer nach der Hausverwaltungs-Regel berechnet.
       // Zahlungen ab dem 25. eines Monats zählen als Mieteingang für den Folgemonat.
       // Die DB-View bleibt als Backend-Quelle verfügbar, wird hier aber nicht bevorzugt, weil ältere Views diese Regel nicht kennen.
       const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
-      const mappedYearlyFinanceSummaries = yearlyFromView.length ? yearlyFromView : buildYearlyFinanceSummariesFromEntries(mappedEntries);
+      const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
       let mappedPortfolio = ((portfolioRes.data ?? []) as any[])
         .filter((row) => row.property_id)
@@ -604,29 +625,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         loanChartByPropertyId: charts,
         savedAt: new Date().toISOString(),
       }));
-    } catch (err: any) {
-      try {
-        const raw = window.localStorage.getItem(APP_DATA_CACHE_KEY);
-        if (raw) {
-          const cached = JSON.parse(raw);
-          setObjects(cached.objects ?? []);
-          setEntries(cached.entries ?? []);
-          setMonthlyRentSummaries(cached.monthlyRentSummaries ?? []);
-          setYearlyFinanceSummaries(cached.yearlyFinanceSummaries ?? []);
-          setPortfolioRows(cached.portfolioRows ?? []);
-          setLoanRows(cached.loanRows ?? []);
-          setLoanChartByPropertyId(cached.loanChartByPropertyId ?? {});
-          setError(null);
-        } else {
-          setError(err?.message ?? "Daten konnten nicht geladen werden.");
-        }
-      } catch {
-        setError(err?.message ?? "Daten konnten nicht geladen werden.");
+    } catch (err: unknown) {
+      if (!hydrated && !hydrateFromCache()) {
+        setError(getErrorMessage(err));
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hydrateFromCache]);
 
   useEffect(() => {
     void load();
