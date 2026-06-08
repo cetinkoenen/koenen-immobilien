@@ -47,6 +47,20 @@ type SummaryRow = {
   count: number;
 };
 
+type TaxTotals = {
+  income: number;
+  expense: number;
+  net: number;
+  taxIncome: number;
+  taxExpense: number;
+  taxNetIncludingLoans: number;
+  loanInterest: number;
+  loanPrincipal: number;
+  taxRows: number;
+  checkRows: number;
+  count: number;
+};
+
 const currentYear = new Date().getFullYear();
 
 const styles: Record<string, CSSProperties> = {
@@ -158,6 +172,67 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  advisorGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 16,
+  },
+  advisorTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 950,
+    color: "#0f172a",
+    letterSpacing: "-0.02em",
+  },
+  advisorMeta: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 10,
+    marginTop: 14,
+  },
+  metaBox: {
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    background: "#f8fafc",
+    padding: 12,
+  },
+  metaLabel: {
+    fontSize: 11,
+    fontWeight: 950,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  },
+  metaValue: {
+    marginTop: 5,
+    fontSize: 17,
+    fontWeight: 950,
+    color: "#0f172a",
+  },
+  checklist: {
+    display: "grid",
+    gap: 8,
+    marginTop: 12,
+  },
+  checkItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: "10px 12px",
+    background: "#ffffff",
+    fontSize: 13,
+    fontWeight: 850,
+    color: "#334155",
+  },
+  actionRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginTop: 14,
   },
   grid3: {
     display: "grid",
@@ -435,6 +510,75 @@ function downloadCsv(filename: string, rows: ClassifiedEntry[]) {
   URL.revokeObjectURL(url);
 }
 
+function downloadAdvisorCsv(
+  filename: string,
+  payload: {
+    year: number;
+    objectLabel: string;
+    totals: TaxTotals;
+    summary: SummaryRow[];
+    loanRows: LoanTaxRow[];
+    rows: ClassifiedEntry[];
+  },
+) {
+  const amount = (value: number) => value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const exportedAt = new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date());
+
+  const lines: unknown[][] = [
+    ["Steuerberater-Jahresauszug"],
+    ["Jahr", payload.year],
+    ["Objekt", payload.objectLabel],
+    ["Erstellt am", exportedAt],
+    [],
+    ["Kennzahlen"],
+    ["Steuer-Einnahmen", amount(payload.totals.taxIncome)],
+    ["Steuer-Ausgaben aus Buchungen", amount(payload.totals.taxExpense)],
+    ["Darlehenszinsen aus Seite Darlehen", amount(payload.totals.loanInterest)],
+    ["Steuerlicher Ueberschuss inkl. Darlehen", amount(payload.totals.taxNetIncludingLoans)],
+    ["Tilgung dokumentiert, nicht steuerrelevant", amount(payload.totals.loanPrincipal)],
+    ["Buchhaltungs-Netto", amount(payload.totals.net)],
+    ["Steuerrelevante Buchungen", payload.totals.taxRows],
+    ["Offene Prueffaelle", payload.totals.checkRows],
+    ["Exportierte Buchungen", payload.totals.count],
+    [],
+    ["Summen nach Steuergruppe"],
+    ["Steuergruppe", "Einnahmen", "Ausgaben", "Saldo", "Buchungen"],
+    ...payload.summary.map((row) => [row.group, amount(row.income), amount(row.expense), amount(row.income - row.expense), row.count]),
+    [],
+    ["Darlehenswerte"],
+    ["Objekt", "Jahr", "Zinsen steuerrelevant", "Tilgung nicht steuerrelevant", "Restschuld", "Quelle"],
+    ...payload.loanRows.map((row) => [row.property_label, row.year, amount(row.interest), amount(row.principal), amount(row.balance), row.source || "Darlehens-Ledger"]),
+    [],
+    ["Buchungen"],
+    ["Datum", "Objekt", "Typ", "Steuerstatus", "Steuergruppe", "Kategorie", "Notiz", "Betrag", "Hinweis"],
+    ...payload.rows.map((row) => [
+      row.booking_date,
+      row.object_label,
+      row.entry_type === "income" ? "Einnahme" : "Ausgabe",
+      row.relevance === "tax" ? "Steuerrelevant" : row.relevance === "check" ? "Pruefen" : "Nicht abziehbar",
+      row.tax_group,
+      row.category ?? "",
+      row.note ?? "",
+      amount(row.amount),
+      row.tax_hint,
+    ]),
+  ];
+
+  const csv = lines.map((line) => line.map(escapeCsv).join(";")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function SteuerCenter() {
   const [year, setYear] = useState(currentYear);
   const [objectCode, setObjectCode] = useState("ALL");
@@ -657,7 +801,7 @@ export default function SteuerCenter() {
     return Array.from(map.values()).sort((a, b) => Math.abs(b.income - b.expense) - Math.abs(a.income - a.expense));
   }, [filteredRows]);
 
-  const totals = useMemo(() => {
+  const totals = useMemo<TaxTotals>(() => {
     const income = filteredRows.filter((row) => row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
     const expense = filteredRows.filter((row) => row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
     const taxIncome = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
@@ -672,8 +816,6 @@ export default function SteuerCenter() {
       net: income - expense,
       taxIncome,
       taxExpense,
-      taxExpenseIncludingLoans: taxExpense + loanInterest,
-      taxNet: taxIncome - taxExpense,
       taxNetIncludingLoans: taxIncome - taxExpense - loanInterest,
       loanInterest,
       loanPrincipal,
@@ -684,6 +826,35 @@ export default function SteuerCenter() {
   }, [filteredRows, loanTaxRows]);
 
   const filenameObject = objectCode === "ALL" ? "alle_objekte" : objectCode.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const selectedObjectLabel = objectCode === "ALL" ? "Alle Objekte" : objectLabelByCode.get(objectCode) ?? objectCode;
+  const advisorStatus = totals.count === 0
+    ? "Keine Buchungen"
+    : totals.checkRows === 0
+      ? "Exportbereit"
+      : `${totals.checkRows} Buchungen pruefen`;
+  const advisorStatusTone: "green" | "amber" | "slate" = totals.count === 0 ? "slate" : totals.checkRows === 0 ? "green" : "amber";
+  const advisorChecks = [
+    {
+      label: "Buchungen aus Hauptquelle finance_entry",
+      value: `${totals.count} Zeilen`,
+      relevance: totals.count > 0 ? "tax" : "private",
+    },
+    {
+      label: "Offene steuerliche Prueffaelle",
+      value: totals.checkRows === 0 ? "0 offen" : `${totals.checkRows} offen`,
+      relevance: totals.checkRows === 0 ? "tax" : "check",
+    },
+    {
+      label: "Darlehenszinsen aus Seite Darlehen",
+      value: loanTaxRows.length ? `${loanTaxRows.length} Objekt(e)` : "Keine Jahreswerte",
+      relevance: loanTaxRows.length ? "tax" : "check",
+    },
+    {
+      label: "Objekt- und Jahresfilter",
+      value: `${selectedObjectLabel} · ${year}`,
+      relevance: "tax",
+    },
+  ] satisfies Array<{ label: string; value: string; relevance: ClassifiedEntry["relevance"] }>;
 
   return (
     <div style={styles.page}>
@@ -696,8 +867,8 @@ export default function SteuerCenter() {
             </div>
             <h1 style={styles.title}>Steuer-Center</h1>
             <p style={styles.text}>
-              Jahresuebersicht fuer steuerrelevante Einnahmen und Ausgaben. Die Seite liest nur
-              vorhandene Buchungen und hilft beim Export fuer Steuerberater oder Steuererklaerung.
+              Jahresakte fuer steuerrelevante Einnahmen, Ausgaben und Darlehenszinsen. Buchungen bleiben
+              die Hauptquelle fuer Zahlungsdaten; Darlehenszinsen kommen aus der Seite Darlehen.
             </p>
           </div>
 
@@ -712,11 +883,11 @@ export default function SteuerCenter() {
             </button>
             <button
               type="button"
-              onClick={() => downloadCsv(`steuer_center_${filenameObject}_${year}.csv`, filteredRows)}
+              onClick={() => downloadCsv(`steuer_buchungen_${filenameObject}_${year}.csv`, filteredRows)}
               style={styles.primaryButton}
             >
               <Download size={16} />
-              CSV Export
+              Buchungs-CSV
             </button>
           </div>
         </div>
@@ -773,6 +944,73 @@ export default function SteuerCenter() {
           Fehler beim Laden: {error}
         </section>
       ) : null}
+
+      <section style={styles.panel}>
+        <div style={styles.advisorGrid}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <h2 style={styles.advisorTitle}>Steuerberater-Jahresakte</h2>
+              <TonePill label={advisorStatus} tone={advisorStatusTone} />
+            </div>
+            <p style={styles.text}>
+              Dieser Extrakt buendelt Jahreskennzahlen, Steuergruppen, Darlehenszinsen und die gefilterten
+              Buchungen fuer die Weitergabe an den Steuerberater.
+            </p>
+
+            <div style={styles.advisorMeta}>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Jahr</div>
+                <div style={styles.metaValue}>{year}</div>
+              </div>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Objekt</div>
+                <div style={styles.metaValue}>{selectedObjectLabel}</div>
+              </div>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Ueberschuss</div>
+                <div style={styles.metaValue}>{loading ? "..." : eur(totals.taxNetIncludingLoans)}</div>
+              </div>
+            </div>
+
+            <div style={styles.actionRow}>
+              <button
+                type="button"
+                onClick={() => downloadAdvisorCsv(`steuerberater_jahresakte_${filenameObject}_${year}.csv`, {
+                  year,
+                  objectLabel: selectedObjectLabel,
+                  totals,
+                  summary,
+                  loanRows: loanTaxRows,
+                  rows: filteredRows,
+                })}
+                style={styles.primaryButton}
+              >
+                <Download size={16} />
+                Steuerberater-CSV
+              </button>
+              <button type="button" onClick={() => window.print()} style={styles.button}>
+                <Printer size={16} />
+                Jahresakte drucken
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ ...styles.metaLabel, marginBottom: 10 }}>Bereitstellungs-Check</div>
+            <div style={styles.checklist}>
+              {advisorChecks.map((check) => (
+                <div key={check.label} style={styles.checkItem}>
+                  <span>{check.label}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <StatusPill relevance={check.relevance} />
+                    <strong>{check.value}</strong>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section style={styles.grid3}>
         <MetricCard label="Steuer-Einnahmen" value={loading ? "..." : eur(totals.taxIncome)} tone="green" />
@@ -928,6 +1166,22 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle: string }
       <h2 style={{ margin: 0, fontSize: 19, fontWeight: 950, color: "#0f172a" }}>{title}</h2>
       <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.55, color: "#64748b" }}>{subtitle}</p>
     </div>
+  );
+}
+
+function TonePill({ label, tone }: { label: string; tone: "green" | "amber" | "slate" }) {
+  const config = {
+    green: ["#ecfdf5", "#047857", "#bbf7d0"],
+    amber: ["#fffbeb", "#b45309", "#fde68a"],
+    slate: ["#f8fafc", "#475569", "#e2e8f0"],
+  } satisfies Record<typeof tone, [string, string, string]>;
+
+  const [bg, color, border] = config[tone];
+
+  return (
+    <span style={{ display: "inline-flex", border: `1px solid ${border}`, borderRadius: 999, background: bg, color, padding: "6px 10px", fontSize: 12, fontWeight: 950 }}>
+      {label}
+    </span>
   );
 }
 
