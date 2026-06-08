@@ -596,9 +596,21 @@ export default function SteuerCenter() {
   const totals = useMemo(() => {
     const income = filteredRows.filter((row) => row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
     const expense = filteredRows.filter((row) => row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
+    const taxIncome = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
+    const taxExpense = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
     const taxRows = filteredRows.filter((row) => row.relevance === "tax").length;
     const checkRows = filteredRows.filter((row) => row.relevance === "check").length;
-    return { income, expense, net: income - expense, taxRows, checkRows, count: filteredRows.length };
+    return {
+      income,
+      expense,
+      net: income - expense,
+      taxIncome,
+      taxExpense,
+      taxNet: taxIncome - taxExpense,
+      taxRows,
+      checkRows,
+      count: filteredRows.length,
+    };
   }, [filteredRows]);
 
   const filenameObject = objectCode === "ALL" ? "alle_objekte" : objectCode.replace(/[^a-zA-Z0-9_-]+/g, "_");
@@ -693,9 +705,10 @@ export default function SteuerCenter() {
       ) : null}
 
       <section style={styles.grid3}>
-        <MetricCard label="Einnahmen" value={loading ? "..." : eur(totals.income)} tone="green" />
-        <MetricCard label="Ausgaben" value={loading ? "..." : eur(totals.expense)} tone="red" />
-        <MetricCard label="Ueberschuss" value={loading ? "..." : eur(totals.net)} tone={totals.net >= 0 ? "blue" : "red"} />
+        <MetricCard label="Steuer-Einnahmen" value={loading ? "..." : eur(totals.taxIncome)} tone="green" />
+        <MetricCard label="Steuer-Ausgaben" value={loading ? "..." : eur(totals.taxExpense)} tone="red" />
+        <MetricCard label="Steuerlicher Ueberschuss" value={loading ? "..." : eur(totals.taxNet)} tone={totals.taxNet >= 0 ? "blue" : "red"} />
+        <MetricCard label="Buchhaltungs-Netto" value={loading ? "..." : eur(totals.net)} tone={totals.net >= 0 ? "blue" : "red"} />
         <MetricCard label="Steuerrelevant" value={loading ? "..." : String(totals.taxRows)} tone="green" />
         <MetricCard label="Zu pruefen" value={loading ? "..." : String(totals.checkRows)} tone="amber" />
         <MetricCard label="Buchungen" value={loading ? "..." : String(totals.count)} tone="slate" />

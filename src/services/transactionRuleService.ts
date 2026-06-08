@@ -52,6 +52,7 @@ export type RulePreviewRow = {
   entry: FinanceEntryForRules;
   rule: TransactionRule;
   changes: string[];
+  fields?: RuleChangeField[];
 };
 
 function cleanText(value: string | null | undefined): string | null {
@@ -217,18 +218,60 @@ function ruleMatchesEntry(rule: TransactionRule, entry: FinanceEntryForRules): b
   return true;
 }
 
-function changesForRule(rule: TransactionRule, entry: FinanceEntryForRules): string[] {
-  const changes: string[] = [];
+type RuleChangeField = "entry_type" | "category" | "tax_relevant";
+
+type RuleChange = {
+  field: RuleChangeField;
+  label: string;
+};
+
+function changeDetailsForRule(rule: TransactionRule, entry: FinanceEntryForRules): RuleChange[] {
+  const changes: RuleChange[] = [];
   if (rule.entry_type && rule.entry_type !== entry.entry_type) {
-    changes.push(`Typ: ${entry.entry_type === "income" ? "Einnahme" : "Ausgabe"} -> ${rule.entry_type === "income" ? "Einnahme" : "Ausgabe"}`);
+    changes.push({
+      field: "entry_type",
+      label: `Typ: ${entry.entry_type === "income" ? "Einnahme" : "Ausgabe"} -> ${rule.entry_type === "income" ? "Einnahme" : "Ausgabe"}`,
+    });
   }
   if (rule.category && normalize(rule.category) !== normalize(entry.category)) {
-    changes.push(`Kategorie: ${entry.category || "leer"} -> ${rule.category}`);
+    changes.push({
+      field: "category",
+      label: `Kategorie: ${entry.category || "leer"} -> ${rule.category}`,
+    });
   }
   if (typeof rule.tax_relevant === "boolean" && rule.tax_relevant !== entry.tax_relevant) {
-    changes.push(`Steuerrelevant: ${entry.tax_relevant ? "Ja" : "Nein"} -> ${rule.tax_relevant ? "Ja" : "Nein"}`);
+    changes.push({
+      field: "tax_relevant",
+      label: `Steuerrelevant: ${entry.tax_relevant ? "Ja" : "Nein"} -> ${rule.tax_relevant ? "Ja" : "Nein"}`,
+    });
   }
   return changes;
+}
+
+function changesForRule(rule: TransactionRule, entry: FinanceEntryForRules): string[] {
+  return changeDetailsForRule(rule, entry).map((change) => change.label);
+}
+
+function ruleSpecificityScore(rule: TransactionRule, entry: FinanceEntryForRules): number {
+  const haystack = normalize(`${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""}`);
+  const needle = normalize(rule.match_text);
+  const changes = changesForRule(rule, entry);
+
+  let score = 0;
+  if (needle) score += needle.length * 4;
+  if (haystack === needle) score += 200;
+  if (haystack.split(" ").includes(needle)) score += 80;
+  if (rule.object_code) score += 60;
+  if (rule.property_id) score += 60;
+  if (rule.unit_label) score += 30;
+  if (rule.entry_type) score += 20;
+  if (rule.category) score += 20;
+  if (typeof rule.tax_relevant === "boolean") score += 20;
+  score += changes.length * 50;
+
+  // Niedrige Prioritaet bleibt wichtig, aber Spezifitaet darf breite Altregeln ueberstimmen.
+  score -= Math.max(0, Number(rule.priority ?? 100)) * 0.5;
+  return score;
 }
 
 export function previewRuleMatches(rules: TransactionRule[], entries: FinanceEntryForRules[]): RulePreviewRow[] {
@@ -236,11 +279,28 @@ export function previewRuleMatches(rules: TransactionRule[], entries: FinanceEnt
   const preview: RulePreviewRow[] = [];
 
   for (const entry of entries) {
-    const rule = activeRules.find((item) => ruleMatchesEntry(item, entry));
-    if (!rule) continue;
-    const changes = changesForRule(rule, entry);
-    if (changes.length === 0) continue;
-    preview.push({ entry, rule, changes });
+    const assignedFields = new Set<RuleChangeField>();
+    const matchingRules = activeRules
+      .filter((rule) => ruleMatchesEntry(rule, entry))
+      .map((rule) => ({ rule, score: ruleSpecificityScore(rule, entry), changes: changeDetailsForRule(rule, entry) }))
+      .filter((row) => row.changes.length > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.rule.priority !== b.rule.priority) return a.rule.priority - b.rule.priority;
+        return String(b.rule.created_at ?? "").localeCompare(String(a.rule.created_at ?? ""));
+      });
+
+    for (const { rule, changes } of matchingRules) {
+      const usableChanges = changes.filter((change) => !assignedFields.has(change.field));
+      if (usableChanges.length === 0) continue;
+      usableChanges.forEach((change) => assignedFields.add(change.field));
+      preview.push({
+        entry,
+        rule,
+        fields: usableChanges.map((change) => change.field),
+        changes: usableChanges.map((change) => change.label),
+      });
+    }
   }
 
   return preview;
@@ -252,9 +312,10 @@ export async function applyRulePreview(rows: RulePreviewRow[]): Promise<number> 
 
   for (const row of rows) {
     const payload: Partial<FinanceEntryForRules> = {};
-    if (row.rule.entry_type) payload.entry_type = row.rule.entry_type;
-    if (row.rule.category) payload.category = row.rule.category;
-    if (typeof row.rule.tax_relevant === "boolean") payload.tax_relevant = row.rule.tax_relevant;
+    const fields = new Set<RuleChangeField>(row.fields ?? ["entry_type", "category", "tax_relevant"]);
+    if (fields.has("entry_type") && row.rule.entry_type) payload.entry_type = row.rule.entry_type;
+    if (fields.has("category") && row.rule.category) payload.category = row.rule.category;
+    if (fields.has("tax_relevant") && typeof row.rule.tax_relevant === "boolean") payload.tax_relevant = row.rule.tax_relevant;
 
     if (Object.keys(payload).length === 0) continue;
 

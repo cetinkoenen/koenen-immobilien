@@ -3244,30 +3244,29 @@ function AuswertungCore() {
     const selectedCode = objektCode?.trim();
 
     try {
-      let incomeQuery = supabase
-        .from("v_income_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
+      let query = supabase
+        .from("finance_entry")
+        .select("id,objekt_code,booking_date,amount,category,note,entry_type")
+        .eq("is_deleted", false)
         .gte("booking_date", from)
-        .lt("booking_date", toPlus1);
-
-      let expenseQuery = supabase
-        .from("v_expense_entries")
-        .select("id,objekt_code,booking_date,amount,category,note")
-        .gte("booking_date", from)
-        .lt("booking_date", toPlus1);
+        .lt("booking_date", toPlus1)
+        .in("entry_type", ["income", "expense"]);
 
       if (selectedCode && selectedCode !== "ALL") {
-        incomeQuery = incomeQuery.eq("objekt_code", selectedCode);
-        expenseQuery = expenseQuery.eq("objekt_code", selectedCode);
+        query = query.eq("objekt_code", selectedCode);
       }
 
-      const [incRes, expRes] = await Promise.all([incomeQuery, expenseQuery]);
+      const result = await query.order("booking_date", { ascending: true });
 
-      if (incRes.error) throw incRes.error;
-      if (expRes.error) throw expRes.error;
+      if (result.error) throw result.error;
 
-      setIncomeRows((incRes.data ?? []) as EntryRow[]);
-      setExpenseRows((expRes.data ?? []) as EntryRow[]);
+      const rows = ((result.data ?? []) as Array<EntryRow & { entry_type?: EntryType }>).map((row) => ({
+        ...row,
+        amount: Number(row.amount || 0),
+      }));
+
+      setIncomeRows(rows.filter((row) => row.entry_type === "income"));
+      setExpenseRows(rows.filter((row) => row.entry_type === "expense"));
       setLoading(false);
     } catch (e: any) {
       setErr(e?.message ?? String(e));
