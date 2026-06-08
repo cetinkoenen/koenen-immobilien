@@ -23,6 +23,16 @@ type EntryRow = {
   tax_relevant: boolean | null;
 };
 
+type LoanTaxRow = {
+  property_id: string;
+  property_label: string;
+  year: number;
+  interest: number;
+  principal: number;
+  balance: number;
+  source: string | null;
+};
+
 type ClassifiedEntry = EntryRow & {
   object_label: string;
   tax_group: string;
@@ -471,6 +481,7 @@ export default function SteuerCenter() {
   const [search, setSearch] = useState("");
   const [objects, setObjects] = useState<ObjectOption[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
+  const [loanTaxRows, setLoanTaxRows] = useState<LoanTaxRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -541,10 +552,63 @@ export default function SteuerCenter() {
       });
 
       setEntries(rows.sort((a, b) => b.booking_date.localeCompare(a.booking_date)));
+
+      const { data: loanDashboard, error: loanDashboardError } = await supabase
+        .from("vw_property_loan_dashboard_display")
+        .select("property_id, property_name");
+
+      if (loanDashboardError) throw loanDashboardError;
+
+      const loanNameById = new Map(
+        ((loanDashboard ?? []) as Array<{ property_id: string | null; property_name: string | null }>)
+          .filter((row) => row.property_id)
+          .map((row) => [String(row.property_id), String(row.property_name ?? row.property_id)]),
+      );
+
+      let loanQuery = supabase
+        .from("property_loan_ledger")
+        .select("property_id,year,interest,principal,balance,source")
+        .eq("year", year)
+        .order("property_id", { ascending: true });
+
+      const selectedLabel = objectCode === "ALL" ? "" : objectLabelByCode.get(objectCode) ?? objectCode;
+      const loanResult = await loanQuery;
+      if (loanResult.error) throw loanResult.error;
+
+      const loanRows = ((loanResult.data ?? []) as Array<{
+        property_id: string | null;
+        year: number | string | null;
+        interest: number | string | null;
+        principal: number | string | null;
+        balance: number | string | null;
+        source: string | null;
+      }>)
+        .map((row) => {
+          const propertyId = String(row.property_id ?? "");
+          const propertyLabel = loanNameById.get(propertyId) ?? propertyId;
+          return {
+            property_id: propertyId,
+            property_label: propertyLabel,
+            year: Number(row.year ?? year),
+            interest: parseLocaleNumber(row.interest, 0),
+            principal: parseLocaleNumber(row.principal, 0),
+            balance: parseLocaleNumber(row.balance, 0),
+            source: row.source ?? null,
+          };
+        })
+        .filter((row) => row.property_id && row.year === year)
+        .filter((row) => {
+          if (objectCode === "ALL") return true;
+          return normalize(row.property_label).includes(normalize(selectedLabel)) || normalize(selectedLabel).includes(normalize(row.property_label));
+        })
+        .sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
+
+      setLoanTaxRows(loanRows);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : String(loadError);
       setError(message);
       setEntries([]);
+      setLoanTaxRows([]);
     } finally {
       setLoading(false);
     }
@@ -637,6 +701,8 @@ export default function SteuerCenter() {
     const expense = filteredRows.filter((row) => row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
     const taxIncome = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
     const taxExpense = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
+    const loanInterest = loanTaxRows.reduce((sum, row) => sum + row.interest, 0);
+    const loanPrincipal = loanTaxRows.reduce((sum, row) => sum + row.principal, 0);
     const taxRows = filteredRows.filter((row) => row.relevance === "tax").length;
     const checkRows = filteredRows.filter((row) => row.relevance === "check").length;
     return {
@@ -645,12 +711,16 @@ export default function SteuerCenter() {
       net: income - expense,
       taxIncome,
       taxExpense,
+      taxExpenseIncludingLoans: taxExpense + loanInterest,
       taxNet: taxIncome - taxExpense,
+      taxNetIncludingLoans: taxIncome - taxExpense - loanInterest,
+      loanInterest,
+      loanPrincipal,
       taxRows,
       checkRows,
       count: filteredRows.length,
     };
-  }, [filteredRows]);
+  }, [filteredRows, loanTaxRows]);
 
   const filenameObject = objectCode === "ALL" ? "alle_objekte" : objectCode.replace(/[^a-zA-Z0-9_-]+/g, "_");
 
@@ -755,7 +825,8 @@ export default function SteuerCenter() {
               Welche Quelle liefert die Zahlen?
             </h3>
             <ul style={styles.explainerList}>
-              <li><strong>Quelle:</strong> Alle Werte kommen aus der Buchhaltungstabelle <code>finance_entry</code>.</li>
+              <li><strong>Buchungen:</strong> Einnahmen, Ausgaben und Markierungen kommen aus <code>finance_entry</code>.</li>
+              <li><strong>Darlehen:</strong> Zinsen und Tilgung kommen aus <code>property_loan_ledger</code> und damit aus der Seite Darlehen.</li>
               <li><strong>Filter:</strong> Jahr, Objekt, Steuerstatus und Suche begrenzen die aktuell angezeigten Zahlen.</li>
               <li><strong>Export:</strong> Der CSV-Export enthaelt genau die gefilterten Buchungen in der Tabelle.</li>
             </ul>
@@ -768,8 +839,9 @@ export default function SteuerCenter() {
             </h3>
             <ul style={styles.explainerList}>
               <li><strong>Steuer-Einnahmen:</strong> Als steuerrelevant erkannte Einnahmen, z. B. Miete oder NK-Vorauszahlung.</li>
-              <li><strong>Steuer-Ausgaben:</strong> Als steuerrelevant erkannte Werbungskosten, z. B. Zinsen, Grundsteuer, Reparaturen.</li>
-              <li><strong>Steuerlicher Ueberschuss:</strong> Steuer-Einnahmen minus Steuer-Ausgaben.</li>
+              <li><strong>Steuer-Ausgaben:</strong> Als steuerrelevant erkannte Werbungskosten aus Buchungen, z. B. Grundsteuer oder Reparaturen.</li>
+              <li><strong>Darlehenszinsen:</strong> Steuerrelevante Schuldzinsen aus der Seite Darlehen.</li>
+              <li><strong>Steuerlicher Ueberschuss inkl. Darlehen:</strong> Steuer-Einnahmen minus Steuer-Ausgaben minus Darlehenszinsen.</li>
               <li><strong>Buchhaltungs-Netto:</strong> Alle gefilterten Einnahmen minus alle gefilterten Ausgaben, auch wenn sie steuerlich noch unklar sind.</li>
             </ul>
           </div>
@@ -781,7 +853,8 @@ export default function SteuerCenter() {
             </h3>
             <ul style={styles.explainerList}>
               <li><strong>Zu pruefen</strong> regelmaessig abarbeiten und auf steuerrelevant Ja/Nein setzen.</li>
-              <li>Kategorien sauber halten: Zinsen, Tilgung, Reparatur, Hausgeld, Grundsteuer, Versicherung getrennt buchen.</li>
+              <li>Darlehensraten nicht komplett als steuerrelevant markieren: Nur Zinsen zaehlen, Tilgung bleibt nicht steuerrelevant.</li>
+              <li>Kategorien sauber halten: Reparatur, Hausgeld, Grundsteuer, Versicherung, Zinsen und Tilgung getrennt dokumentieren.</li>
               <li>Belege je Objekt und Jahr ablegen, damit jede steuerliche Ausgabe belegbar bleibt.</li>
               <li>Vor Jahresende offene Reparaturen, Zinsen, Nebenkosten und Hausgeldanteile pruefen.</li>
             </ul>
@@ -789,18 +862,56 @@ export default function SteuerCenter() {
         </div>
         <div style={styles.notice}>
           Ziel fuer einen positiven Stand: Nicht nur weniger Steuer zahlen, sondern einen stabilen, belegbaren Ueberschuss je Objekt kennen.
-          Wenn der steuerliche Ueberschuss stark vom Buchhaltungs-Netto abweicht, sind meist Buchungen noch nicht klassifiziert, steuerlich unklar oder falsch kategorisiert.
+          Wenn der steuerliche Ueberschuss stark vom Buchhaltungs-Netto abweicht, sind meist Buchungen noch nicht klassifiziert, steuerlich unklar, falsch kategorisiert oder Darlehenszinsen noch nicht im Darlehens-Ledger erfasst.
         </div>
       </section>
 
       <section style={styles.grid3}>
         <MetricCard label="Steuer-Einnahmen" value={loading ? "..." : eur(totals.taxIncome)} tone="green" />
-        <MetricCard label="Steuer-Ausgaben" value={loading ? "..." : eur(totals.taxExpense)} tone="red" />
-        <MetricCard label="Steuerlicher Ueberschuss" value={loading ? "..." : eur(totals.taxNet)} tone={totals.taxNet >= 0 ? "blue" : "red"} />
+        <MetricCard label="Steuer-Ausgaben Buchungen" value={loading ? "..." : eur(totals.taxExpense)} tone="red" />
+        <MetricCard label="Darlehenszinsen" value={loading ? "..." : eur(totals.loanInterest)} tone="red" />
+        <MetricCard label="Steuerlicher Ueberschuss inkl. Darlehen" value={loading ? "..." : eur(totals.taxNetIncludingLoans)} tone={totals.taxNetIncludingLoans >= 0 ? "blue" : "red"} />
+        <MetricCard label="Tilgung nicht steuerrelevant" value={loading ? "..." : eur(totals.loanPrincipal)} tone="slate" />
         <MetricCard label="Buchhaltungs-Netto" value={loading ? "..." : eur(totals.net)} tone={totals.net >= 0 ? "blue" : "red"} />
         <MetricCard label="Steuerrelevant" value={loading ? "..." : String(totals.taxRows)} tone="green" />
         <MetricCard label="Zu pruefen" value={loading ? "..." : String(totals.checkRows)} tone="amber" />
         <MetricCard label="Buchungen" value={loading ? "..." : String(totals.count)} tone="slate" />
+      </section>
+
+      <section style={styles.panel}>
+        <SectionHeading
+          title="Darlehenswerte aus der Seite Darlehen"
+          subtitle="Diese Tabelle ist die steuerliche Hauptquelle fuer Schuldzinsen. Tilgung wird nur dokumentiert und nicht als Steuer-Ausgabe gewertet."
+        />
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Objekt</th>
+                <th style={styles.th}>Jahr</th>
+                <th style={styles.th}>Zinsen steuerrelevant</th>
+                <th style={styles.th}>Tilgung nicht steuerrelevant</th>
+                <th style={styles.th}>Restschuld</th>
+                <th style={styles.th}>Quelle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loanTaxRows.map((row) => (
+                <tr key={`${row.property_id}-${row.year}`}>
+                  <td style={styles.td}><strong>{row.property_label}</strong></td>
+                  <td style={styles.td}>{row.year}</td>
+                  <td style={styles.td}>{eur(row.interest)}</td>
+                  <td style={styles.td}>{eur(row.principal)}</td>
+                  <td style={styles.td}>{eur(row.balance)}</td>
+                  <td style={styles.td}>{row.source || "Darlehens-Ledger"}</td>
+                </tr>
+              ))}
+              {!loanTaxRows.length ? (
+                <tr><td colSpan={6} style={styles.td}>Keine Darlehenswerte fuer diese Auswahl gefunden. Bitte Seite Darlehen pruefen und Jahreswerte erfassen.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section style={styles.panel}>

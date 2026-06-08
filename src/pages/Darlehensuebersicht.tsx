@@ -212,6 +212,17 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     lineHeight: 1.5,
   },
+  taxNotice: {
+    border: "1px solid #bfdbfe",
+    borderRadius: 18,
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    padding: 16,
+    marginBottom: 20,
+    fontSize: 14,
+    fontWeight: 800,
+    lineHeight: 1.6,
+  },
 };
 
 function toNumber(value: number | string | null | undefined): number {
@@ -387,6 +398,12 @@ function PropertyLoanCard(props: {
             <>
               {yearlyWarnings ? <div style={{ ...styles.errorBox, marginBottom: 16 }}>Warnung: Mindestens eine Restschuld ist höher als im Vorjahr. Bitte Darlehenswerte prüfen.</div> : null}
 
+              <div style={styles.taxNotice}>
+                Steuerlogik fuer dieses Darlehen: <strong>Zinsen</strong> werden im Steuer-Center als steuerrelevante Werbungskosten beruecksichtigt.
+                <strong> Tilgung</strong> ist nicht steuerrelevant, bleibt aber wichtig fuer Restschuld, Cashflow und Bankuebersicht.
+                Monatsraten aus der Buchhaltung sollten deshalb nicht komplett als steuerrelevant markiert werden.
+              </div>
+
               <div style={{ border: "1px solid #e5e7eb", borderRadius: 18, padding: 16, marginBottom: 22, background: "#f8fafc" }}>
                 <h3 style={styles.sectionTitle}>Automatischer Tilgungsplan</h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
@@ -408,6 +425,7 @@ function PropertyLoanCard(props: {
                       <th style={styles.th}>Capex</th>
                       <th style={styles.th}>Zinsen</th>
                       <th style={styles.th}>Tilgung</th>
+                      <th style={styles.th}>Steuer</th>
                       <th style={styles.th}>Debt Service</th>
                       <th style={styles.th}>Cashflow</th>
                       <th style={styles.th}>DSCR</th>
@@ -416,7 +434,7 @@ function PropertyLoanCard(props: {
                   <tbody>
                     {yearlyMetrics.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={styles.td}>
+                        <td colSpan={9} style={styles.td}>
                           <div style={styles.mutedText}>Noch keine Jahresdaten vorhanden.</div>
                         </td>
                       </tr>
@@ -428,6 +446,7 @@ function PropertyLoanCard(props: {
                           <td style={styles.td}>{formatCurrency(row.capex)}</td>
                           <td style={styles.td}>{formatCurrency(row.interest)}</td>
                           <td style={styles.td}>{formatCurrency(row.principal)}</td>
+                          <td style={styles.td}>Zinsen ja · Tilgung nein</td>
                           <td style={styles.td}>{formatCurrency(row.debtService)}</td>
                           <td style={styles.td}>{formatCurrency(row.cashflow)}</td>
                           <td style={styles.td}>{formatNumber(row.dscr)}</td>
@@ -519,6 +538,7 @@ export default function Darlehensuebersicht() {
         <h1 style={styles.title}>Darlehensübersicht für alle Immobilien</h1>
         <p style={styles.text}>
           Diese Seite bündelt die jährliche Darlehensübersicht aus deinem Bestand. Jede Immobilie kann geöffnet werden, die Tabelle „Finance pro Jahr“ wird automatisch berechnet und darunter bleibt das Darlehens-Ledger direkt editierbar.
+          Für die Steuer ist diese Seite die Hauptquelle: Zinsen sind steuerrelevant, Tilgung dient nur der Restschuld- und Cashflow-Dokumentation.
         </p>
 
         <div style={styles.metricGrid}>
