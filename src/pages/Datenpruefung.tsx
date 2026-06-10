@@ -21,7 +21,6 @@ import { supabase } from "@/lib/supabase";
 import { useAppData } from "@/state/AppDataContext";
 import { createMissingCapexYear, createMissingIncomeYear, extendLoanOneYear } from "@/services/dataRepairService";
 import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
-import { refreshBackendFinanceMaterializedViews } from "@/services/backendFinanceMasterService";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { buildFinanceConsistencySummary } from "@/services/financeConsistencyEngine";
 
@@ -230,8 +229,6 @@ export default function Datenpruefung() {
   const [notice, setNotice] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [openActions, setOpenActions] = useState<string | null>(null);
-  const [refreshingViews, setRefreshingViews] = useState(false);
-  const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
   const loadAuditTables = useCallback(async () => {
     const [capexRes, incomeRes, ledgerRes, rentalsRes] = await Promise.all([
@@ -430,26 +427,6 @@ export default function Datenpruefung() {
     }
   }
 
-  async function refreshMaterializedViews() {
-    setRefreshingViews(true);
-    setError(null);
-    setNotice(null);
-    setRefreshResult(null);
-    try {
-      const result = await refreshBackendFinanceMaterializedViews();
-      const refreshed = result.filter((row) => row.status === "refreshed").length;
-      const skipped = result.filter((row) => row.status === "not_found").length;
-      const failed = result.filter((row) => row.status.startsWith("error")).length;
-      setRefreshResult(`${refreshed} Views aktualisiert · ${skipped} nicht vorhanden · ${failed} Fehler`);
-      setNotice("Backend-Views wurden aktualisiert. Bitte Datenprüfung erneut laden, falls Werte noch abweichen.");
-      await runCheck();
-    } catch (unknownError) {
-      setError(unknownError instanceof Error ? unknownError.message : "Materialized Views konnten nicht aktualisiert werden.");
-    } finally {
-      setRefreshingViews(false);
-    }
-  }
-
   function exportCsv() {
     const header = ["Objekt", "Income", "Capex", "Darlehen", "Portfolio", "Restschuld", "Quelle", "Hinweise"];
     const body = rows.map((row) => [
@@ -547,7 +524,7 @@ export default function Datenpruefung() {
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
               Supabase prüft jetzt zentral doppelte Objekte, Testdaten, fehlende Darlehens-Ledger, fehlende Dokumente, negative Cashflows und Abweichungen zwischen Master-View und alten Quellen.
             </p>
-            {refreshResult ? <p className="mt-2 text-xs font-black text-slate-500">Refresh-Ergebnis: {refreshResult}</p> : null}
+            <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh ist aus Sicherheitsgründen geschützt.</p>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
@@ -561,12 +538,12 @@ export default function Datenpruefung() {
             </div>
             <button
               type="button"
-              disabled={refreshingViews || checking}
-              onClick={() => void refreshMaterializedViews()}
+              disabled
+              title="Der technische Server-Refresh ist aus Sicherheitsgründen nur serverseitig freigegeben."
               className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshCw size={16} className={refreshingViews ? "animate-spin" : ""} />
-              Views refreshen
+              <RefreshCw size={16} />
+              Refresh geschützt
             </button>
           </div>
         </div>

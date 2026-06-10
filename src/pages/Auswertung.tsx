@@ -5,7 +5,6 @@ import { AutomationAnalytics } from "./Automatisierung";
 import { useAppData } from "@/state/AppDataContext";
 import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
-import { refreshBackendFinanceMaterializedViews } from "@/services/backendFinanceMasterService";
 import {
   deletePropertyDocument,
   getPropertyDocumentSignedUrl,
@@ -3656,19 +3655,6 @@ function PhaseThreeASingleSourceCenter() {
   }, selectedYear), [app.objects, app.entries, app.yearlyFinanceSummaries, app.portfolioRows, app.loanRows, app.loanChartByPropertyId, selectedYear]);
   const snapshots = backendFinance.snapshots.length ? backendFinance.snapshots : frontendSnapshots;
   const totals = useMemo(() => buildMasterTotals(snapshots), [snapshots]);
-  const [refreshingFinanceMaster, setRefreshingFinanceMaster] = useState(false);
-
-  async function handleRefreshFinanceMaster() {
-    setRefreshingFinanceMaster(true);
-    try {
-      await refreshBackendFinanceMaterializedViews();
-      window.location.reload();
-    } catch (unknownError) {
-      window.alert(unknownError instanceof Error ? unknownError.message : "Backend-Finanzmaster konnte nicht aktualisiert werden.");
-    } finally {
-      setRefreshingFinanceMaster(false);
-    }
-  }
   const warnings = snapshots.filter((row) => row.issues.length > 0);
   const strongestCashflow = [...snapshots].sort((a, b) => b.netCashflow - a.netCashflow).slice(0, 5);
 
@@ -3683,8 +3669,8 @@ function PhaseThreeASingleSourceCenter() {
           <div style={{ color: backendFinance.error ? "#be123c" : "#64748b", fontSize: 12, fontWeight: 850 }}>
             {backendFinance.error ?? (backendFinance.refreshedAt ? `Stand: ${formatDate(backendFinance.refreshedAt)}` : "Backend-Master wird geprüft …")}
           </div>
-          <button type="button" onClick={() => void handleRefreshFinanceMaster()} disabled={refreshingFinanceMaster} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black shadow-sm hover:bg-slate-50 disabled:opacity-60">
-            {refreshingFinanceMaster ? "Aktualisiere …" : "Finance-Master refreshen"}
+          <button type="button" disabled title="Der technische Server-Refresh ist aus Sicherheitsgründen nur serverseitig freigegeben." className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black shadow-sm disabled:opacity-60">
+            Refresh geschützt
           </button>
         </div>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
