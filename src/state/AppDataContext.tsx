@@ -467,11 +467,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
       ]);
 
-      // Objekt-, Buchungs- und Portfolio-Daten bleiben Pflicht. Monats- und
-      // Jahreswerte werden aus finance_entry berechnet, damit alle Seiten dieselbe
-      // Buchhaltungsquelle verwenden.
-      const firstBlockingError = objectsRes.error || entriesRes.error || portfolioRes.error || loanRes.error;
+      // Objekt- und Buchungsdaten sind die Pflichtquelle fuer die App.
+      // Darlehens-/Portfolio-Views duerfen Mieteingang, Buchhaltung und andere
+      // Seiten nicht blockieren, wenn eine View kurzfristig nicht erreichbar ist.
+      const firstBlockingError = objectsRes.error || entriesRes.error;
       if (firstBlockingError) throw firstBlockingError;
+      if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
+      if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
 
       const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as any[])
         .filter((row) => row.value)
@@ -504,7 +506,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
       const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
-      let mappedPortfolio = ((portfolioRes.data ?? []) as any[])
+      let mappedPortfolio = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as any[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
@@ -519,7 +521,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           repayment_label: row.repayment_label ?? null,
         }));
 
-      let mappedLoans = ((loanRes.data ?? []) as any[])
+      let mappedLoans = ((loanRes.error ? [] : loanRes.data ?? []) as any[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({

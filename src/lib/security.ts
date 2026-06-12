@@ -1,3 +1,5 @@
+import { clearAppDataCache } from "./appCache";
+
 export function clearAppSessionStorage() {
   if (typeof window === "undefined") return;
 
@@ -28,4 +30,6 @@ export function clearAppSessionStorage() {
       // ignore storage errors
     }
   }
+
+  clearAppDataCache();
 }

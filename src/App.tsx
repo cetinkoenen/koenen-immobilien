@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { Component, lazy, Suspense, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
 import {
   Link,
   NavLink,
@@ -43,6 +43,65 @@ import { clearAppSessionStorage } from "./lib/security";
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider } from "./state/AppDataContext";
 import "./App.css";
+
+type AppErrorBoundaryProps = {
+  children: ReactNode;
+};
+
+type AppErrorBoundaryState = {
+  hasError: boolean;
+  message: string;
+};
+
+class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = {
+    hasError: false,
+    message: "",
+  };
+
+  static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
+    return {
+      hasError: true,
+      message: error instanceof Error ? error.message : "Die Seite konnte nicht geladen werden.",
+    };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error("App route crashed:", error, info.componentStack);
+  }
+
+  handleReload = () => {
+    clearAppSessionStorage();
+    window.location.assign("/");
+  };
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <div className="mx-auto max-w-[1760px] px-3 py-6 sm:px-5 lg:px-8">
+        <section className="rounded-[28px] border border-red-200 bg-red-50 p-6 text-red-900 shadow-sm">
+          <p className="text-sm font-black uppercase tracking-[0.14em] text-red-700">
+            Seite konnte nicht geladen werden
+          </p>
+          <h1 className="mt-3 text-2xl font-black text-slate-950">
+            Bitte Seite neu starten
+          </h1>
+          <p className="mt-3 max-w-3xl text-sm font-semibold text-red-800">
+            {this.state.message}
+          </p>
+          <button
+            type="button"
+            onClick={this.handleReload}
+            className="mt-5 rounded-2xl border border-red-200 bg-white px-5 py-3 text-sm font-black text-red-900 shadow-sm"
+          >
+            Session zurücksetzen und neu laden
+          </button>
+        </section>
+      </div>
+    );
+  }
+}
 
 const EntryAdd = lazy(() => import("./pages/EntryAdd"));
 const Cockpit = lazy(() => import("./pages/Cockpit"));
@@ -152,9 +211,11 @@ function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boole
 function ProtectedAppShell() {
   return (
     <RequireAuthMFA>
-      <AppDataProvider>
-        <AppShell />
-      </AppDataProvider>
+      <AppErrorBoundary>
+        <AppDataProvider>
+          <AppShell />
+        </AppDataProvider>
+      </AppErrorBoundary>
     </RequireAuthMFA>
   );
 }
