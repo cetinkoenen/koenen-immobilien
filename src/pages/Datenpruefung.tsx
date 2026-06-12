@@ -200,8 +200,8 @@ function KpiCard({ label, value, icon, tone = "slate" }: { label: string; value:
       <div className="flex items-center gap-3">
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${tones[tone]}`}>{icon}</div>
         <div className="min-w-0">
-          <div className="truncate text-xs font-black uppercase tracking-[0.08em] text-slate-500">{label}</div>
-          <div className="mt-1 truncate text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{value}</div>
+          <div className="text-[11px] font-black uppercase leading-4 tracking-[0.08em] text-slate-500">{label}</div>
+          <div className="mt-1 whitespace-nowrap text-[clamp(1.35rem,1.7vw,1.875rem)] font-black leading-tight tracking-tight text-slate-950">{value}</div>
         </div>
       </div>
     </div>
@@ -661,7 +661,7 @@ export default function Datenpruefung() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
         <KpiCard label="Objekte eindeutig" value={stats.objects} tone="indigo" icon={<Building2 size={22} />} />
         <KpiCard label="Darlehen OK" value={stats.okLoans} tone="emerald" icon={<CheckCircle2 size={22} />} />
         <KpiCard label="Darlehen fehlt" value={stats.missingLoans} tone="rose" icon={<AlertTriangle size={22} />} />
