@@ -266,7 +266,7 @@ export default function MieterAnlegen() {
   }
 
   return (
-    <div className="mx-auto max-w-[1460px] space-y-5">
+    <div className="tenant-admin-page mx-auto max-w-[1460px] space-y-5">
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -289,11 +289,11 @@ export default function MieterAnlegen() {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-5">
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
             <SectionTitle title="Person / Kontakt" />
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="tenant-form-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="Mieternummer" name="tenantNumber" value={form.tenantNumber} onChange={updateField} />
               <SelectField
                 label="Anrede"
@@ -313,7 +313,7 @@ export default function MieterAnlegen() {
 
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
             <SectionTitle title="Adresse / Bank" />
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="tenant-form-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="Straße" name="street" value={form.street} onChange={updateField} className="xl:col-span-2" />
               <Field label="PLZ" name="postalCode" value={form.postalCode} onChange={updateField} />
               <Field label="Ort" name="city" value={form.city} onChange={updateField} />
@@ -324,7 +324,7 @@ export default function MieterAnlegen() {
 
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
             <SectionTitle title="Mietverhältnis" />
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="tenant-form-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <label className="grid gap-2 text-sm font-bold text-slate-700 xl:col-span-2">
                 Objekt
                 <select
@@ -398,7 +398,7 @@ export default function MieterAnlegen() {
           </section>
         </form>
 
-        <aside className="space-y-5">
+        <aside className="tenant-admin-aside min-w-0 space-y-5">
           <section className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
             <SectionTitle title="Zuletzt angelegt" compact />
             {loadingRecent ? (
@@ -406,7 +406,7 @@ export default function MieterAnlegen() {
             ) : recentTenants.length ? (
               <div className="space-y-3">
                 {recentTenants.map((tenant) => (
-                  <div key={tenant.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div key={tenant.id} className="tenant-recent-card rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="text-sm font-black text-slate-950">{formatTenantName(tenant)}</div>
                     <div className="mt-1 text-xs font-semibold text-slate-500">
                       {formatContact(tenant)}

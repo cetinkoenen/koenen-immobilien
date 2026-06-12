@@ -461,11 +461,11 @@ export default function Datenpruefung() {
   const lastCheckLabel = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
 
   return (
-    <div className="mx-auto w-full max-w-[1540px] space-y-5 pb-10 sm:space-y-6">
-      <section className="sticky top-[82px] z-20 rounded-[28px] border border-slate-200 bg-white/92 p-4 shadow-sm backdrop-blur-xl sm:p-5 lg:top-[92px] lg:p-6">
+    <div className="data-check-page mx-auto w-full max-w-[1540px] space-y-5 pb-10 sm:space-y-6">
+      <section className="rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-sm backdrop-blur-xl sm:p-5 lg:p-6">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="flex min-w-0 gap-4">
-            <div className="hidden h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700 sm:flex">
+            <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700 sm:flex">
               <ShieldCheck size={28} />
             </div>
             <div className="min-w-0">
@@ -498,7 +498,7 @@ export default function Datenpruefung() {
       {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 font-bold text-emerald-700">{notice}</div> : null}
 
 
-      <section className="rounded-[28px] border border-indigo-100 bg-indigo-50/70 p-4 shadow-sm sm:p-5">
+      <section className="rounded-[24px] border border-indigo-100 bg-indigo-50/70 p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Phase 3A · Single Source of Truth</div>
@@ -506,7 +506,7 @@ export default function Datenpruefung() {
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">Restschuld, Einnahmen, Ausgaben, Capex und Cashflow werden bevorzugt aus der Supabase-Finance-Master-View/RPC geladen. Fallback: lokale Frontend-Masterberechnung, falls der Backend-Master nicht verfügbar ist.</p>
             <p className={`mt-2 text-xs font-black ${backendFinance.snapshots.length ? "text-emerald-700" : backendFinance.error ? "text-rose-700" : "text-amber-700"}`}>Quelle: {backendFinance.snapshots.length ? "Backend-Finanzmaster" : "Frontend-Fallback"}{backendFinance.error ? ` · ${backendFinance.error}` : ""}</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
+          <div className="data-check-kpis grid gap-2 sm:grid-cols-3 lg:min-w-[480px]">
             <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Master-Objekte</div><div className="mt-1 text-xl font-black text-slate-950">{masterSnapshots.length}</div></div>
             <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">kritisch</div><div className="mt-1 text-xl font-black text-rose-600">{masterTotals.critical}</div></div>
             <div className="rounded-2xl border border-white/80 bg-white p-3"><div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Netto-Cashflow {currentYear}</div><div className="mt-1 text-xl font-black text-slate-950">{euro(masterTotals.netCashflow)}</div></div>
@@ -514,7 +514,7 @@ export default function Datenpruefung() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
@@ -527,7 +527,7 @@ export default function Datenpruefung() {
             <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh ist aus Sicherheitsgründen geschützt.</p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
+          <div className="data-check-kpis grid gap-2 sm:grid-cols-3 lg:min-w-[500px]">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
               <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Checks</div>
               <div className="mt-1 text-2xl font-black text-slate-950">{qualityStats.total}</div>
@@ -540,7 +540,7 @@ export default function Datenpruefung() {
               type="button"
               disabled
               title="Der technische Server-Refresh ist aus Sicherheitsgründen nur serverseitig freigegeben."
-              className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-black text-slate-500 shadow-sm disabled:cursor-not-allowed"
             >
               <RefreshCw size={16} />
               Refresh geschützt

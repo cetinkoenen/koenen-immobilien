@@ -675,3 +675,149 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
     height: 70px !important;
   }
 }
+
+/* Professional form/table guardrails for management pages. */
+.tenant-admin-page,
+.vacancy-page,
+.data-check-page {
+  width: min(100%, 1540px);
+}
+
+.tenant-admin-page *,
+.vacancy-page *,
+.data-check-page * {
+  min-width: 0;
+}
+
+.tenant-admin-page section,
+.tenant-admin-page form,
+.tenant-admin-page aside,
+.vacancy-page section,
+.vacancy-page form,
+.data-check-page section {
+  max-width: 100%;
+}
+
+.tenant-admin-page input,
+.tenant-admin-page select,
+.tenant-admin-page textarea,
+.vacancy-page input,
+.vacancy-page select,
+.vacancy-page textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tenant-form-grid > label {
+  min-width: 0;
+}
+
+.tenant-admin-aside {
+  position: sticky;
+  top: 18px;
+}
+
+.tenant-recent-card {
+  overflow: hidden;
+}
+
+.tenant-recent-card div {
+  overflow-wrap: anywhere;
+}
+
+.vacancy-filter-grid {
+  grid-template-columns: minmax(180px, 1.15fr) minmax(140px, 0.7fr) minmax(190px, 1fr);
+  align-items: end;
+}
+
+.vacancy-table-wrap {
+  max-width: 100%;
+  scrollbar-gutter: stable;
+}
+
+.vacancy-table-wrap table {
+  table-layout: fixed;
+}
+
+.vacancy-table-wrap th,
+.vacancy-table-wrap td {
+  overflow-wrap: anywhere;
+}
+
+.vacancy-table-wrap th:nth-child(1),
+.vacancy-table-wrap td:nth-child(1) {
+  width: 25%;
+}
+
+.vacancy-table-wrap th:nth-child(2),
+.vacancy-table-wrap td:nth-child(2) {
+  width: 13%;
+}
+
+.vacancy-table-wrap th:nth-child(3),
+.vacancy-table-wrap td:nth-child(3) {
+  width: 20%;
+}
+
+.vacancy-table-wrap th:nth-child(4),
+.vacancy-table-wrap td:nth-child(4) {
+  width: 13%;
+}
+
+.vacancy-table-wrap th:nth-child(5),
+.vacancy-table-wrap td:nth-child(5) {
+  width: 17%;
+}
+
+.vacancy-table-wrap th:nth-child(6),
+.vacancy-table-wrap td:nth-child(6) {
+  width: 12%;
+}
+
+.vacancy-cell-strong {
+  display: block;
+  line-height: 1.25;
+}
+
+.data-check-page > section {
+  overflow: hidden;
+}
+
+.data-check-kpis > div,
+.data-check-kpis > button {
+  min-width: 0;
+}
+
+.data-check-kpis div,
+.data-check-kpis button {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1280px) {
+  .tenant-admin-aside {
+    position: static;
+  }
+
+  .vacancy-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .tenant-admin-page,
+  .vacancy-page,
+  .data-check-page {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .tenant-form-grid,
+  .vacancy-filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .vacancy-table-wrap table {
+    min-width: 680px;
+  }
+}

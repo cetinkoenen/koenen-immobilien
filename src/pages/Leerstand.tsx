@@ -162,7 +162,7 @@ export default function Leerstand() {
   const activeCount = filteredRows.filter((row) => isVacancyEffectivelyActiveInRange(row, currentMonth.from, currentMonth.to)).length;
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-5">
+    <div className="vacancy-page mx-auto max-w-[1480px] space-y-5">
       <section className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -181,8 +181,8 @@ export default function Leerstand() {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <form onSubmit={handleSubmit} className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
+        <form onSubmit={handleSubmit} className="min-w-0 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-950">Leerstand eintragen</h2>
           <div className="mt-4 grid gap-4">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
@@ -225,14 +225,14 @@ export default function Leerstand() {
           {error ? <div className="mt-3 text-sm font-bold text-red-700">{error}</div> : null}
         </form>
 
-        <section className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
+        <section className="min-w-0 rounded-[22px] border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-4">
               <div>
                 <h2 className="text-lg font-black text-slate-950">Übersicht leerstehender Einheiten</h2>
                 <p className="mt-1 text-sm font-semibold text-slate-500">Filter nach Immobilie, Status und Suchtext.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="vacancy-filter-grid grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs font-black text-slate-600">
                   <span className="inline-flex items-center gap-1"><Filter size={13} /> Immobilie</span>
                   <select value={propertyFilter} onChange={(event) => setPropertyFilter(event.target.value)} className="h-10 rounded-xl border border-slate-300 bg-white px-3 font-bold">
@@ -257,8 +257,8 @@ export default function Leerstand() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse">
+          <div className="vacancy-table-wrap overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Immobilie</th>
@@ -278,7 +278,7 @@ export default function Leerstand() {
                     const effectiveStart = effectiveVacancyStartDate(row);
                     return (
                       <tr key={row.id} className="border-b border-slate-100">
-                        <td className="px-4 py-4 font-black text-slate-950">{row.object_label || row.object_code || row.property_id}</td>
+                        <td className="px-4 py-4 font-black text-slate-950"><span className="vacancy-cell-strong">{row.object_label || row.object_code || row.property_id}</span></td>
                         <td className="px-4 py-4 font-bold text-slate-700">{row.unit_label || "Gesamte Immobilie"}</td>
                         <td className="px-4 py-4 font-semibold text-slate-700">{formatDate(effectiveStart)} bis {effectiveStatus === "active" ? "offen" : formatDate(row.end_date)}</td>
                         <td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(effectiveStatus)}`}>{statusLabel(effectiveStatus)}</span></td>
