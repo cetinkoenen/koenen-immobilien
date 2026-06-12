@@ -137,7 +137,7 @@ function parseMaybeNumber(value: unknown): number | null {
 
 
 function cleanDisplayName(value: unknown, fallback = "Unbenanntes Objekt"): string {
-  const raw = String(value ?? "").replace(/ /g, " ").replace(/\s+/g, " ").trim();
+  const raw = String(value ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
   const knownNames = [
     "Lilienthaler Str. 54",
     "Colmarer Str. 45",
@@ -165,7 +165,7 @@ function cleanDisplayName(value: unknown, fallback = "Unbenanntes Objekt"): stri
 function isHiddenTechnicalPropertyName(value: unknown): boolean {
   const name = String(value ?? "")
     .toLowerCase()
-    .replace(/[_\-]+/g, " ")
+    .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -231,11 +231,11 @@ function normalizeMatchText(value: string | null | undefined): string {
     .replace(/[ü]/g, "u")
     .replace(/strasse/g, "str")
     .replace(/straße/g, "str")
-    .replace(/([a-z])str/g, "$1 str")
-    .replace(/objekt\s*\d+/g, "")
-    .replace(/\d{5}/g, "")
-    .replace(/(bremen|stuttgart|deutschland|germany)/g, "")
-    .replace(/(core\s*shadow|shadow|hauptmiete|wohnung|garage|darlehen|immobilie)/g, "")
+    .replace(/([a-z])str\b/g, "$1 str")
+    .replace(/\bobjekt\s*\d+\b/g, "")
+    .replace(/\b\d{5}\b/g, "")
+    .replace(/\b(bremen|stuttgart|deutschland|germany)\b/g, "")
+    .replace(/\b(core\s*shadow|shadow|hauptmiete|wohnung|garage|darlehen|immobilie)\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
