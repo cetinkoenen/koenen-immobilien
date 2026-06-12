@@ -117,7 +117,16 @@ function toNumber(value: unknown): number {
 }
 
 function getErrorMessage(err: unknown, fallback = "Daten konnten nicht geladen werden."): string {
-  return err instanceof Error ? err.message : fallback;
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object") {
+    const candidate = err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [candidate.message, candidate.details, candidate.hint, candidate.code]
+      .map((part) => (typeof part === "string" ? part.trim() : ""))
+      .filter(Boolean);
+    if (parts.length) return parts.join(" ");
+  }
+  return fallback;
 }
 
 function parseMaybeNumber(value: unknown): number | null {

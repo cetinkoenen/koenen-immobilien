@@ -40,6 +40,19 @@ type ClassifiedEntry = EntryRow & {
   relevance: "tax" | "check" | "private";
 };
 
+function getLoadErrorMessage(error: unknown, fallback = "Daten konnten nicht geladen werden."): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object") {
+    const candidate = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [candidate.message, candidate.details, candidate.hint, candidate.code]
+      .map((part) => (typeof part === "string" ? part.trim() : ""))
+      .filter(Boolean);
+    if (parts.length) return parts.join(" ");
+  }
+  return fallback;
+}
+
 type SummaryRow = {
   group: string;
   income: number;
@@ -710,7 +723,7 @@ export default function SteuerCenter() {
 
       setLoanTaxRows(loanRows);
     } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : String(loadError);
+      const message = getLoadErrorMessage(loadError);
       setError(message);
       setEntries([]);
       setLoanTaxRows([]);
@@ -745,7 +758,7 @@ export default function SteuerCenter() {
         setObjects(rows);
       } catch (loadError) {
         if (!alive) return;
-        const message = loadError instanceof Error ? loadError.message : String(loadError);
+        const message = getLoadErrorMessage(loadError);
         setError(message);
       }
     }
