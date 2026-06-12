@@ -257,46 +257,51 @@ export default function Leerstand() {
             </div>
           </div>
 
-          <div className="vacancy-table-wrap overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Immobilie</th>
-                  <th className="px-4 py-3">Einheit</th>
-                  <th className="px-4 py-3">Zeitraum</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Grund</th>
-                  <th className="px-4 py-3">Aktion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={6} className="px-4 py-5 font-bold text-slate-500">Leerstände werden geladen...</td></tr>
-                ) : filteredRows.length ? (
-                  filteredRows.map((row) => {
-                    const effectiveStatus = effectiveVacancyStatusForRange(row, currentMonth.from, currentMonth.to);
-                    const effectiveStart = effectiveVacancyStartDate(row);
-                    return (
-                      <tr key={row.id} className="border-b border-slate-100">
-                        <td className="px-4 py-4 font-black text-slate-950"><span className="vacancy-cell-strong">{row.object_label || row.object_code || row.property_id}</span></td>
-                        <td className="px-4 py-4 font-bold text-slate-700">{row.unit_label || "Gesamte Immobilie"}</td>
-                        <td className="px-4 py-4 font-semibold text-slate-700">{formatDate(effectiveStart)} bis {effectiveStatus === "active" ? "offen" : formatDate(row.end_date)}</td>
-                        <td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(effectiveStatus)}`}>{statusLabel(effectiveStatus)}</span></td>
-                        <td className="px-4 py-4 text-sm font-semibold text-slate-600">{row.reason || row.notes || "—"}</td>
-                        <td className="px-4 py-4">
-                          <button type="button" onClick={() => void handleArchive(row.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
-                            <Trash2 size={14} />
-                            Archivieren
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr><td colSpan={6} className="px-4 py-5 font-bold text-slate-500">Keine Leerstände für die aktuelle Auswahl.</td></tr>
-                )}
-              </tbody>
-            </table>
+          <div className="vacancy-list-wrap">
+            {loading ? (
+              <div className="vacancy-empty-state">Leerstände werden geladen...</div>
+            ) : filteredRows.length ? (
+              <div className="vacancy-list">
+                {filteredRows.map((row) => {
+                  const effectiveStatus = effectiveVacancyStatusForRange(row, currentMonth.from, currentMonth.to);
+                  const effectiveStart = effectiveVacancyStartDate(row);
+                  return (
+                    <article key={row.id} className="vacancy-list-item">
+                      <div className="vacancy-list-main">
+                        <div>
+                          <div className="vacancy-kicker">Immobilie</div>
+                          <div className="vacancy-title">{row.object_label || row.object_code || row.property_id}</div>
+                        </div>
+                        <div>
+                          <div className="vacancy-kicker">Einheit</div>
+                          <div className="vacancy-value">{row.unit_label || "Gesamte Immobilie"}</div>
+                        </div>
+                        <div>
+                          <div className="vacancy-kicker">Zeitraum</div>
+                          <div className="vacancy-value">{formatDate(effectiveStart)} bis {effectiveStatus === "active" ? "offen" : formatDate(row.end_date)}</div>
+                        </div>
+                        <div>
+                          <div className="vacancy-kicker">Status</div>
+                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(effectiveStatus)}`}>
+                            {statusLabel(effectiveStatus)}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="vacancy-kicker">Grund</div>
+                          <div className="vacancy-value">{row.reason || row.notes || "—"}</div>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => void handleArchive(row.id)} className="vacancy-archive-button">
+                        <Trash2 size={14} />
+                        Archivieren
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="vacancy-empty-state">Keine Leerstände für die aktuelle Auswahl.</div>
+            )}
           </div>
         </section>
       </div>

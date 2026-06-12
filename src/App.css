@@ -750,63 +750,85 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
   max-width: 820px;
 }
 
-.vacancy-table-wrap {
+.vacancy-list-wrap {
   max-width: 100%;
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
-.vacancy-table-wrap table {
-  table-layout: fixed;
-  min-width: 940px;
+.vacancy-list {
+  display: grid;
+  gap: 0;
 }
 
-.vacancy-table-wrap th,
-.vacancy-table-wrap td {
+.vacancy-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border-bottom: 1px solid #eef2f7;
+  padding: 18px 20px;
+}
+
+.vacancy-list-item:last-child {
+  border-bottom: 0;
+}
+
+.vacancy-list-main {
+  display: grid;
+  grid-template-columns: minmax(145px, 1.35fr) minmax(72px, 0.55fr) minmax(150px, 1fr) minmax(78px, 0.55fr) minmax(120px, 0.8fr);
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+
+.vacancy-kicker {
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vacancy-title,
+.vacancy-value {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.28;
   overflow-wrap: anywhere;
 }
 
-.vacancy-table-wrap th:nth-child(1),
-.vacancy-table-wrap td:nth-child(1) {
-  width: 25%;
+.vacancy-value {
+  color: #334155;
+  font-size: 14px;
 }
 
-.vacancy-table-wrap th:nth-child(2),
-.vacancy-table-wrap td:nth-child(2) {
-  width: 13%;
-}
-
-.vacancy-table-wrap th:nth-child(3),
-.vacancy-table-wrap td:nth-child(3) {
-  width: 20%;
-}
-
-.vacancy-table-wrap th:nth-child(4),
-.vacancy-table-wrap td:nth-child(4) {
-  width: 13%;
-}
-
-.vacancy-table-wrap th:nth-child(5),
-.vacancy-table-wrap td:nth-child(5) {
-  width: 17%;
-}
-
-.vacancy-table-wrap th:nth-child(6),
-.vacancy-table-wrap td:nth-child(6) {
-  width: 150px;
-  min-width: 150px;
-  max-width: 150px;
-}
-
-.vacancy-table-wrap td:nth-child(4) span,
-.vacancy-table-wrap td:nth-child(6) button {
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.vacancy-table-wrap td:nth-child(6) button {
-  width: 128px;
+.vacancy-archive-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0 14px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.vacancy-empty-state {
+  padding: 20px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.vacancy-list-main span {
+  white-space: nowrap;
 }
 
 .vacancy-cell-strong {
@@ -866,7 +888,27 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
     grid-template-columns: 1fr !important;
   }
 
-  .vacancy-table-wrap table {
-    min-width: 680px;
+  .vacancy-list-item {
+    grid-template-columns: 1fr;
+  }
+
+  .vacancy-list-main {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .vacancy-list-item {
+    align-items: start;
+  }
+
+  .vacancy-list-main {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .vacancy-list-main {
+    grid-template-columns: 1fr;
   }
 }
