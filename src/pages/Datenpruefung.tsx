@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAppData } from "@/state/AppDataContext";
+import { refreshBackendFinanceMaterializedViews } from "@/services/backendFinanceMasterService";
 import { createMissingCapexYear, createMissingIncomeYear, extendLoanOneYear } from "@/services/dataRepairService";
 import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
@@ -227,6 +228,8 @@ export default function Datenpruefung() {
   const [repairing, setRepairing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [backendRefreshKey, setBackendRefreshKey] = useState(0);
+  const [backendRefreshing, setBackendRefreshing] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [openActions, setOpenActions] = useState<string | null>(null);
 
@@ -368,7 +371,7 @@ export default function Datenpruefung() {
     });
   }, [auditSources, app.yearlyFinanceSummaries, app.loanRows, app.portfolioRows, capex, incomeYears, ledger, rentals]);
 
-  const backendFinance = useBackendFinanceMaster(currentYear);
+  const backendFinance = useBackendFinanceMaster(currentYear, backendRefreshKey);
   const qualityChecks = backendFinance.dataQualityChecks;
   const qualityStats = useMemo(() => ({
     critical: qualityChecks.filter((row) => row.severity === "critical").length,
@@ -424,6 +427,29 @@ export default function Datenpruefung() {
       setError(unknownError instanceof Error ? unknownError.message : "Reparatur konnte nicht ausgeführt werden.");
     } finally {
       setRepairing(null);
+    }
+  }
+
+  async function refreshBackendChecks() {
+    setBackendRefreshing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await refreshBackendFinanceMaterializedViews();
+      setBackendRefreshKey((value) => value + 1);
+      await runCheck();
+
+      const refreshedCount = result.filter((row) => row.status === "refreshed" || row.status === "ok").length;
+      setNotice(
+        result.length
+          ? `Server-Refresh wurde ausgeführt (${refreshedCount || result.length}/${result.length} Views aktualisiert).`
+          : "Server-Refresh wurde ausgeführt. Datenprüfung wurde neu geladen.",
+      );
+    } catch (unknownError) {
+      setError(unknownError instanceof Error ? unknownError.message : "Server-Refresh konnte nicht ausgeführt werden.");
+    } finally {
+      setBackendRefreshing(false);
     }
   }
 
@@ -524,7 +550,7 @@ export default function Datenpruefung() {
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
               Supabase prüft jetzt zentral doppelte Objekte, Testdaten, fehlende Darlehens-Ledger, fehlende Dokumente, negative Cashflows und Abweichungen zwischen Master-View und alten Quellen.
             </p>
-            <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh ist aus Sicherheitsgründen geschützt.</p>
+            <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh aktualisiert die Finanzmaster-Views und lädt die Datenprüfung neu.</p>
           </div>
 
           <div className="data-check-kpis grid gap-2 sm:grid-cols-3 lg:min-w-[500px]">
@@ -538,12 +564,14 @@ export default function Datenpruefung() {
             </div>
             <button
               type="button"
-              disabled
-              title="Der technische Server-Refresh ist aus Sicherheitsgründen nur serverseitig freigegeben."
-              className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-black text-slate-500 shadow-sm disabled:cursor-not-allowed"
+              onClick={() => void refreshBackendChecks()}
+              disabled={backendRefreshing || checking || app.loading || backendFinance.loading}
+              aria-busy={backendRefreshing}
+              title="Materialized Views neu berechnen und Datenprüfung aktualisieren."
+              className="inline-flex min-h-[72px] items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-800 shadow-sm transition hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-60"
             >
-              <RefreshCw size={16} />
-              Refresh geschützt
+              <RefreshCw size={16} className={backendRefreshing ? "animate-spin" : ""} />
+              {backendRefreshing ? "Aktualisiere..." : "Server-Refresh"}
             </button>
           </div>
         </div>

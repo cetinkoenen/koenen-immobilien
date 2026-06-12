@@ -13,7 +13,7 @@ export type BackendFinanceMasterState = {
   refreshedAt: string | null;
 };
 
-export function useBackendFinanceMaster(year: number): BackendFinanceMasterState {
+export function useBackendFinanceMaster(year: number, refreshKey = 0): BackendFinanceMasterState {
   const [rows, setRows] = useState<BackendFinanceMasterRow[]>([]);
   const [consistency, setConsistency] = useState<BackendFinanceConsistencyRow[]>([]);
   const [dataQualityChecks, setDataQualityChecks] = useState<BackendDataQualityCheckRow[]>([]);
@@ -54,7 +54,7 @@ export function useBackendFinanceMaster(year: number): BackendFinanceMasterState
     return () => {
       cancelled = true;
     };
-  }, [year]);
+  }, [year, refreshKey]);
 
   const snapshots = useMemo(() => buildMasterFinanceSnapshotsFromBackend(rows), [rows]);
   const refreshedAt = useMemo(() => rows.find((row) => row.refreshed_at)?.refreshed_at ?? null, [rows]);
