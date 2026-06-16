@@ -135,11 +135,9 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
         error: err,
       });
     } finally {
-      if (!mountedRef.current || currentRequestId !== requestIdRef.current) {
-        return;
+      if (mountedRef.current && currentRequestId === requestIdRef.current) {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     }
   }, [hasPropertyId, propertyId]);
 

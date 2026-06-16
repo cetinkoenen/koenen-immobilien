@@ -3,11 +3,22 @@ import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const ADMIN_EMAIL = "info.koenen@gmail.com";
 
+type ApiRequest = {
+  method?: string;
+  headers: { authorization?: string };
+  body?: Record<string, unknown>;
+};
+
+type ApiResponse = {
+  setHeader(name: string, value: string): void;
+  status(code: number): { json(payload: unknown): void };
+};
+
 function normalizeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-async function requireAdmin(req: any) {
+async function requireAdmin(req: ApiRequest) {
   const authHeader = String(req.headers.authorization ?? "");
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
   if (!token) throw new Error("Auth token missing");
@@ -24,7 +35,7 @@ async function requireAdmin(req: any) {
   return data.user;
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     res.status(405).json({ error: "Method not allowed" });

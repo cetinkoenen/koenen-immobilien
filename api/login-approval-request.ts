@@ -4,6 +4,16 @@ import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 const ADMIN_EMAIL = "info.koenen@gmail.com";
 const READONLY_EMAILS = new Set(["nihal.koenen@gmail.com", "cetin.koenen@gmail.com"]);
 
+type ApiRequest = {
+  method?: string;
+  headers: { authorization?: string };
+};
+
+type ApiResponse = {
+  setHeader(name: string, value: string): void;
+  status(code: number): { json(payload: unknown): void };
+};
+
 function normalizeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -33,7 +43,7 @@ async function sendAdminMail(email: string) {
   return { sent: true };
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     res.status(405).json({ error: "Method not allowed" });

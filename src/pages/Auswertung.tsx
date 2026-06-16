@@ -1300,7 +1300,7 @@ function MiniLoanTrend({ points, large = false, onClick }: { points: LoanTrendPo
 function isHiddenTechnicalPropertyName(value: unknown): boolean {
   const name = String(value ?? "")
     .toLowerCase()
-    .replace(/[_\-]+/g, " ")
+    .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 

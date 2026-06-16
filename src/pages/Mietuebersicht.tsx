@@ -1166,7 +1166,7 @@ export default function Mietuebersicht() {
         <div class="kpi">Summe<b>${escapeHtml(formatCurrency(stats.amount))}</b></div>
       </div>
       <table><thead><tr><th>Zeitraum</th><th>Objekt</th><th>Status</th><th class="right">Eingang</th><th class="right">Sollmiete</th><th>Soll-Quelle</th><th>Letzter Eingang</th></tr></thead><tbody>${rowsHtml || `<tr><td colspan="7">Keine Ergebnisse.</td></tr>`}</tbody></table>
-      <script>window.onload=function(){setTimeout(function(){window.print();},250)};<\/script>
+      <script>window.onload=function(){setTimeout(function(){window.print();},250)};</script>
     </body></html>`);
     printWindow.document.close();
   }

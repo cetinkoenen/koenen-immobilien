@@ -141,11 +141,9 @@ export function usePropertyDetail<T = unknown>(
         error: err,
       });
     } finally {
-      if (!mountedRef.current || currentRequestId !== requestIdRef.current) {
-        return;
+      if (mountedRef.current && currentRequestId === requestIdRef.current) {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     }
   }, [hasPropertyId, propertyId]);
 

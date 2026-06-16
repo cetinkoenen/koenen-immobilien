@@ -1,12 +1,15 @@
 // src/components/RequireAuthMFA.tsx
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, type Location } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 type Props = { children: ReactNode };
 type AAL = "aal1" | "aal2" | null;
+type RouteState = {
+  from?: string | { pathname?: string };
+};
 
 type GateState = {
   loading: boolean;
@@ -49,22 +52,36 @@ function formatTime(ts?: number) {
  * - we keep it as a string path (recommended)
  * - fallback: "/portfolio"
  */
-function getFrom(location: any): string {
-  const raw = location?.state?.from;
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const maybeError = error as { message?: unknown; error_description?: unknown };
+    if (typeof maybeError.message === "string") return maybeError.message;
+    if (typeof maybeError.error_description === "string") return maybeError.error_description;
+  }
+  if (typeof error === "string") return error;
+  return JSON.stringify(error);
+}
+
+function getFrom(location: Location): string {
+  const state = location.state as RouteState | null;
+  const raw = state?.from;
 
   // if previous code set from as string
   if (typeof raw === "string" && raw.startsWith("/")) return raw;
 
   // if previous code set from as { pathname: ... }
-  const p = raw?.pathname;
-  if (typeof p === "string" && p.startsWith("/")) return p;
+  if (typeof raw === "object" && raw !== null) {
+    const p = raw.pathname;
+    if (typeof p === "string" && p.startsWith("/")) return p;
+  }
 
   return "/dashboard";
 }
 
 export default function RequireAuthMFA({ children }: Props) {
-  const location = useLocation() as any;
-  const pathname = (location?.pathname ?? "/") as string;
+  const location = useLocation();
+  const pathname = location.pathname || "/";
 
   // Show debug UI only in DEV when explicitly enabled
   const showDebug =
@@ -147,13 +164,10 @@ export default function RequireAuthMFA({ children }: Props) {
           err: undefined,
           lastSyncAt: Date.now(),
         });
-      } catch (e: any) {
+      } catch (error: unknown) {
         if (cancelled) return;
 
-        const msg =
-          e?.message ??
-          e?.error_description ??
-          (typeof e === "string" ? e : JSON.stringify(e));
+        const msg = getErrorMessage(error);
 
         // IMPORTANT: stop loading even on errors
         setSt((prev) => ({
@@ -163,9 +177,7 @@ export default function RequireAuthMFA({ children }: Props) {
           lastSyncAt: Date.now(),
         }));
 
-        // Optional: log to console for production debugging
-        // eslint-disable-next-line no-console
-        console.error("RequireAuthMFA sync error:", reason, msg, e);
+        console.error("RequireAuthMFA sync error:", reason, msg, error);
       }
     }
 
@@ -173,7 +185,7 @@ export default function RequireAuthMFA({ children }: Props) {
     void syncAuth("initial");
 
     // subscribe to auth changes
-    const { data: sub } = supabase.auth.onAuthStateChange((_event) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
       void syncAuth("onAuthStateChange");
     });
 

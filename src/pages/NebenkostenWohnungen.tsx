@@ -816,7 +816,7 @@ export default function NebenkostenWohnungen() {
     if (!win) return;
     win.document.open();
     win.document.write(archivedBillingHtml(target));
-    win.document.write(`<script>window.onload=function(){setTimeout(function(){window.print();},250)};<\/script>`);
+    win.document.write(`<script>window.onload=function(){setTimeout(function(){window.print();},250)};</script>`);
     win.document.close();
   }
 

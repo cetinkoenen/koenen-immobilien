@@ -3,15 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.SUPABASE_URL;
 const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const accountId = process.env.KOENEN_ACCOUNT_ID;
-const password = "iwillKommen13%";
+const password = process.env.READONLY_USER_PASSWORD;
 
 const users = [
   { email: "nihal.koenen@gmail.com", role: "viewer" },
   { email: "cetin.koenen@gmail.com", role: "viewer" },
 ];
 
-if (!url || !serviceRole) {
-  throw new Error("SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY muessen gesetzt sein.");
+if (!url || !serviceRole || !password) {
+  throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY und READONLY_USER_PASSWORD muessen gesetzt sein.");
 }
 
 const supabase = createClient(url, serviceRole, { auth: { persistSession: false } });

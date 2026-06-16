@@ -695,7 +695,7 @@ export default function SteuerCenter() {
           .map((row) => [String(row.property_id), String(row.property_name ?? row.property_id)]),
       );
 
-      let loanQuery = supabase
+      const loanQuery = supabase
         .from("property_loan_ledger")
         .select("property_id,year,interest,principal,balance,source")
         .eq("year", year)

@@ -12,6 +12,13 @@ import type {
 import { getRiskLevel } from "@/types/finance";
 import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 
+type IncomeLike = Partial<PropertyIncome> & Partial<YearlyIncomeEntry>;
+type LedgerLike = Partial<YearlyLedgerEntry> & {
+  interest_payment?: unknown;
+  principal_payment?: unknown;
+  remaining_balance?: unknown;
+};
+
 function toSafeNumber(value: unknown, fallback = 0): number {
   return parseLocaleNumber(value, fallback);
 }
@@ -32,23 +39,23 @@ function getFirstDefined<T = unknown>(
   return values.find((value) => value !== undefined && value !== null);
 }
 
-function readAnnualRent(entry: Partial<PropertyIncome> | Partial<YearlyIncomeEntry> | null | undefined): number {
+function readAnnualRent(entry: IncomeLike | null | undefined): number {
   if (!entry) return 0;
 
   const value = getFirstDefined(
-    (entry as any).annualRent,
-    (entry as any).annual_rent,
+    entry.annualRent,
+    entry.annual_rent,
   );
 
   return toSafeNumber(value);
 }
 
-function readOtherIncome(entry: Partial<PropertyIncome> | Partial<YearlyIncomeEntry> | null | undefined): number {
+function readOtherIncome(entry: IncomeLike | null | undefined): number {
   if (!entry) return 0;
 
   const value = getFirstDefined(
-    (entry as any).otherIncome,
-    (entry as any).other_income,
+    entry.otherIncome,
+    entry.other_income,
   );
 
   return toSafeNumber(value);
@@ -58,49 +65,49 @@ function readCapexAmount(entry: Partial<YearlyCapexEntry> | null | undefined): n
   if (!entry) return 0;
 
   const value = getFirstDefined(
-    (entry as any).amount,
+    entry.amount,
   );
 
   return toSafeNumber(value);
 }
 
-function readLedgerInterest(entry: Partial<YearlyLedgerEntry> | null | undefined): number {
+function readLedgerInterest(entry: LedgerLike | null | undefined): number {
   if (!entry) return 0;
 
   const value = getFirstDefined(
-    (entry as any).interestPayment,
-    (entry as any).interest_payment,
-    (entry as any).interest,
+    entry.interestPayment,
+    entry.interest_payment,
+    entry.interest,
   );
 
   return toSafeNumber(value);
 }
 
-function readLedgerPrincipal(entry: Partial<YearlyLedgerEntry> | null | undefined): number {
+function readLedgerPrincipal(entry: LedgerLike | null | undefined): number {
   if (!entry) return 0;
 
   const value = getFirstDefined(
-    (entry as any).principalPayment,
-    (entry as any).principal_payment,
-    (entry as any).principal,
+    entry.principalPayment,
+    entry.principal_payment,
+    entry.principal,
   );
 
   return toSafeNumber(value);
 }
 
-function readLedgerBalance(entry: Partial<YearlyLedgerEntry> | null | undefined): number | null {
+function readLedgerBalance(entry: LedgerLike | null | undefined): number | null {
   if (!entry) return null;
 
   const value = getFirstDefined(
-    (entry as any).remainingBalance,
-    (entry as any).remaining_balance,
-    (entry as any).balance,
+    entry.remainingBalance,
+    entry.remaining_balance,
+    entry.balance,
   );
 
   return toSafeNullableNumber(value);
 }
 
-function sumIncomeEntry(entry: Partial<PropertyIncome> | Partial<YearlyIncomeEntry> | null | undefined): number {
+function sumIncomeEntry(entry: IncomeLike | null | undefined): number {
   return readAnnualRent(entry) + readOtherIncome(entry);
 }
 
@@ -110,7 +117,7 @@ function sumIncomeForYear(
   propertyIncome?: PropertyIncome | null,
 ): number {
   const matchingEntries = yearlyIncome.filter(
-    (entry) => normalizeYear((entry as any).year) === year,
+    (entry) => normalizeYear(entry.year) === year,
   );
 
   if (matchingEntries.length > 0) {
@@ -122,7 +129,7 @@ function sumIncomeForYear(
 
 function sumCapexForYear(year: number, yearlyCapex: YearlyCapexEntry[]): number {
   return yearlyCapex
-    .filter((entry) => normalizeYear((entry as any).year) === year)
+    .filter((entry) => normalizeYear(entry.year) === year)
     .reduce((sum, entry) => sum + readCapexAmount(entry), 0);
 }
 
@@ -134,17 +141,17 @@ function getAllRelevantYears(
   const years = new Set<number>();
 
   for (const entry of ledger) {
-    const year = normalizeYear((entry as any).year);
+    const year = normalizeYear(entry.year);
     if (year > 0) years.add(year);
   }
 
   for (const entry of yearlyIncome) {
-    const year = normalizeYear((entry as any).year);
+    const year = normalizeYear(entry.year);
     if (year > 0) years.add(year);
   }
 
   for (const entry of yearlyCapex) {
-    const year = normalizeYear((entry as any).year);
+    const year = normalizeYear(entry.year);
     if (year > 0) years.add(year);
   }
 
@@ -157,7 +164,7 @@ function getYearlyCapexBasis(yearlyCapex: YearlyCapexEntry[]): number {
   const totalsByYear = new Map<number, number>();
 
   for (const entry of yearlyCapex) {
-    const year = normalizeYear((entry as any).year);
+    const year = normalizeYear(entry.year);
     if (year <= 0) continue;
 
     const current = totalsByYear.get(year) ?? 0;
@@ -189,7 +196,7 @@ export function calculateYearlyFinanceMetrics(params: {
 
   return years.map((year) => {
     const ledgerEntry = ledger.find(
-      (entry) => normalizeYear((entry as any).year) === year,
+      (entry) => normalizeYear(entry.year) === year,
     );
 
     const income = sumIncomeForYear(year, yearlyIncome, propertyIncome);
@@ -240,7 +247,7 @@ export function aggregateFinanceMetrics(
   const dscr = debtService > 0 ? annualIncome / debtService : null;
 
   const sortedLedger = [...ledger].sort(
-    (a, b) => normalizeYear((a as any).year) - normalizeYear((b as any).year),
+    (a, b) => normalizeYear(a.year) - normalizeYear(b.year),
   );
 
   const lastLedgerEntry = sortedLedger.at(-1);
@@ -253,7 +260,7 @@ export function aggregateFinanceMetrics(
   });
 
   if (debtFreeEntry) {
-    estimatedDebtFreeYear = normalizeYear((debtFreeEntry as any).year);
+    estimatedDebtFreeYear = normalizeYear(debtFreeEntry.year);
   }
 
   return {
@@ -278,9 +285,9 @@ export function simulateFinanceScenario(params: {
   const baseCashflow = toSafeNumber(baseMetrics.cashflow);
   const baseDscr = baseMetrics.dscr;
 
-  const rentFactor = 1 + toSafeNumber((simulation as any).rentDeltaPct) / 100;
-  const interestFactor = 1 + toSafeNumber((simulation as any).interestDeltaPct) / 100;
-  const principalFactor = 1 + toSafeNumber((simulation as any).principalDeltaPct) / 100;
+  const rentFactor = 1 + toSafeNumber(simulation.rentDeltaPct) / 100;
+  const interestFactor = 1 + toSafeNumber(simulation.interestDeltaPct) / 100;
+  const principalFactor = 1 + toSafeNumber(simulation.principalDeltaPct) / 100;
 
   const adjustedIncome = baseIncome * rentFactor;
 
