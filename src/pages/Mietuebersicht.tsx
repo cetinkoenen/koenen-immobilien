@@ -66,6 +66,8 @@ type PortfolioRentalRow = {
   rent_monthly: number | null;
   start_date: string | null;
   end_date: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type UnitDefinition = {
@@ -73,7 +75,7 @@ type UnitDefinition = {
   title: string;
   matcher: (booking: FinanceEntry) => boolean;
   rentalMatcher?: (rental: PortfolioRentalRow) => boolean;
-  expectedMode?: "sum" | "largest";
+  expectedMode?: "sum" | "largest" | "single";
 };
 
 function toIso(date: Date) {
@@ -265,9 +267,31 @@ function expectedRentFromRentals(
   const idSet = new Set(candidateIds);
   const matches = rentals.filter((rental) => idSet.has(String(rental.property_id)) && rentalOverlapsMonth(rental, start, end) && rentalMatchesUnit(rental, unit));
   const amounts = matches.map((rental) => Number(rental.rent_monthly) || 0).filter((amount) => amount > 0);
-  const amount = unit.expectedMode === "largest"
-    ? Math.max(0, ...amounts)
-    : amounts.reduce((sum, value) => sum + value, 0);
+  let amount = 0;
+
+  if (unit.expectedMode === "sum") {
+    amount = amounts.reduce((sum, value) => sum + value, 0);
+  } else if (unit.expectedMode === "largest") {
+    amount = Math.max(0, ...amounts);
+  } else {
+    // Einzelobjekte wie Lilienthaler Str. haben teils doppelte historische
+    // Vermietungszeiträume. Für den Mieteingang zählt pro Monat genau der
+    // fachlich gültige Zeitraum aus Portfolio -> Vermietungszeiträume, nicht
+    // die Summe überlappender Korrektur-/Duplikatzeilen.
+    const selected = [...matches]
+      .filter((rental) => Number(rental.rent_monthly) > 0)
+      .sort((a, b) => {
+        const startCompare = String(b.start_date ?? "").localeCompare(String(a.start_date ?? ""));
+        if (startCompare !== 0) return startCompare;
+        const endCompare = String(b.end_date ?? "9999-12-31").localeCompare(String(a.end_date ?? "9999-12-31"));
+        if (endCompare !== 0) return endCompare;
+        const updatedCompare = String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""));
+        if (updatedCompare !== 0) return updatedCompare;
+        return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
+      })[0];
+    amount = Number(selected?.rent_monthly) || 0;
+  }
+
   return {
     expectedAmount: amount > 0 ? amount : null,
     source: matches.length ? "Portfolio > Vermietungszeiträume" : "Kein aktiver Vermietungszeitraum",
@@ -798,7 +822,7 @@ export default function Mietuebersicht() {
       try {
         const [propertiesRes, rentalsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
-          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date"),
+          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at"),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
         if (rentalsRes.error) throw rentalsRes.error;
@@ -816,6 +840,8 @@ export default function Mietuebersicht() {
           rent_monthly: row.rent_monthly == null ? null : Number(row.rent_monthly),
           start_date: row.start_date ?? null,
           end_date: row.end_date ?? null,
+          created_at: row.created_at ?? null,
+          updated_at: row.updated_at ?? null,
         })));
       } catch (error) {
         if (cancelled) return;
