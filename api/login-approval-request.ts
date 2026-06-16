@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "./_lib/supabaseAdmin";
+import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const ADMIN_EMAIL = "info.koenen@gmail.com";
 const READONLY_EMAILS = new Set(["nihal.koenen@gmail.com", "cetin.koenen@gmail.com"]);
