@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
+  isVacancyActiveInRange,
   isVacancyInRange,
   listDerivedVacanciesFromEndedRentals,
   listVacancies,
@@ -542,7 +543,8 @@ export default function Mietuebersicht() {
         const derivedManualRows = manualRows
           .map((row) => deriveOpenVacancyAfterEndedTenancy(row, month.end))
           .filter((row): row is UnitVacancy => Boolean(row));
-        const monthRows = [...manualRows, ...derivedManualRows, ...derivedRows].filter((row) => isVacancyInRange(row, month.start, month.end));
+        const activeManualRows = manualRows.filter((row) => isVacancyActiveInRange(row, month.start, month.end));
+        const monthRows = [...activeManualRows, ...derivedManualRows, ...derivedRows].filter((row) => isVacancyInRange(row, month.start, month.end));
         setVacancies(monthRows);
       } catch (error) {
         if (cancelled) return;
@@ -620,10 +622,14 @@ export default function Mietuebersicht() {
           const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
           return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
         });
-        const strictRentBookings = allKnownBookings.filter((booking) =>
+        const monthlyKnownBookings = allKnownBookings.filter((booking) => {
+          const effectiveDate = attributedRentDateForUnit(booking, object.label, "hauptmiete");
+          return isDateInRange(effectiveDate, month.start, month.end);
+        });
+        const strictRentBookings = monthlyKnownBookings.filter((booking) =>
           isStrictRentBookingForObject(booking, object.id, object.code, month.start, month.end)
         );
-        const monthlyIncomeBookings = allKnownBookings.filter((booking) =>
+        const monthlyIncomeBookings = monthlyKnownBookings.filter((booking) =>
           isPositiveIncomeInMonthForObject(booking, object.id, object.code, object.label, month.start, month.end)
         );
         const relevantBookings = strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings;
@@ -650,7 +656,7 @@ export default function Mietuebersicht() {
               return bookingMatchesObject(booking, object.id, object.code, object.label);
             };
 
-            const currentCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, true));
+            const currentCandidates = monthlyKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, true));
             const historicalCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, false));
             unitBookings = pickMostLikelySingleRentBooking(currentCandidates, historicalCandidates);
           }
@@ -660,7 +666,7 @@ export default function Mietuebersicht() {
           // Vor-/Nachname zu, statt die Einheit fälschlich als „FEHLT" zu markieren.
           if (unitBookings.length === 0 && (tenantForMatch.firstName || tenantForMatch.lastName)) {
             const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
-            unitBookings = allKnownBookings.filter((booking) => {
+            unitBookings = monthlyKnownBookings.filter((booking) => {
               const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
               const inMonth = isDateInRange(effectiveDate, month.start, month.end);
               if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
