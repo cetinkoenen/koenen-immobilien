@@ -366,7 +366,7 @@ function isHohenloherRentComponent(booking: FinanceEntry, objectId: string, obje
   if (!normalizeReferenceText(objectLabel).includes("hohenloher")) return false;
   if (booking.entry_type !== "income" || booking.amount <= 0) return false;
   const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
-  const inMonth = isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
+  const inMonth = isDateInRange(effectiveDate, start, end);
   if (!inMonth || !isServiceChargeRentComponent(booking)) return false;
   return directObjectMatch(booking, objectId, objectCode) || bookingMatchesObject(booking, objectId, objectCode, objectLabel);
 }
@@ -539,7 +539,6 @@ function isGarageLikeBooking(booking: FinanceEntry): boolean {
 }
 
 function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, unitRef: string): string | null {
-  void objectLabel;
   void unitRef;
   if (!booking.booking_date) return null;
 
@@ -548,7 +547,14 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
   // zählt dieser Eingang automatisch als Miete für den Folgemonat.
   // Beispiel: 672,33 € am 30.04. mit Referenz "Miete" zählt als Mai-Miete.
   const day = bookingDayOfMonth(booking.booking_date);
-  if (day !== null && day >= 25 && hasStrictRentText(booking)) {
+  const isHohenloherNkComponent =
+    normalizeReferenceText(objectLabel).includes("hohenloher") &&
+    isServiceChargeRentComponent(booking);
+
+  if (
+    day !== null &&
+    ((day >= 25 && hasStrictRentText(booking)) || (day >= 24 && isHohenloherNkComponent))
+  ) {
     return shiftIsoDateByMonths(booking.booking_date, 1);
   }
 

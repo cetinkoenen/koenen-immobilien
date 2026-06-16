@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
+import { isReadonlyApprovalEmail, normalizeEmail } from "../auth/accessControl";
 import { clearAppSessionStorage } from "../lib/security";
 
 function getFromPath(locationState: unknown): string {
@@ -58,6 +59,11 @@ export default function Login() {
   }
 
   async function routeAfterLogin() {
+    if (isReadonlyApprovalEmail(normalizeEmail(email))) {
+      navigate(from, { replace: true });
+      return;
+    }
+
     const level = await getAalLevel();
 
     if (level === "aal2") {

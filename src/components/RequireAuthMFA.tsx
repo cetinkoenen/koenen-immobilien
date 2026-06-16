@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 type Props = { children: ReactNode };
 type AAL = "aal1" | "aal2" | null;
@@ -193,6 +194,7 @@ export default function RequireAuthMFA({ children }: Props) {
   }
 
   const from = getFrom(location);
+  const isSimpleReadonlyLogin = isReadonlyApprovalEmail(st.session?.user?.email);
 
   /**
    * Routing rules:
@@ -216,6 +218,14 @@ export default function RequireAuthMFA({ children }: Props) {
         <div>
           {DebugBar}
           {children}
+        </div>
+      );
+    }
+    if (isSimpleReadonlyLogin) {
+      return (
+        <div>
+          {DebugBar}
+          <Navigate to={from} replace />
         </div>
       );
     }
@@ -245,6 +255,14 @@ export default function RequireAuthMFA({ children }: Props) {
         </div>
       );
     }
+    if (isSimpleReadonlyLogin) {
+      return (
+        <div>
+          {DebugBar}
+          <Navigate to={from} replace />
+        </div>
+      );
+    }
     if (st.aal === "aal2") {
       return (
         <div>
@@ -271,7 +289,7 @@ export default function RequireAuthMFA({ children }: Props) {
     );
   }
 
-  if (st.aal !== "aal2") {
+  if (st.aal !== "aal2" && !isSimpleReadonlyLogin) {
     return (
       <div>
         {DebugBar}
