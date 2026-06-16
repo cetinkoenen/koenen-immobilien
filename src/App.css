@@ -506,7 +506,7 @@ button.portfolio-object-media.small, .portfolio-object-media.small { width: 78px
 }
 .tenant-summary {
   border-radius: 24px !important;
-  padding: 20px !important;
+  padding: 22px !important;
   gap: 18px !important;
   display: grid !important;
   grid-template-columns: minmax(190px, 240px) auto minmax(0, 1fr);
@@ -522,29 +522,67 @@ button.portfolio-object-media.small, .portfolio-object-media.small { width: 78px
   font-weight: 850;
 }
 .tenant-summary-lines {
-  border-top: 1px solid #e5e7eb;
   border-top: 0;
   border-left: 1px solid #e5e7eb;
-  padding-left: 16px;
-  padding-top: 10px;
+  padding: 4px 0 4px 18px;
   display: grid;
-  grid-template-columns: repeat(6, minmax(90px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(6, minmax(112px, 1fr));
+  gap: 10px;
 }
 .tenant-summary-lines div {
-  border-radius: 12px;
-  padding: 8px 10px;
+  min-height: 58px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04);
+  color: #334155;
+}
+.tenant-summary-lines div span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tenant-summary-lines div b {
+  min-width: 30px;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: right;
 }
 .tenant-summary-lines div:nth-child(1) {
   background: #ecfdf5;
+  border-color: #bbf7d0;
   color: #047857;
+}
+.tenant-summary-lines .amber {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
 }
 .tenant-summary-lines .red {
   background: #fff1f2;
+  border-color: #fecaca;
+  color: #991b1b;
 }
 .tenant-summary-lines .gray {
   background: #f4f4f5;
+  border-color: #e4e4e7;
   color: #52525b;
+}
+.tenant-summary-lines div:last-child {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 .tenant-donut {
   width: 138px !important;
