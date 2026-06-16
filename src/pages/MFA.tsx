@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { isReadonlyApprovalEmail, normalizeEmail } from "../auth/accessControl";
+import { clearAppSessionStorage } from "../lib/security";
 
 type TotpEnroll = {
   factorId: string;
@@ -87,10 +89,66 @@ export default function MFA() {
     const level = await getAalLevel();
 
     if (level === "aal2") {
-      navigate(from, { replace: true });
+      const allowed = await ensureReadonlyApprovalAfterMfa();
+      if (allowed) navigate(from, { replace: true });
       return true;
     }
 
+    return false;
+  }
+
+  async function sendReadonlyApprovalRequest(email: string, accessToken?: string | null) {
+    try {
+      const response = await fetch("/api/login-approval-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ email }),
+      });
+      if (response.ok) return;
+      throw new Error(`HTTP ${response.status}`);
+    } catch (requestError) {
+      console.warn("Login-Freigabe konnte nicht per API gemeldet werden:", requestError);
+      await supabase.from("login_approval_requests").insert({
+        email,
+        status: "pending",
+        note: "Automatische Login-Freigabe nach erfolgreicher MFA aus dem Browser angefragt.",
+      });
+    }
+  }
+
+  async function ensureReadonlyApprovalAfterMfa(): Promise<boolean> {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    const email = normalizeEmail(session?.user?.email);
+
+    if (!isReadonlyApprovalEmail(email)) return true;
+
+    const { data, error } = await supabase
+      .from("app_user_access")
+      .select("role,requires_login_approval,approved_at,is_active")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("Login-Freigabe konnte nicht geprüft werden:", error);
+    }
+
+    const approved = Boolean(data?.is_active && data?.approved_at);
+    const requiresApproval = data?.requires_login_approval !== false;
+    if (!requiresApproval || approved) return true;
+
+    await sendReadonlyApprovalRequest(email, session?.access_token);
+    await supabase.auth.signOut();
+    clearAppSessionStorage();
+    navigate("/", {
+      replace: true,
+      state: {
+        info: "MFA erfolgreich. Login-Anfrage wurde an den Admin gesendet. Zugriff ist erst nach Bestätigung möglich.",
+      },
+    });
     return false;
   }
 
@@ -279,7 +337,8 @@ export default function MFA() {
         return;
       }
 
-      navigate(from, { replace: true });
+      const allowed = await ensureReadonlyApprovalAfterMfa();
+      if (allowed) navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

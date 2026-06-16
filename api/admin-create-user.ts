@@ -12,7 +12,7 @@ async function requireAdmin(req: any) {
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
   if (!token) throw new Error("Auth token missing");
 
-  const url = process.env.SUPABASE_URL;
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !anonKey) throw new Error("Supabase public env fehlt");
 
