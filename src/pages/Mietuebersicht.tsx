@@ -229,7 +229,7 @@ function bookingMatchesObject(booking: FinanceEntry, objectId: string, objectCod
 
 function isPositiveIncomeInMonthForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
   const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
-  const inMonth = isDateInRange(effectiveDate, start, end);
+  const inMonth = isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
   if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
 
   // Priorität für echte Miet-Referenzen aus Monate/Buchungen. Dadurch wird ein Eingang
@@ -317,6 +317,11 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
   }
 
   return booking.booking_date;
+}
+
+function isBookingRelevantForDisplayedMonth(booking: FinanceEntry, objectLabel: string, unitRef: string, start: string, end: string): boolean {
+  const effectiveDate = attributedRentDateForUnit(booking, objectLabel, unitRef);
+  return isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
 }
 
 function rentAmountKey(amount: number): string {
@@ -622,10 +627,9 @@ export default function Mietuebersicht() {
           const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
           return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
         });
-        const monthlyKnownBookings = allKnownBookings.filter((booking) => {
-          const effectiveDate = attributedRentDateForUnit(booking, object.label, "hauptmiete");
-          return isDateInRange(effectiveDate, month.start, month.end);
-        });
+        const monthlyKnownBookings = allKnownBookings.filter((booking) =>
+          isBookingRelevantForDisplayedMonth(booking, object.label, "hauptmiete", month.start, month.end)
+        );
         const strictRentBookings = monthlyKnownBookings.filter((booking) =>
           isStrictRentBookingForObject(booking, object.id, object.code, month.start, month.end)
         );
@@ -647,7 +651,7 @@ export default function Mietuebersicht() {
               if (isClearlyExcludedFromRent(booking)) return false;
 
               const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-              if (requireCurrentMonth && !isDateInRange(effectiveDate, month.start, month.end)) return false;
+              if (requireCurrentMonth && !isDateInRange(effectiveDate, month.start, month.end) && !isDateInRange(booking.booking_date, month.start, month.end)) return false;
 
               const isRentPayment = hasStrictRentText(booking) || matchesTenantName(booking, tenantForMatch);
               if (!isRentPayment) return false;
@@ -668,7 +672,7 @@ export default function Mietuebersicht() {
             const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
             unitBookings = monthlyKnownBookings.filter((booking) => {
               const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-              const inMonth = isDateInRange(effectiveDate, month.start, month.end);
+              const inMonth = isDateInRange(effectiveDate, month.start, month.end) || isDateInRange(booking.booking_date, month.start, month.end);
               if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
               const text = normalizeReferenceText(bookingReferenceText(booking));
               return tenantTokens.some((token) => text.includes(token));
