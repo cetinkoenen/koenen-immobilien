@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
+import { isReadonlyApprovalEmail, normalizeEmail } from "../auth/accessControl";
 import { clearAppSessionStorage } from "../lib/security";
 
 function getFromPath(locationState: unknown): string {
@@ -62,6 +63,54 @@ export default function Login() {
     navigate("/mfa", { replace: true, state: { from } });
   }
 
+  async function ensureLoginApprovedForReadonlyUser() {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isReadonlyApprovalEmail(normalizedEmail)) return true;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
+    const { data, error } = await supabase
+      .from("app_user_access")
+      .select("role,requires_login_approval,approved_at,is_active")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      await supabase.auth.signOut();
+      clearAppSessionStorage();
+      setError("Login-Freigabe konnte nicht geprüft werden. Bitte Admin informieren.");
+      return false;
+    }
+
+    const approved = Boolean(data?.is_active && data?.approved_at);
+    if (!data?.requires_login_approval || approved) return true;
+
+    try {
+      const response = await fetch("/api/login-approval-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (requestError) {
+      console.warn("Login-Freigabe konnte nicht per API gemeldet werden:", requestError);
+      await supabase.from("login_approval_requests").insert({
+        email: normalizedEmail,
+        status: "pending",
+        note: "Automatische Login-Freigabe aus dem Browser angefragt.",
+      });
+    }
+
+    await supabase.auth.signOut();
+    clearAppSessionStorage();
+    setInfo("Login-Anfrage wurde an den Admin gesendet. Zugriff ist erst nach Bestätigung möglich.");
+    return false;
+  }
+
   async function handleSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
@@ -78,6 +127,9 @@ export default function Login() {
         setError(error.message);
         return;
       }
+
+      const loginAllowed = await ensureLoginApprovedForReadonlyUser();
+      if (!loginAllowed) return;
 
       await routeAfterLogin();
     } catch (err) {

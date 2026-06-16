@@ -344,11 +344,14 @@ button.portfolio-object-media.small, .portfolio-object-media.small { width: 78px
 @media(max-width: 620px) { .portfolio-page { padding-left: 12px !important; padding-right: 12px !important; } .cashflow-bars div { grid-template-columns: 1fr; gap: 5px; } .cashflow-bars b { text-align: left; } .refined-head { grid-template-columns: 64px minmax(0,1fr) !important; } button.portfolio-object-media.small, .portfolio-object-media.small { width: 64px !important; min-width: 64px !important; height: 48px !important; } .portfolio-live-grid, .refined-dashboard, .portfolio-input-grid.three { grid-template-columns: 1fr !important; } .compact-actions button { flex: 1 1 45%; } .expose-facts { grid-template-columns: 1fr; } .expose-toolbar { justify-content: flex-start; flex-wrap: wrap; } }
 @media print { body * { visibility: hidden !important; } .expose-modal, .expose-modal *, .tax-print-root, .tax-print-root * { visibility: visible !important; } .expose-modal { position: static !important; inset: auto !important; display: block !important; padding: 0 !important; background: #fff !important; } .expose-modal-card { width: 100% !important; max-height: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; } .expose-toolbar, .tax-no-print { display: none !important; } .expose-print-sheet { margin: 0 !important; border: none !important; border-radius: 0 !important; } .tax-print-root { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; display: block !important; background: #fff !important; color: #0f172a !important; } .tax-print-root section { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; } }
 .tenant-fields input:disabled{background:#f1f5f9;color:#64748b;border-color:#cbd5e1;cursor:not-allowed;opacity:1}
-.tenant-search{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(150px,1fr) minmax(110px,.7fr) minmax(140px,.8fr) auto;gap:10px;align-items:end;padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+.tenant-search{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(135px,.8fr) minmax(135px,.8fr) minmax(100px,.55fr) minmax(135px,.8fr) minmax(150px,auto);gap:10px;align-items:end;padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
 .tenant-search label{display:grid;gap:5px;color:#475569;font-size:12px;font-weight:900}
 .tenant-search input,.tenant-search select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#0f172a;padding:9px 10px;font-size:14px;font-weight:750}
 .tenant-mini-button{border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#0f172a;padding:9px 11px;font-size:13px;font-weight:900;cursor:pointer}
 .tenant-mini-button:hover{background:#f1f5f9}
+.tenant-export-button{width:100%;min-height:40px;white-space:nowrap}
+.tenant-dashboard-grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}
+.tenant-summary-top{position:sticky;top:16px}
 .tenant-row.is-partial{background:#fffbeb}
 .tenant-row.is-inactive{background:#f1f5f9}
 .tenant-row.is-partial .tenant-status span{background:#fde68a;color:#92400e}
@@ -357,8 +360,9 @@ button.portfolio-object-media.small, .portfolio-object-media.small { width: 78px
 .tenant-row.is-inactive .tenant-amount b{color:#475569}
 .tenant-summary-lines .amber{color:#b45309}
 .tenant-summary-lines .gray{color:#475569}
-@media(max-width:920px){.tenant-search{grid-template-columns:1fr 1fr}.tenant-search button{grid-column:1/-1}}
-@media(max-width:560px){.tenant-search{grid-template-columns:1fr}}
+@media(max-width:1180px){.tenant-search{grid-template-columns:repeat(3,minmax(0,1fr))}.tenant-search button{grid-column:auto}}
+@media(max-width:920px){.tenant-dashboard-grid{grid-template-columns:1fr}.tenant-summary-top{position:static}.tenant-search{grid-template-columns:1fr 1fr}.tenant-search button{grid-column:1/-1}}
+@media(max-width:560px){.tenant-search{grid-template-columns:1fr}.tenant-search button{grid-column:auto}}
 
 /* Professioneller Mieteingang: kompakte Prüf-Liste statt Formularoptik */
 .tenant-page {
@@ -620,6 +624,45 @@ header nav { align-content: center; }
 button, a { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 1280px) { header .max-w-\[1760px\] { max-width: 100% !important; } }
 @media (max-width: 640px) { header img { object-fit: contain; } }
+
+.readonly-banner {
+  margin-bottom: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #f1f5f9;
+  color: #334155;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.app-readonly input:not([type="search"]),
+.app-readonly textarea,
+.app-readonly select {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+.app-readonly .tenant-search input,
+.app-readonly .tenant-search select {
+  background: #fff !important;
+  color: #0f172a !important;
+  cursor: pointer !important;
+  pointer-events: auto;
+}
+
+.app-readonly main button:not(.tenant-mini-button):not([aria-label*="Menü"]):not([aria-label*="menu"]),
+.app-readonly main [role="button"] {
+  filter: grayscale(.45);
+}
+
+.app-readonly main button:not(.tenant-mini-button):not([aria-label*="Menü"]):not([aria-label*="menu"]) {
+  pointer-events: none;
+  opacity: .58;
+}
 
 /* Leerstand in der Mieterprüfung: eigener neutraler Zustand zwischen bezahlt und fehlt. */
 .tenant-row.is-vacant { background: #f4f4f5 !important; }

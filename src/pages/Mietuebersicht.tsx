@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
@@ -9,19 +8,15 @@ import {
   listVacancies,
   type UnitVacancy,
 } from "../services/vacancyService";
-import {
-  fetchPropertyExtras,
-  mergeLocalSources,
-  writeLocalTenantExtras,
-  type PropertyExtraInfo,
-} from "../services/propertyExtraService";
 
 type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
 type RentStatus = "paid" | "partial" | "missing" | "inactive" | "vacant";
+type PeriodMode = "month" | "year";
 type OverviewRow = {
   objectId: string;
   objectCode: string | null;
   tenantKey: string;
+  tenantLookupKey: string;
   label: string;
   unitLabel?: string;
   referenceLabel?: string;
@@ -30,6 +25,10 @@ type OverviewRow = {
   lastBookingDate: string | null;
   status: RentStatus;
   vacancyReason?: string | null;
+  periodLabel: string;
+  year: number;
+  month: number;
+  expectedSource: string;
 };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
@@ -50,6 +49,22 @@ type TenantContractProfileRow = {
     phone: string | null;
     mobile: string | null;
   } | null;
+};
+
+type PortfolioPropertyRow = {
+  id: string;
+  name: string | null;
+  core_property_id: string | null;
+};
+
+type PortfolioRentalRow = {
+  id: string;
+  property_id: string;
+  unit_id?: string | null;
+  rent_type: string | null;
+  rent_monthly: number | null;
+  start_date: string | null;
+  end_date: string | null;
 };
 
 function toIso(date: Date) {
@@ -102,16 +117,6 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("de-DE").format(date);
 }
 
-function parseCurrencyValue(value: string | null | undefined): number | null {
-  const cleaned = String(value ?? "")
-    .replace(/\s/g, "")
-    .replace(/[^\d,.-]/g, "")
-    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
-    .replace(",", ".");
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
 function escapeHtml(value: string | number | null | undefined): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -130,6 +135,14 @@ function monthRangeFromYearMonth(year: number, month: number) {
   return currentMonthRange(new Date(year, month - 1, 1));
 }
 
+function buildDisplayedPeriods(year: number, month: number, mode: PeriodMode) {
+  if (mode === "month") return [monthRangeFromYearMonth(year, month)];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const maxMonth = year === currentYear ? now.getMonth() + 1 : 12;
+  return Array.from({ length: maxMonth }, (_, index) => monthRangeFromYearMonth(year, index + 1));
+}
+
 function rentStartDateForObject(objectLabel: string): string | null {
   const normalized = normalizeReferenceText(objectLabel);
   if (normalized.includes("hohenloher")) return "2025-04-01";
@@ -145,7 +158,7 @@ function isInactiveForRentMonth(objectLabel: string, monthStart: string): boolea
 function resolveRentStatus(paidAmount: number, expectedAmount: number | null, inactive: boolean): RentStatus {
   if (inactive) return "inactive";
   if (expectedAmount !== null) {
-    if (paidAmount >= expectedAmount - 0.01) return "paid";
+    if (Math.abs(paidAmount - expectedAmount) <= 0.01) return "paid";
     if (paidAmount > 0) return "partial";
     return "missing";
   }
@@ -170,6 +183,82 @@ function statusClass(status: RentStatus): string {
 
 function normalizeFilterText(value: string | null | undefined): string {
   return normalizeReferenceText(value).replace(/\s+/g, " ").trim();
+}
+
+function rentalOverlapsMonth(rental: PortfolioRentalRow, start: string, end: string): boolean {
+  if (!rental.start_date) return false;
+  if (rental.start_date > end) return false;
+  if (rental.end_date && rental.end_date < start) return false;
+  return true;
+}
+
+function rentalMatchesUnit(rental: PortfolioRentalRow, unit: UnitDefinition): boolean {
+  const unitText = normalizeReferenceText(`${unit.ref} ${unit.title}`);
+  const rentalText = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+  const compactRental = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+  const compactUnit = compactReferenceText(`${unit.ref} ${unit.title}`);
+  const rentalLooksGarage =
+    rentalText.includes("garage") ||
+    rentalText.includes("tiefgarage") ||
+    rentalText.includes("stellplatz") ||
+    rentalText.includes("tg") ||
+    rentalText.includes("p250") ||
+    rentalText.includes("p253") ||
+    rentalText.includes("p254");
+
+  if (!rentalText) return true;
+  if (unit.ref === "hauptmiete" || unit.ref === "wohnung") return !rentalLooksGarage;
+  if (unit.ref === "garage") return rentalLooksGarage;
+  return rentalText.includes(unitText) || unitText.includes(rentalText) || compactRental.includes(compactUnit) || compactUnit.includes(compactRental);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function candidatePropertyIdsForObject(
+  object: { id: string; code: string | null; label: string },
+  portfolioRows: Array<{ property_id: string; portfolio_property_id: string | null; property_name: string }>,
+  portfolioProperties: PortfolioPropertyRow[],
+): string[] {
+  const objectName = normalizeFilterText(object.label);
+  const ids = [object.id];
+
+  for (const row of portfolioRows) {
+    if (String(row.property_id) === object.id || row.portfolio_property_id === object.id || normalizeFilterText(row.property_name) === objectName) {
+      ids.push(row.property_id, row.portfolio_property_id ?? "");
+    }
+  }
+
+  for (const property of portfolioProperties) {
+    const propertyName = normalizeFilterText(property.name);
+    if (
+      property.id === object.id ||
+      property.core_property_id === object.id ||
+      (propertyName && (propertyName === objectName || propertyName.includes(objectName) || objectName.includes(propertyName)))
+    ) {
+      ids.push(property.id, property.core_property_id ?? "");
+    }
+  }
+
+  return uniqueStrings(ids);
+}
+
+function expectedRentFromRentals(
+  rentals: PortfolioRentalRow[],
+  candidateIds: string[],
+  unit: UnitDefinition,
+  start: string,
+  end: string,
+): { expectedAmount: number | null; source: string; activeRentalCount: number } {
+  const idSet = new Set(candidateIds);
+  const matches = rentals.filter((rental) => idSet.has(String(rental.property_id)) && rentalOverlapsMonth(rental, start, end) && rentalMatchesUnit(rental, unit));
+  const amount = matches.reduce((sum, rental) => sum + (Number(rental.rent_monthly) || 0), 0);
+  return {
+    expectedAmount: amount > 0 ? amount : null,
+    source: matches.length ? "Portfolio > Vermietungszeiträume" : "Kein aktiver Vermietungszeitraum",
+    activeRentalCount: matches.length,
+  };
 }
 
 
@@ -572,14 +661,17 @@ export default function Mietuebersicht() {
     return addMonthsToYearMonth(now.getFullYear(), now.getMonth() + 1, recommendedMonthOffset());
   };
   const [selectedPeriod, setSelectedPeriod] = useState(() => recommendedYearMonth());
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const month = useMemo(() => {
     return monthRangeFromYearMonth(selectedPeriod.year, selectedPeriod.month);
   }, [selectedPeriod.year, selectedPeriod.month]);
+  const displayedPeriods = useMemo(() => buildDisplayedPeriods(selectedPeriod.year, selectedPeriod.month, periodMode), [selectedPeriod.year, selectedPeriod.month, periodMode]);
   const appData = useAppData();
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
-  const [fullExtras, setFullExtras] = useState<Record<string, PropertyExtraInfo>>(() => mergeLocalSources());
+  const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
+  const [portfolioRentals, setPortfolioRentals] = useState<PortfolioRentalRow[]>([]);
   const [status, setStatus] = useState<Record<string, string>>({});
   const [objectFilter, setObjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<RentStatus | "all">("all");
@@ -593,13 +685,14 @@ export default function Mietuebersicht() {
     let cancelled = false;
 
     async function loadCurrentMonthBookings() {
+      const today = toIso(new Date());
       const { data, error } = await supabase
         .from("finance_entry")
         .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted")
         .eq("entry_type", "income")
         .eq("is_deleted", false)
-        .gte("booking_date", month.previousMonthEndWindowStart)
-        .lte("booking_date", month.end)
+        .gte("booking_date", "2023-12-25")
+        .lte("booking_date", today)
         .order("booking_date", { ascending: false });
 
       if (cancelled) return;
@@ -631,7 +724,52 @@ export default function Mietuebersicht() {
       window.removeEventListener("koenen:finance-entry-changed", handler);
       window.removeEventListener("focus", handler);
     };
-  }, [month.previousMonthEndWindowStart, month.end]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPortfolioRentals() {
+      try {
+        const [propertiesRes, rentalsRes] = await Promise.all([
+          supabase.from("portfolio_properties").select("id,name,core_property_id"),
+          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date"),
+        ]);
+        if (propertiesRes.error) throw propertiesRes.error;
+        if (rentalsRes.error) throw rentalsRes.error;
+        if (cancelled) return;
+        setPortfolioProperties(((propertiesRes.data ?? []) as PortfolioPropertyRow[]).map((row) => ({
+          id: String(row.id),
+          name: row.name ?? null,
+          core_property_id: row.core_property_id ? String(row.core_property_id) : null,
+        })));
+        setPortfolioRentals(((rentalsRes.data ?? []) as PortfolioRentalRow[]).map((row) => ({
+          id: String(row.id),
+          property_id: String(row.property_id),
+          unit_id: row.unit_id ?? null,
+          rent_type: row.rent_type ?? null,
+          rent_monthly: row.rent_monthly == null ? null : Number(row.rent_monthly),
+          start_date: row.start_date ?? null,
+          end_date: row.end_date ?? null,
+        })));
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("Vermietungszeiträume konnten nicht geladen werden:", error);
+        setPortfolioProperties([]);
+        setPortfolioRentals([]);
+      }
+    }
+
+    void loadPortfolioRentals();
+    const handler = () => void loadPortfolioRentals();
+    window.addEventListener("focus", handler);
+    window.addEventListener("koenen:rentals-changed", handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handler);
+      window.removeEventListener("koenen:rentals-changed", handler);
+    };
+  }, []);
 
   useEffect(() => {
     if (!sourceObjects.length) return;
@@ -669,36 +807,6 @@ export default function Mietuebersicht() {
       window.removeEventListener("focus", handler);
     };
   }, [sourceObjects, month.start, month.end]);
-
-  useEffect(() => {
-    const ids = sourceObjects.map((object) => object.id).filter(Boolean);
-    if (!ids.length) return;
-
-    let cancelled = false;
-
-    async function loadPropertyExtras() {
-      const local = mergeLocalSources();
-      try {
-        const remote = await fetchPropertyExtras(ids);
-        if (cancelled) return;
-        const mergedExtras: Record<string, PropertyExtraInfo> = {};
-        for (const id of ids) {
-          mergedExtras[id] = { ...(local[id] ?? {}), ...(remote[id] ?? {}), property_id: id } as PropertyExtraInfo;
-        }
-        setFullExtras((prev) => ({ ...prev, ...mergedExtras }));
-        writeLocalTenantExtras({ ...local, ...mergedExtras });
-      } catch (error) {
-        if (cancelled) return;
-        setFullExtras((prev) => ({ ...local, ...prev }));
-        console.warn("Portfolio-Gesamtmieten konnten nicht geladen werden:", error);
-      }
-    }
-
-    void loadPropertyExtras();
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceObjects]);
 
   useEffect(() => {
     if (!sourceObjects.length) return;
@@ -754,100 +862,103 @@ export default function Mietuebersicht() {
   const rows = useMemo<OverviewRow[]>(
     () =>
       sourceObjects.flatMap((object) => {
+        const objectCandidateIds = candidatePropertyIdsForObject(object, appData.portfolioRows, portfolioProperties);
         const allKnownBookings = [...monthBookings, ...appData.entries].filter((booking, index, list) => {
           const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
           return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
         });
-        const monthlyKnownBookings = allKnownBookings.filter((booking) =>
-          isBookingRelevantForDisplayedMonth(booking, object.label, "hauptmiete", month.start, month.end)
-        );
-        const strictRentBookings = monthlyKnownBookings.filter((booking) =>
-          isStrictRentBookingForObject(booking, object.id, object.code, month.start, month.end)
-        );
-        const monthlyIncomeBookings = monthlyKnownBookings.filter((booking) =>
-          isPositiveIncomeInMonthForObject(booking, object.id, object.code, object.label, month.start, month.end)
-        );
-        const relevantBookings = strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings;
         const units = getUnitDefinitions(object.label);
-        return units.map((unit) => {
-          const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
-          const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
-          const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit));
-          let unitBookings = relevantBookings.filter(unit.matcher);
+        return displayedPeriods.flatMap((period) => {
+          const monthlyKnownBookings = allKnownBookings.filter((booking) =>
+            isBookingRelevantForDisplayedMonth(booking, object.label, "hauptmiete", period.start, period.end)
+          );
+          const strictRentBookings = monthlyKnownBookings.filter((booking) =>
+            isStrictRentBookingForObject(booking, object.id, object.code, period.start, period.end)
+          );
+          const monthlyIncomeBookings = monthlyKnownBookings.filter((booking) =>
+            isPositiveIncomeInMonthForObject(booking, object.id, object.code, object.label, period.start, period.end)
+          );
+          const relevantBookings = strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings;
 
-          if (isFuertherWohnungUnit(object.label, unit.ref)) {
-            const matchesFuertherWohnungRent = (booking: FinanceEntry, requireCurrentMonth: boolean) => {
-              if (booking.entry_type !== "income" || booking.amount <= 0) return false;
-              if (isGarageLikeBooking(booking)) return false;
-              if (isClearlyExcludedFromRent(booking)) return false;
+          return units.map((unit) => {
+            const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
+            const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
+            const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
+            let unitBookings = relevantBookings.filter(unit.matcher);
 
-              const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-              if (requireCurrentMonth && !isDateInRange(effectiveDate, month.start, month.end) && !isDateInRange(booking.booking_date, month.start, month.end)) return false;
+            if (isFuertherWohnungUnit(object.label, unit.ref)) {
+              const matchesFuertherWohnungRent = (booking: FinanceEntry, requireCurrentMonth: boolean) => {
+                if (booking.entry_type !== "income" || booking.amount <= 0) return false;
+                if (isGarageLikeBooking(booking)) return false;
+                if (isClearlyExcludedFromRent(booking)) return false;
 
-              const isRentPayment = hasStrictRentText(booking) || matchesTenantName(booking, tenantForMatch);
-              if (!isRentPayment) return false;
+                const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
+                if (requireCurrentMonth && !isDateInRange(effectiveDate, period.start, period.end) && !isDateInRange(booking.booking_date, period.start, period.end)) return false;
 
-              if (directObjectMatch(booking, object.id, object.code)) return true;
-              return bookingMatchesObject(booking, object.id, object.code, object.label);
+                const isRentPayment = hasStrictRentText(booking) || matchesTenantName(booking, tenantForMatch);
+                if (!isRentPayment) return false;
+
+                if (directObjectMatch(booking, object.id, object.code)) return true;
+                return bookingMatchesObject(booking, object.id, object.code, object.label);
+              };
+
+              const currentCandidates = monthlyKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, true));
+              const historicalCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, false));
+              unitBookings = pickMostLikelySingleRentBooking(currentCandidates, historicalCandidates);
+            }
+
+            if (unitBookings.length === 0 && (tenantForMatch.firstName || tenantForMatch.lastName)) {
+              const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
+              unitBookings = monthlyKnownBookings.filter((booking) => {
+                const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
+                const inMonth = isDateInRange(effectiveDate, period.start, period.end) || isDateInRange(booking.booking_date, period.start, period.end);
+                if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
+                const text = normalizeReferenceText(bookingReferenceText(booking));
+                return tenantTokens.some((token) => text.includes(token));
+              });
+            }
+
+            if (units.length > 1 && unit.ref === "hauptmiete" && unitBookings.length === 0) {
+              unitBookings = relevantBookings.filter((booking) => {
+                const text = normalizeReferenceText(bookingReferenceText(booking));
+                return !(text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz") || text.includes("p250") || text.includes("p253") || text.includes("p254"));
+              });
+            }
+            const rentalReference = expectedRentFromRentals(portfolioRentals, objectCandidateIds, unit, period.start, period.end);
+            const expectedAmount = rentalReference.expectedAmount;
+            const expectedSource = rentalReference.source;
+            const inactive = rentalReference.activeRentalCount === 0 || isInactiveForRentMonth(object.label, period.start);
+            const bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+            const paidAmount = vacancy || inactive ? 0 : bookingAmount;
+            const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
+
+            return {
+              objectId: object.id,
+              objectCode: object.code,
+              tenantKey: `${tenantKey}::${period.year}-${String(period.month).padStart(2, "0")}`,
+              tenantLookupKey: tenantKey,
+              label: object.label,
+              unitLabel: units.length > 1 ? unit.title : undefined,
+              referenceLabel: units.length > 1 ? unit.ref : undefined,
+              paidAmount,
+              expectedAmount,
+              lastBookingDate: vacancy || inactive ? null : sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
+              status: vacancy ? "vacant" : resolveRentStatus(paidAmount, expectedAmount, inactive),
+              vacancyReason: vacancy?.reason ?? vacancy?.notes ?? null,
+              periodLabel: period.label,
+              year: period.year,
+              month: period.month,
+              expectedSource,
             };
-
-            const currentCandidates = monthlyKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, true));
-            const historicalCandidates = allKnownBookings.filter((booking) => matchesFuertherWohnungRent(booking, false));
-            unitBookings = pickMostLikelySingleRentBooking(currentCandidates, historicalCandidates);
-          }
-
-          // Zusätzlicher Fallback: Viele Bankbuchungen enthalten im Verwendungszweck nur den Namen
-          // des Mieters, aber keine saubere Objekt-ID. Dann ordnen wir den Zahlungseingang über
-          // Vor-/Nachname zu, statt die Einheit fälschlich als „FEHLT" zu markieren.
-          if (unitBookings.length === 0 && (tenantForMatch.firstName || tenantForMatch.lastName)) {
-            const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
-            unitBookings = monthlyKnownBookings.filter((booking) => {
-              const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-              const inMonth = isDateInRange(effectiveDate, month.start, month.end) || isDateInRange(booking.booking_date, month.start, month.end);
-              if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
-              const text = normalizeReferenceText(bookingReferenceText(booking));
-              return tenantTokens.some((token) => text.includes(token));
-            });
-          }
-
-          // Falls eine positive Objekt-Einnahme nicht eindeutig einer Garage/TG zugeordnet werden kann,
-          // wird sie der Hauptmiete/Wohnung zugeordnet, damit der Mieteingang nicht fälschlich „FEHLT" zeigt.
-          if (units.length > 1 && unit.ref === "hauptmiete" && unitBookings.length === 0) {
-            unitBookings = relevantBookings.filter((booking) => {
-              const text = normalizeReferenceText(bookingReferenceText(booking));
-              return !(text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz") || text.includes("p250") || text.includes("p253") || text.includes("p254"));
-            });
-          }
-          const expectedAmount = parseCurrencyValue(fullExtras[object.id]?.totalRent ?? fullExtras[object.id]?.total_rent);
-          const inactive = isInactiveForRentMonth(object.label, month.start);
-          const bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
-          const paidAmount = vacancy || inactive ? 0 : bookingAmount;
-          const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
-
-          return {
-            objectId: object.id,
-            objectCode: object.code,
-            tenantKey,
-            label: object.label,
-            unitLabel: units.length > 1 ? unit.title : undefined,
-            referenceLabel: units.length > 1 ? unit.ref : undefined,
-            paidAmount,
-            expectedAmount,
-            lastBookingDate: vacancy || inactive ? null : sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
-            status: vacancy ? "vacant" : resolveRentStatus(paidAmount, expectedAmount, inactive),
-            vacancyReason: vacancy?.reason ?? vacancy?.notes ?? null,
-          };
+          });
         });
       }),
-    [sourceObjects, appData, monthBookings, tenantInfo, fullExtras, month.start, month.end, vacancies]
+    [sourceObjects, appData, portfolioProperties, monthBookings, displayedPeriods, tenantInfo, vacancies, portfolioRentals]
   );
 
   const filteredRows = useMemo(() => {
-    const objectNeedle = normalizeFilterText(objectFilter);
     return rows.filter((row) => {
-      const objectMatches =
-        !objectNeedle ||
-        normalizeFilterText(`${row.label} ${row.objectCode ?? ""} ${row.unitLabel ?? ""} ${row.referenceLabel ?? ""}`).includes(objectNeedle);
+      const objectMatches = !objectFilter || row.objectId === objectFilter;
       const statusMatches = statusFilter === "all" || row.status === statusFilter;
       return objectMatches && statusMatches;
     });
@@ -859,10 +970,12 @@ export default function Mietuebersicht() {
   function openFilteredPdf() {
     const rowsHtml = filteredRows.map((row) => `
       <tr>
+        <td>${escapeHtml(row.periodLabel)}</td>
         <td>${escapeHtml(row.label)}${row.unitLabel ? `<br/><small>${escapeHtml(row.unitLabel)}</small>` : ""}</td>
         <td>${escapeHtml(statusLabel(row.status))}</td>
         <td class="right">${escapeHtml(formatCurrency(row.paidAmount))}</td>
         <td class="right">${escapeHtml(row.expectedAmount === null ? "—" : formatCurrency(row.expectedAmount))}</td>
+        <td>${escapeHtml(row.expectedSource)}</td>
         <td>${escapeHtml(formatDate(row.lastBookingDate))}</td>
       </tr>
     `).join("");
@@ -888,7 +1001,7 @@ export default function Mietuebersicht() {
         <div class="kpi">Leerstand<b>${stats.vacant}</b></div>
         <div class="kpi">Summe<b>${escapeHtml(formatCurrency(stats.amount))}</b></div>
       </div>
-      <table><thead><tr><th>Objekt</th><th>Status</th><th class="right">Eingang</th><th class="right">Gesamtmiete</th><th>Letzter Eingang</th></tr></thead><tbody>${rowsHtml || `<tr><td colspan="5">Keine Ergebnisse.</td></tr>`}</tbody></table>
+      <table><thead><tr><th>Zeitraum</th><th>Objekt</th><th>Status</th><th class="right">Eingang</th><th class="right">Sollmiete</th><th>Soll-Quelle</th><th>Letzter Eingang</th></tr></thead><tbody>${rowsHtml || `<tr><td colspan="7">Keine Ergebnisse.</td></tr>`}</tbody></table>
       <script>window.onload=function(){setTimeout(function(){window.print();},250)};<\/script>
     </body></html>`);
     printWindow.document.close();
@@ -908,25 +1021,34 @@ export default function Mietuebersicht() {
       <header className="tenant-hero">
         <h1>Mieteingang</h1>
         <p>
-          Diese Seite kontrolliert Mieteingänge aus den vorhandenen Buchungen. Neue
-          Mieterstammdaten werden zentral unter „Mieter anlegen“ gepflegt.
+          Abgleich von Buchhaltung und Portfolio-Vermietungszeiträumen: Ist-Zahlung, Sollmiete,
+          Zeitraum und Abweichungen werden pro Objekt geprüft.
         </p>
-        <div className="tenant-actions">
-          <NavLink to="/mieter-anlegen">Mieter anlegen</NavLink>
-          <NavLink to="/leerstand">Leerstand verwalten</NavLink>
-          <NavLink to="/buchungen">Buchung / Mieteingang erfassen</NavLink>
-          <NavLink to="/nebenkosten/wohnungen">Nebenkosten Wohnungen</NavLink>
-          <NavLink to="/nebenkosten/tiefgarage">Nebenkosten TG</NavLink>
-        </div>
         {status.__global ? <div className="tenant-message" style={{ marginTop: 12 }}>{status.__global}</div> : null}
       </header>
 
-      <section className="tenant-layout">
+      <section className="tenant-dashboard-grid">
+        <aside className="tenant-summary tenant-summary-top">
+          <div>
+            <h2>Zusammenfassung</h2>
+            <p>{periodMode === "year" ? `Ganzes Jahr ${selectedPeriod.year}` : month.label}</p>
+          </div>
+          <DonutChart paid={stats.paid} partial={stats.partial} missing={stats.missing} inactive={stats.inactive} vacant={stats.vacant} />
+          <div className="tenant-summary-lines">
+            <div><span>Bezahlt</span><b>{stats.paid}</b></div>
+            <div className="amber"><span>Teilweise</span><b>{stats.partial}</b></div>
+            <div className="red"><span>Fehlt</span><b>{stats.missing}</b></div>
+            <div className="gray"><span>Neutral</span><b>{stats.inactive}</b></div>
+            <div className="gray"><span>Leerstand</span><b>{stats.vacant}</b></div>
+            <div><span>Gesamt</span><b>{stats.total}</b></div>
+          </div>
+        </aside>
+
         <main className="tenant-card">
           <div className="tenant-card-head">
             <div>
-              <h2>Mieteingänge {month.label}</h2>
-              <p>Prüfung: kompletter Mietmonat. Zahlungen ab dem 25. zählen automatisch zum Folgemonat.</p>
+              <h2>{periodMode === "year" ? `Mieteingänge ${selectedPeriod.year}` : `Mieteingänge ${month.label}`}</h2>
+              <p>Soll: Portfolio → Vermietungszeiträume. Ist: Buchhaltung. Teilweise = weniger oder mehr als Sollmiete.</p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <button type="button" onClick={() => shiftSelectedMonth(-1)} className="tenant-mini-button">← Vormonat</button>
                 <button type="button" onClick={resetToRecommendedMonth} className="tenant-mini-button">Aktueller Mietmonat</button>
@@ -942,11 +1064,23 @@ export default function Mietuebersicht() {
           <div className="tenant-search">
             <label>
               Objekt
-              <input value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)} placeholder="Objekt, Straße, Einheit" />
+              <select value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)}>
+                <option value="">Alle Objekte</option>
+                {sourceObjects.map((object) => (
+                  <option key={object.id} value={object.id}>{object.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Zeitraum
+              <select value={periodMode} onChange={(event) => setPeriodMode(event.target.value as PeriodMode)}>
+                <option value="month">Monat</option>
+                <option value="year">Ganzes Jahr</option>
+              </select>
             </label>
             <label>
               Monat
-              <select value={selectedPeriod.month} onChange={(event) => setSelectedPeriod((value) => ({ ...value, month: Number(event.target.value) }))}>
+              <select value={selectedPeriod.month} disabled={periodMode === "year"} onChange={(event) => setSelectedPeriod((value) => ({ ...value, month: Number(event.target.value) }))}>
                 {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
                   <option key={value} value={value}>{new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(2025, value - 1, 1))}</option>
                 ))}
@@ -973,7 +1107,7 @@ export default function Mietuebersicht() {
                 <option value="vacant">Leerstand</option>
               </select>
             </label>
-            <button type="button" onClick={openFilteredPdf} className="tenant-mini-button">PDF Export</button>
+            <button type="button" onClick={openFilteredPdf} className="tenant-mini-button tenant-export-button">PDF exportieren</button>
           </div>
 
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
@@ -982,15 +1116,15 @@ export default function Mietuebersicht() {
           {!appData.loading && filteredRows.length > 0 && (
             <div className="tenant-list">
               {filteredRows.map((row) => {
-                const tenant = tenantInfo[row.tenantKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
+                const tenant = tenantInfo[row.tenantLookupKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
                 const vacant = row.status === "vacant";
                 return (
                   <article key={row.tenantKey} className={`tenant-row ${statusClass(row.status)}`}>
                     <div className="tenant-row-top">
                       <div className="tenant-status"><span>{statusLabel(row.status)}</span></div>
-                      <div className="tenant-unit"><small>Einheit</small><b>{row.label}</b>{row.unitLabel ? <em style={{ display: "block", marginTop: 4, color: "#0f172a", fontStyle: "normal", fontWeight: 900 }}>{row.unitLabel}</em> : null}{row.referenceLabel && row.referenceLabel !== row.unitLabel ? <small style={{ display: "block", marginTop: 3 }}>Betreff-Referenz: {row.referenceLabel}</small> : null}</div>
+                      <div className="tenant-unit"><small>{row.periodLabel}</small><b>{row.label}</b>{row.unitLabel ? <em style={{ display: "block", marginTop: 4, color: "#0f172a", fontStyle: "normal", fontWeight: 900 }}>{row.unitLabel}</em> : null}{row.referenceLabel && row.referenceLabel !== row.unitLabel ? <small style={{ display: "block", marginTop: 3 }}>Betreff-Referenz: {row.referenceLabel}</small> : null}</div>
                       <div className="tenant-amount"><small>Mieteingang</small><b>{vacant ? "Leerstand" : formatCurrency(row.paidAmount)}</b>{vacant && row.vacancyReason ? <small>{row.vacancyReason}</small> : null}</div>
-                      <div className="tenant-date"><small>Gesamtmiete / Eingang</small><b>{row.expectedAmount === null ? "—" : formatCurrency(row.expectedAmount)}</b><small style={{ marginTop: 4 }}>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
+                      <div className="tenant-date"><small>Sollmiete</small><b>{row.expectedAmount === null ? "—" : formatCurrency(row.expectedAmount)}</b><small style={{ marginTop: 4 }}>{row.expectedSource}</small><small style={{ marginTop: 4 }}>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
                     </div>
                     <div className="tenant-contact-grid" title="Mieterdaten werden zentral unter Mieter anlegen gepflegt">
                       <div><span>Vorname</span><b>{tenant.firstName || "—"}</b></div>
@@ -1010,22 +1144,6 @@ export default function Mietuebersicht() {
           {!appData.loading && rows.length === 0 && <div className="tenant-message">Keine Objekte gefunden.</div>}
           {!appData.loading && rows.length > 0 && filteredRows.length === 0 && <div className="tenant-message">Keine Ergebnisse für diese Suche.</div>}
         </main>
-
-        <aside className="tenant-summary">
-          <div>
-            <h2>Zusammenfassung</h2>
-            <p>Mietstatus für {month.label}</p>
-          </div>
-          <DonutChart paid={stats.paid} partial={stats.partial} missing={stats.missing} inactive={stats.inactive} vacant={stats.vacant} />
-          <div className="tenant-summary-lines">
-            <div><span>Bezahlt</span><b>{stats.paid}</b></div>
-            <div className="amber"><span>Teilweise</span><b>{stats.partial}</b></div>
-            <div className="red"><span>Fehlt</span><b>{stats.missing}</b></div>
-            <div className="gray"><span>Neutral</span><b>{stats.inactive}</b></div>
-            <div className="gray"><span>Leerstand</span><b>{stats.vacant}</b></div>
-            <div><span>Gesamt</span><b>{stats.total}</b></div>
-          </div>
-        </aside>
       </section>
     </div>
   );

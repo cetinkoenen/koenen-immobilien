@@ -38,6 +38,7 @@ import AuthCallback from "./pages/AuthCallback";
 import RequireAuthMFA from "./components/RequireAuthMFA";
 import BackupButton from "./components/BackupButton";
 import { useAuth } from "./auth/AuthProvider";
+import { isAdminEmail, isReadonlyApprovalEmail } from "./auth/accessControl";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
 import logo from "./assets/koenen-brand-logo.webp";
@@ -279,6 +280,8 @@ function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
   const location = useLocation();
+  const isAdmin = isAdminEmail(user?.email);
+  const isReadOnly = !isAdmin && isReadonlyApprovalEmail(user?.email);
   const activeAuswertungView = location.pathname === "/auswertungen"
     ? new URLSearchParams(location.search).get("view") ?? "cockpit"
     : "";
@@ -314,7 +317,7 @@ function AppShell() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f6f1e8] text-slate-950">
+    <div className={["min-h-screen bg-[#f6f1e8] text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-slate-800 bg-[#101827] text-white shadow-2xl xl:flex">
         <NavLink
           to="/cockpit"
@@ -391,6 +394,9 @@ function AppShell() {
           <div className="mb-3 rounded-2xl border border-white/10 bg-white/6 px-3 py-2 text-xs font-bold text-slate-300">
             <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Angemeldet</div>
             <div className="mt-1 truncate">{user?.email ?? "Eingeloggt"}</div>
+            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              {isReadOnly ? "Nur Lesen" : "Admin"}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <BackupButton />
@@ -495,6 +501,7 @@ function AppShell() {
               <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#e7ddcf] bg-white/80 p-3">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
                   {user?.email ?? "Eingeloggt"}
+                  <span className="ml-2 font-black text-slate-500">{isReadOnly ? "Nur Lesen" : "Admin"}</span>
                 </div>
                 <BackupButton />
                 <LogoutButton />
@@ -505,6 +512,11 @@ function AppShell() {
       </header>
 
       <main className="mx-auto max-w-[1760px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8 xl:ml-[286px] xl:max-w-none">
+        {isReadOnly ? (
+          <div className="readonly-banner">
+            Nur-Lesen-Zugang: Daten und Felder sind geschützt. Änderungen sind dem Admin vorbehalten.
+          </div>
+        ) : null}
         <Outlet />
       </main>
     </div>
