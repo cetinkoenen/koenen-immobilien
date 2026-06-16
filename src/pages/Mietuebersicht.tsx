@@ -551,6 +551,70 @@ function isFuertherObject(objectLabel: string): boolean {
   return normalizedLabel.includes("further") || normalizedLabel.includes("fuerther");
 }
 
+function isLilienthalerObject(objectLabel: string): boolean {
+  return normalizeReferenceText(objectLabel).includes("lilienthaler");
+}
+
+function isLilienthalerRentBookingForObject(
+  booking: FinanceEntry,
+  object: { id: string; code: string | null; label: string },
+): boolean {
+  return (
+    booking.entry_type === "income" &&
+    booking.amount > 0 &&
+    hasStrictRentText(booking) &&
+    (directObjectMatch(booking, object.id, object.code) || bookingMatchesObject(booking, object.id, object.code, object.label))
+  );
+}
+
+function lilienthalerBookingAllocation(
+  allKnownBookings: FinanceEntry[],
+  object: { id: string; code: string | null; label: string },
+  unit: UnitDefinition,
+  period: ReturnType<typeof monthRangeFromYearMonth>,
+  expectedAmount: number | null,
+): { paidAmount: number; lastBookingDate: string | null } | null {
+  if (!isLilienthalerObject(object.label) || unit.ref !== "hauptmiete" || expectedAmount === null) return null;
+
+  const objectRentBookings = allKnownBookings
+    .filter((booking) => booking.booking_date && isLilienthalerRentBookingForObject(booking, object) && unit.matcher(booking))
+    .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")));
+
+  const currentMonthBookings = objectRentBookings.filter((booking) => isDateInRange(booking.booking_date, period.start, period.end));
+  const currentMonthTotal = currentMonthBookings.reduce((sum, booking) => sum + booking.amount, 0);
+  const currentMonthDates = currentMonthBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
+
+  if (currentMonthBookings.length > 0) {
+    const isCatchUpPayment = currentMonthBookings.some((booking) => {
+      const text = normalizeReferenceText(bookingReferenceText(booking));
+      return text.includes("nachzahlung") || booking.amount >= expectedAmount * 1.7;
+    });
+
+    return {
+      paidAmount: isCatchUpPayment ? expectedAmount : currentMonthTotal,
+      lastBookingDate: currentMonthDates[currentMonthDates.length - 1] ?? null,
+    };
+  }
+
+  const nextMonth = addMonthsToYearMonth(period.year, period.month, 1);
+  const nextPeriod = monthRangeFromYearMonth(nextMonth.year, nextMonth.month);
+  const catchUpBooking = objectRentBookings.find((booking) => {
+    if (!booking.booking_date || !isDateInRange(booking.booking_date, nextPeriod.start, nextPeriod.end)) return false;
+    const day = bookingDayOfMonth(booking.booking_date);
+    const text = normalizeReferenceText(bookingReferenceText(booking));
+    return day !== null && day <= 10 && (text.includes("nachzahlung") || booking.amount >= expectedAmount * 1.7);
+  });
+
+  if (catchUpBooking) {
+    return {
+      paidAmount: expectedAmount,
+      lastBookingDate: catchUpBooking.booking_date ?? null,
+    };
+  }
+
+  return null;
+}
+
 
 
 function isFuertherWohnungUnit(objectLabel: string, unitRef: string): boolean {
@@ -574,10 +638,11 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
   const isHohenloherNkComponent =
     normalizeReferenceText(objectLabel).includes("hohenloher") &&
     isServiceChargeRentComponent(booking);
+  const keepSameMonthForLilienthaler = isLilienthalerObject(objectLabel);
 
   if (
     day !== null &&
-    ((day >= 25 && hasStrictRentText(booking)) || (day >= 24 && isHohenloherNkComponent))
+    (((day >= 25 && hasStrictRentText(booking)) && !keepSameMonthForLilienthaler) || (day >= 24 && isHohenloherNkComponent))
   ) {
     return shiftIsoDateByMonths(booking.booking_date, 1);
   }
@@ -1025,9 +1090,11 @@ export default function Mietuebersicht() {
             const expectedAmount = rentalReference.expectedAmount;
             const expectedSource = rentalReference.source;
             const inactive = rentalReference.activeRentalCount === 0 || isInactiveForRentMonth(object.label, period.start);
-            const bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+            const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, expectedAmount);
+            const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
             const paidAmount = vacancy || inactive ? 0 : bookingAmount;
             const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
+            const lastBookingDate = lilienthalerAllocation?.lastBookingDate ?? (sortedDates.length ? sortedDates[sortedDates.length - 1] : null);
 
             return {
               objectId: object.id,
@@ -1039,7 +1106,7 @@ export default function Mietuebersicht() {
               referenceLabel: units.length > 1 ? unit.ref : undefined,
               paidAmount,
               expectedAmount,
-              lastBookingDate: vacancy || inactive ? null : sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
+              lastBookingDate: vacancy || inactive ? null : lastBookingDate,
               status: vacancy ? "vacant" : resolveRentStatus(paidAmount, expectedAmount, inactive),
               vacancyReason: vacancy?.reason ?? vacancy?.notes ?? null,
               periodLabel: period.label,
