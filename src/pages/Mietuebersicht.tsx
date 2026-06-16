@@ -67,6 +67,14 @@ type PortfolioRentalRow = {
   end_date: string | null;
 };
 
+type UnitDefinition = {
+  ref: string;
+  title: string;
+  matcher: (booking: FinanceEntry) => boolean;
+  rentalMatcher?: (rental: PortfolioRentalRow) => boolean;
+  expectedMode?: "sum" | "largest";
+};
+
 function toIso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -193,6 +201,8 @@ function rentalOverlapsMonth(rental: PortfolioRentalRow, start: string, end: str
 }
 
 function rentalMatchesUnit(rental: PortfolioRentalRow, unit: UnitDefinition): boolean {
+  if (unit.rentalMatcher) return unit.rentalMatcher(rental);
+
   const unitText = normalizeReferenceText(`${unit.ref} ${unit.title}`);
   const rentalText = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
   const compactRental = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
@@ -253,7 +263,10 @@ function expectedRentFromRentals(
 ): { expectedAmount: number | null; source: string; activeRentalCount: number } {
   const idSet = new Set(candidateIds);
   const matches = rentals.filter((rental) => idSet.has(String(rental.property_id)) && rentalOverlapsMonth(rental, start, end) && rentalMatchesUnit(rental, unit));
-  const amount = matches.reduce((sum, rental) => sum + (Number(rental.rent_monthly) || 0), 0);
+  const amounts = matches.map((rental) => Number(rental.rent_monthly) || 0).filter((amount) => amount > 0);
+  const amount = unit.expectedMode === "largest"
+    ? Math.max(0, ...amounts)
+    : amounts.reduce((sum, value) => sum + value, 0);
   return {
     expectedAmount: amount > 0 ? amount : null,
     source: matches.length ? "Portfolio > Vermietungszeiträume" : "Kein aktiver Vermietungszeitraum",
@@ -343,6 +356,20 @@ function isClearlyExcludedFromRent(booking: FinanceEntry): boolean {
   );
 }
 
+function isServiceChargeRentComponent(booking: FinanceEntry): boolean {
+  const text = normalizeReferenceText(bookingReferenceText(booking));
+  return text.includes("nebenkosten") || text.includes("betriebskosten") || text.includes("hausgeld") || text.includes("nk");
+}
+
+function isHohenloherRentComponent(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
+  if (!normalizeReferenceText(objectLabel).includes("hohenloher")) return false;
+  if (booking.entry_type !== "income" || booking.amount <= 0) return false;
+  const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
+  const inMonth = isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
+  if (!inMonth || !isServiceChargeRentComponent(booking)) return false;
+  return directObjectMatch(booking, objectId, objectCode) || bookingMatchesObject(booking, objectId, objectCode, objectLabel);
+}
+
 function hasStrictRentText(booking: FinanceEntry): boolean {
   if (isClearlyExcludedFromRent(booking)) return false;
   const text = normalizeReferenceText(`${booking.category ?? ""} ${booking.note ?? ""}`);
@@ -417,8 +444,6 @@ function isPositiveIncomeInMonthForObject(booking: FinanceEntry, objectId: strin
   return isLikelyRentOrObjectIncome(booking) && bookingMatchesObject(booking, objectId, objectCode, objectLabel);
 }
 
-type UnitDefinition = { ref: string; title: string; matcher: (booking: FinanceEntry) => boolean };
-
 function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
   const normalizedLabel = normalizeReferenceText(objectLabel);
 
@@ -427,9 +452,19 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
       {
         ref: "wohnung",
         title: "Wohnung",
+        expectedMode: "largest",
         matcher: (booking) => {
           const text = normalizeReferenceText(bookingReferenceText(booking));
           return !(text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz"));
+        },
+        rentalMatcher: (rental) => {
+          const text = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+          return !(
+            text.includes("garage") ||
+            text.includes("tiefgarage") ||
+            text.includes("stellplatz") ||
+            text.includes("tg")
+          );
         },
       },
       {
@@ -438,6 +473,10 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
         matcher: (booking) => {
           const text = normalizeReferenceText(bookingReferenceText(booking));
           return text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz");
+        },
+        rentalMatcher: (rental) => {
+          const text = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+          return text.includes("garage") || text.includes("tiefgarage") || text.includes("stellplatz") || text.includes("tg");
         },
       },
     ];
@@ -456,7 +495,26 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
     return garages.map((garage) => ({
       ref: garage.ref,
       title: garage.title,
-      matcher: (booking: FinanceEntry) => normalizeReferenceText(bookingReferenceText(booking)).includes(normalizeReferenceText(garage.ref)),
+      matcher: (booking: FinanceEntry) => {
+        const text = compactReferenceText(bookingReferenceText(booking));
+        return compactReferenceText(garage.ref).split("").length > 0 && (
+          text.includes(compactReferenceText(garage.ref)) ||
+          text.includes(compactReferenceText(garage.title)) ||
+          text.includes(compactReferenceText(garage.ref.split(" - ")[0] ?? "")) ||
+          text.includes(compactReferenceText(garage.ref.split(" - ")[1] ?? ""))
+        );
+      },
+      rentalMatcher: (rental: PortfolioRentalRow) => {
+        const text = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+        const parkingCode = compactReferenceText(garage.ref.split(" - ")[0] ?? "");
+        const unitCode = compactReferenceText(garage.ref.split(" - ")[1] ?? "");
+        const title = compactReferenceText(garage.title);
+        return Boolean(
+          (parkingCode && text.includes(parkingCode)) ||
+          (unitCode && text.includes(unitCode)) ||
+          (title && text.includes(title))
+        );
+      },
     }));
   }
 
@@ -878,7 +936,13 @@ export default function Mietuebersicht() {
           const monthlyIncomeBookings = monthlyKnownBookings.filter((booking) =>
             isPositiveIncomeInMonthForObject(booking, object.id, object.code, object.label, period.start, period.end)
           );
-          const relevantBookings = strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings;
+          const hohenloherComponents = monthlyKnownBookings.filter((booking) =>
+            isHohenloherRentComponent(booking, object.id, object.code, object.label, period.start, period.end)
+          );
+          const relevantBookings = [...(strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings), ...hohenloherComponents].filter((booking, index, list) => {
+            const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
+            return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
+          });
 
           return units.map((unit) => {
             const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;

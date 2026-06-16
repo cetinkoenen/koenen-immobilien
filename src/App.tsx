@@ -25,7 +25,6 @@ import {
   ReceiptText,
   Settings2,
   ShieldCheck,
-  UserPlus,
   Users,
   WalletCards,
   X,
@@ -112,6 +111,7 @@ const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
 const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
+const Administrator = lazy(() => import("./pages/Administrator"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
@@ -149,6 +149,7 @@ function sidebarNavLinkClass(isActive: boolean): string {
 }
 
 const groupAccent: Record<string, string> = {
+  Administrator: "text-rose-300",
   Überblick: "text-sky-300",
   Finanzen: "text-violet-300",
   Mieter: "text-emerald-300",
@@ -288,6 +289,7 @@ function AppShell() {
 
   const navItems = useMemo<Array<{ to: string; label: string; group: string; icon: LucideIcon; end?: boolean }>>(
     () => [
+      ...(isAdmin ? [{ to: "/administrator", label: "Administrator", group: "Administrator", icon: ShieldCheck }] : []),
       { to: "/cockpit", label: "Cockpit", group: "Überblick", icon: Gauge },
       { to: "/portfolio", label: "Portfolio", group: "Überblick", icon: Building2 },
       { to: "/buchhaltung", label: "Buchhaltung", group: "Finanzen", icon: WalletCards },
@@ -296,7 +298,6 @@ function AppShell() {
       { to: "/steuer", label: "Steuer", group: "Finanzen", icon: Euro },
       { to: "/auswertungen", label: "Auswertungen", group: "Finanzen", icon: BarChart3 },
       { to: "/mieteruebersicht", label: "Mieteingang", group: "Mieter", icon: Users },
-      { to: "/mieter-anlegen", label: "Mieter anlegen", group: "Mieter", icon: UserPlus },
       { to: "/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
       { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
       { to: "/mahnwesen", label: "Mahnwesen", group: "Mieter", icon: Bell },
@@ -304,15 +305,15 @@ function AppShell() {
       { to: "/nebenkosten", label: "NK-Abrechnungen", group: "Verwaltung", icon: ReceiptText },
       { to: "/datenpruefung", label: "Datenprüfung", group: "Verwaltung", icon: ShieldCheck },
     ],
-    [],
+    [isAdmin],
   );
 
   const navGroups = useMemo(
     () =>
-      ["Überblick", "Finanzen", "Mieter", "Verwaltung"].map((group) => ({
+      ["Administrator", "Überblick", "Finanzen", "Mieter", "Verwaltung"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
-      })),
+      })).filter((group) => group.items.length > 0),
     [navItems],
   );
 
@@ -593,6 +594,7 @@ export default function App() {
         />
 
         <Route path="/buchungen" element={<EntryAdd />} />
+        <Route path="/administrator" element={<Administrator />} />
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/mieter-anlegen" element={<MieterAnlegen />} />
         <Route path="/leerstand" element={<Leerstand />} />

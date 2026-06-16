@@ -664,6 +664,174 @@ button, a { -webkit-tap-highlight-color: transparent; }
   opacity: .58;
 }
 
+.admin-page {
+  display: grid;
+  gap: 18px;
+}
+.admin-hero {
+  border: 1px solid #e7ddcf;
+  border-radius: 22px;
+  background: rgba(255,255,255,.86);
+  padding: 22px;
+  box-shadow: 0 14px 32px rgba(15,23,42,.06);
+}
+.admin-hero span {
+  color: #7f1d1d;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.admin-hero h1 {
+  margin: 6px 0 0;
+  font-size: clamp(28px, 3vw, 42px);
+  line-height: 1.05;
+}
+.admin-hero p {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-weight: 750;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr);
+  gap: 18px;
+  align-items: start;
+}
+.admin-stack {
+  display: grid;
+  gap: 18px;
+}
+.admin-panel,
+.admin-denied {
+  border: 1px solid #e7ddcf;
+  border-radius: 22px;
+  background: rgba(255,255,255,.9);
+  padding: 18px;
+  box-shadow: 0 12px 28px rgba(15,23,42,.055);
+}
+.admin-denied {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  color: #334155;
+}
+.admin-panel-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.admin-panel-head svg {
+  color: #7f1d1d;
+  margin-top: 2px;
+}
+.admin-panel-head h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+}
+.admin-panel-head p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-form-grid.one {
+  grid-template-columns: 1fr;
+}
+.admin-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 950;
+}
+.admin-form-grid input,
+.admin-form-grid select,
+.admin-form-grid textarea {
+  width: 100%;
+  border: 1px solid #d5dfeb;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  padding: 10px 11px;
+  font-size: 14px;
+  font-weight: 750;
+}
+.admin-wide {
+  grid-column: 1 / -1;
+}
+.admin-check {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px !important;
+  color: #334155 !important;
+}
+.admin-check input {
+  width: 18px;
+  height: 18px;
+}
+.admin-primary,
+.admin-link-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+  border: 1px solid #111827;
+  border-radius: 13px;
+  background: #111827;
+  color: #fff;
+  padding: 10px 15px;
+  font-size: 14px;
+  font-weight: 950;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-primary:disabled {
+  cursor: progress;
+  opacity: .65;
+}
+.admin-message {
+  margin-top: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 850;
+}
+.admin-message.error {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+@media(max-width: 1100px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media(max-width: 640px) {
+  .admin-hero,
+  .admin-panel,
+  .admin-denied {
+    border-radius: 18px;
+    padding: 14px;
+  }
+  .admin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Leerstand in der Mieterprüfung: eigener neutraler Zustand zwischen bezahlt und fehlt. */
 .tenant-row.is-vacant { background: #f4f4f5 !important; }
 .tenant-row.is-vacant .tenant-status span { background: #e4e4e7 !important; color: #3f3f46 !important; border: 1px solid #d4d4d8; }
