@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
+import { displayFinanceCategory } from "../lib/financeEntryLabels";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
@@ -435,20 +436,20 @@ export default function Monate() {
     return Array.from(
       new Set(
         rows
-          .map((r) => (r.category?.trim() ? r.category.trim() : "Ohne Kategorie"))
+          .map((r) => displayFinanceCategory(r, objectLabelMap.get(r.objekt_code ?? "") ?? r.objekt_code))
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, "de"));
-  }, [rows]);
+  }, [rows, objectLabelMap]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return rows.filter((r) => {
-      const category = r.category?.trim() || "Ohne Kategorie";
       const note = r.note?.trim() || "";
       const objectCode = r.objekt_code?.trim() || "";
       const objectLabel = objectLabelMap.get(objectCode)?.trim() || "";
+      const category = displayFinanceCategory(r, objectLabel || objectCode);
       const typeLabel = r.entry_type === "income" ? "einnahme" : "ausgabe";
 
       const matchesType = typeFilter === "all" ? true : r.entry_type === typeFilter;
@@ -489,8 +490,8 @@ export default function Monate() {
 
         case "category":
           return compareStrings(
-            a.category?.trim() || "Ohne Kategorie",
-            b.category?.trim() || "Ohne Kategorie",
+            displayFinanceCategory(a, objectLabelMap.get(a.objekt_code ?? "") ?? a.objekt_code),
+            displayFinanceCategory(b, objectLabelMap.get(b.objekt_code ?? "") ?? b.objekt_code),
             sortDirection
           );
 
@@ -581,7 +582,7 @@ export default function Monate() {
         groupMode === "object"
           ? objectLabelMap.get(objectCode) ?? (objectCode || "Ohne Objekt")
           : groupMode === "category"
-          ? row.category?.trim() || "Ohne Kategorie"
+          ? displayFinanceCategory(row, objectLabelMap.get(objectCode) ?? objectCode)
           : groupMode === "type"
           ? row.entry_type === "income" ? "Einnahmen" : "Ausgaben"
           : "Alle Buchungen";
@@ -895,7 +896,7 @@ export default function Monate() {
             Objekt: objectLabel,
             Objektcode: objectCode || "—",
             Typ: r.entry_type === "income" ? "Einnahme" : "Ausgabe",
-            Kategorie: r.category?.trim() || "Ohne Kategorie",
+            Kategorie: displayFinanceCategory(r, objectLabel),
             Betrag: signedAmount.toLocaleString("de-DE", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
@@ -929,7 +930,7 @@ export default function Monate() {
         Objekt: objectLabel,
         Objektcode: objectCode || "—",
         Typ: r.entry_type === "income" ? "Einnahme" : "Ausgabe",
-        Kategorie: r.category?.trim() || "Ohne Kategorie",
+        Kategorie: displayFinanceCategory(r, objectLabel),
         Betrag: signedAmount.toLocaleString("de-DE", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
@@ -1574,7 +1575,7 @@ export default function Monate() {
                       </td>
 
                       <td style={{ padding: 10 }}>
-                        {r.category?.trim() || "Ohne Kategorie"}
+                        {displayFinanceCategory(r, objectLabel)}
                       </td>
 
                       <td

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
   isVacancyActiveInRange,
@@ -358,7 +359,7 @@ function isClearlyExcludedFromRent(booking: FinanceEntry): boolean {
 
 function isServiceChargeRentComponent(booking: FinanceEntry): boolean {
   const text = normalizeReferenceText(bookingReferenceText(booking));
-  return text.includes("nebenkosten") || text.includes("betriebskosten") || text.includes("hausgeld") || text.includes("nk");
+  return text.includes("mietbestandteil nk") || text.includes("nebenkosten") || text.includes("betriebskosten") || text.includes("hausgeld") || text.includes("nk");
 }
 
 function isHohenloherRentComponent(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
@@ -1188,7 +1189,7 @@ export default function Mietuebersicht() {
                       <div className="tenant-status"><span>{statusLabel(row.status)}</span></div>
                       <div className="tenant-unit"><small>{row.periodLabel}</small><b>{row.label}</b>{row.unitLabel ? <em style={{ display: "block", marginTop: 4, color: "#0f172a", fontStyle: "normal", fontWeight: 900 }}>{row.unitLabel}</em> : null}{row.referenceLabel && row.referenceLabel !== row.unitLabel ? <small style={{ display: "block", marginTop: 3 }}>Betreff-Referenz: {row.referenceLabel}</small> : null}</div>
                       <div className="tenant-amount"><small>Mieteingang</small><b>{vacant ? "Leerstand" : formatCurrency(row.paidAmount)}</b>{vacant && row.vacancyReason ? <small>{row.vacancyReason}</small> : null}</div>
-                      <div className="tenant-date"><small>Sollmiete</small><b>{row.expectedAmount === null ? "—" : formatCurrency(row.expectedAmount)}</b><small style={{ marginTop: 4 }}>{row.expectedSource}</small><small style={{ marginTop: 4 }}>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
+                      <div className="tenant-date"><small>Sollmiete</small><b>{row.expectedAmount === null ? "—" : formatCurrency(row.expectedAmount)}</b><small style={{ marginTop: 4 }}>{row.expectedSource}</small>{normalizeReferenceText(row.label).includes("hohenloher") ? <small style={{ marginTop: 4 }}>{MIETBESTANDTEIL_NK_CATEGORY}: 270,00 € als Mietbestandteil</small> : null}<small style={{ marginTop: 4 }}>Letzter Eingang</small><b>{formatDate(row.lastBookingDate)}</b></div>
                     </div>
                     <div className="tenant-contact-grid" title="Mieterdaten werden zentral unter Mieter anlegen gepflegt">
                       <div><span>Vorname</span><b>{tenant.firstName || "—"}</b></div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Download, FileText, Printer, RefreshCw, Search } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
+import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { parseLocaleNumber } from "../utils/numberParser";
 
 type EntryType = "income" | "expense";
@@ -327,6 +328,17 @@ function classifyEntryByRules(entry: EntryRow, objectLabel: string): ClassifiedE
   const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
 
   if (entry.entry_type === "income") {
+    if (isHohenloherMietbestandteilNk(entry, objectLabel)) {
+      return {
+        ...entry,
+        category: MIETBESTANDTEIL_NK_CATEGORY,
+        object_label: objectLabel,
+        tax_group: "Mieteinnahmen / Mietbestandteil-NK",
+        tax_hint: "Anlage V: Nebenkosten-Vorauszahlung als Bestandteil der Gesamtmiete",
+        relevance: "tax",
+      };
+    }
+
     if (includesAny(text, ["miete", "kaltmiete", "warmmiete", "pacht"])) {
       return {
         ...entry,
