@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type MoveProcessType = "einzug" | "auszug" | "wechsel";
 export type MoveProcessStatus = "offen" | "in_bearbeitung" | "erledigt" | "archiviert";
@@ -96,6 +97,12 @@ async function getCurrentUserId(): Promise<string> {
   return userId;
 }
 
+async function isCurrentUserReadonly(): Promise<boolean> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return isReadonlyApprovalEmail(data.user?.email);
+}
+
 function tenantName(row: ContractRow): string {
   const tenant = row.tenant_profiles;
   const personal = [tenant?.first_name, tenant?.last_name].filter(Boolean).join(" ").trim();
@@ -104,13 +111,14 @@ function tenantName(row: ContractRow): string {
 
 export async function listMoveContractOptions(): Promise<MoveContractOption[]> {
   const userId = await getCurrentUserId();
-  const { data, error } = await supabase
+  let query = supabase
     .from("tenant_contracts")
     .select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,tenant_profiles(tenant_number,first_name,last_name,company_name)")
-    .eq("user_id", userId)
     .eq("is_deleted", false)
     .order("updated_at", { ascending: false })
     .limit(250);
+  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -129,12 +137,13 @@ export async function listMoveContractOptions(): Promise<MoveContractOption[]> {
 
 export async function listMoveProcesses(): Promise<MoveProcess[]> {
   const userId = await getCurrentUserId();
-  const { data, error } = await supabase
+  let query = supabase
     .from("move_processes")
     .select("*")
-    .eq("user_id", userId)
     .order("handover_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
+  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []) as MoveProcess[];

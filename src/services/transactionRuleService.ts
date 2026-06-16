@@ -1,6 +1,7 @@
 import { clearAppDataCache } from "../lib/appCache";
 import { supabase } from "../lib/supabase";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type RuleEntryType = "income" | "expense";
 
@@ -84,15 +85,21 @@ async function getCurrentUserId(): Promise<string> {
   return userId;
 }
 
+async function isCurrentUserReadonly(): Promise<boolean> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return isReadonlyApprovalEmail(data.user?.email);
+}
+
 export async function listTransactionRules(includeInactive = true): Promise<TransactionRule[]> {
   const userId = await getCurrentUserId();
   let query = supabase
     .from("transaction_rules")
     .select("*")
-    .eq("user_id", userId)
     .order("priority", { ascending: true })
     .order("created_at", { ascending: false });
 
+  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
   if (!includeInactive) {
     query = query.eq("is_active", true);
   }

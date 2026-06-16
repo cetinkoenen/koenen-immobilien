@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type VacancyStatus = "active" | "planned" | "ended";
 export type VacancyType = "manual" | "contract_ended" | "notice" | "other";
@@ -70,6 +71,12 @@ async function getCurrentUserId(): Promise<string> {
   return userId;
 }
 
+async function isCurrentUserReadonly(): Promise<boolean> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return isReadonlyApprovalEmail(data.user?.email);
+}
+
 export function isVacancyActiveInRange(vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status">, start: string, end: string): boolean {
   if (vacancy.status === "ended") return false;
   if (vacancy.start_date > end) return false;
@@ -122,10 +129,10 @@ export async function listVacancies(filters: VacancyFilters = {}): Promise<UnitV
   let query = supabase
     .from("unit_vacancies")
     .select("*")
-    .eq("user_id", userId)
     .eq("is_deleted", false)
     .order("start_date", { ascending: false });
 
+  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
   if (filters.propertyId) query = query.eq("property_id", filters.propertyId);
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
   if (filters.to) query = query.lte("start_date", filters.to);

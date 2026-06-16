@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type TenantStatus = "active" | "notice" | "former" | "prospect";
 export type RentalContractStatus = "active" | "vacant" | "ended" | "planned";
@@ -100,15 +101,22 @@ async function getCurrentUserId(): Promise<string> {
   return userId;
 }
 
+async function isCurrentUserReadonly(): Promise<boolean> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return isReadonlyApprovalEmail(data.user?.email);
+}
+
 export async function listTenantProfiles(limit = 20): Promise<TenantProfile[]> {
   const userId = await getCurrentUserId();
-  const { data, error } = await supabase
+  let query = supabase
     .from("tenant_profiles")
     .select("*")
-    .eq("user_id", userId)
     .eq("is_deleted", false)
     .order("updated_at", { ascending: false })
     .limit(limit);
+  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []) as TenantProfile[];

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type PropertyExtraInfo = {
   property_id?: string;
@@ -131,7 +132,8 @@ export async function fetchPropertyExtras(propertyIds?: string[]): Promise<Recor
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) return {};
-  let query = supabase.from("property_extra_info").select("*").eq("user_id", user.id);
+  let query = supabase.from("property_extra_info").select("*");
+  if (!isReadonlyApprovalEmail(user.email)) query = query.eq("user_id", user.id);
   if (propertyIds && propertyIds.length > 0) query = query.in("property_id", propertyIds);
   const { data, error } = await query;
   if (error) { console.warn("property_extra_info load skipped:", error.message); return {}; }
