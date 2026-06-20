@@ -11,6 +11,13 @@ import {
 } from "../services/vacancyService";
 
 type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
+type TenantContractInfo = {
+  id: string;
+  totalRent: number | null;
+  coldRent: number | null;
+  operatingCosts: number | null;
+  rentType: string | null;
+};
 type RentStatus = "paid" | "partial" | "missing" | "inactive" | "vacant";
 type PeriodMode = "month" | "year";
 type OverviewRow = {
@@ -39,6 +46,10 @@ type TenantContractProfileRow = {
   property_id: string | null;
   object_code: string | null;
   unit_label: string | null;
+  rent_type: string | null;
+  cold_rent: number | null;
+  operating_costs: number | null;
+  total_rent: number | null;
   start_date: string | null;
   end_date: string | null;
   status: string | null;
@@ -51,6 +62,28 @@ type TenantContractProfileRow = {
     mobile: string | null;
   } | null;
 };
+
+function contractRentAmount(contract: TenantContractProfileRow | TenantContractInfo | null | undefined): number | null {
+  if (!contract) return null;
+  const totalRent = "total_rent" in contract ? Number(contract.total_rent) : Number(contract.totalRent);
+  if (Number.isFinite(totalRent) && totalRent > 0) return totalRent;
+
+  const coldRent = "cold_rent" in contract ? Number(contract.cold_rent) : Number(contract.coldRent);
+  const operatingCosts = "operating_costs" in contract ? Number(contract.operating_costs) : Number(contract.operatingCosts);
+  const summed = (Number.isFinite(coldRent) ? coldRent : 0) + (Number.isFinite(operatingCosts) ? operatingCosts : 0);
+  return summed > 0 ? summed : null;
+}
+
+function tenantContractInfoFromContract(contract: TenantContractProfileRow | undefined): TenantContractInfo | null {
+  if (!contract) return null;
+  return {
+    id: contract.id,
+    totalRent: contract.total_rent == null ? null : Number(contract.total_rent),
+    coldRent: contract.cold_rent == null ? null : Number(contract.cold_rent),
+    operatingCosts: contract.operating_costs == null ? null : Number(contract.operating_costs),
+    rentType: contract.rent_type ?? null,
+  };
+}
 
 type PortfolioPropertyRow = {
   id: string;
@@ -824,6 +857,7 @@ export default function Mietuebersicht() {
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
+  const [tenantContracts, setTenantContracts] = useState<Record<string, TenantContractInfo>>({});
   const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
   const [portfolioRentals, setPortfolioRentals] = useState<PortfolioRentalRow[]>([]);
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -973,7 +1007,7 @@ export default function Mietuebersicht() {
       try {
         const { data, error } = await supabase
           .from("tenant_contracts")
-          .select("id,property_id,object_code,unit_label,start_date,end_date,status,tenant_profiles(first_name,last_name,company_name,email,phone,mobile)")
+          .select("id,property_id,object_code,unit_label,rent_type,cold_rent,operating_costs,total_rent,start_date,end_date,status,tenant_profiles(first_name,last_name,company_name,email,phone,mobile)")
           .eq("is_deleted", false)
           .in("status", ["active", "planned", "ended"])
           .order("start_date", { ascending: false, nullsFirst: false });
@@ -985,6 +1019,7 @@ export default function Mietuebersicht() {
           isContractInMonth(contract, month.start, month.end),
         );
         const nextTenantInfo: Record<string, TenantInfo> = {};
+        const nextTenantContracts: Record<string, TenantContractInfo> = {};
 
         for (const object of sourceObjects) {
           const units = getUnitDefinitions(object.label);
@@ -992,15 +1027,20 @@ export default function Mietuebersicht() {
             const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
             const contract = contracts.find((candidate) => contractMatchesUnit(candidate, object, unit));
             nextTenantInfo[tenantKey] = tenantInfoFromContract(contract);
+            const contractInfo = tenantContractInfoFromContract(contract);
+            if (contractInfo) nextTenantContracts[tenantKey] = contractInfo;
             if (units.length === 1) nextTenantInfo[object.id] = nextTenantInfo[tenantKey];
+            if (units.length === 1 && contractInfo) nextTenantContracts[object.id] = contractInfo;
           }
         }
 
         setTenantInfo(nextTenantInfo);
+        setTenantContracts(nextTenantContracts);
         setStatus((prev) => ({ ...prev, __global: "Mieterdaten aus tenant_profiles/tenant_contracts geladen." }));
       } catch (error) {
         if (cancelled) return;
         setTenantInfo({});
+        setTenantContracts({});
         setStatus((prev) => ({
           ...prev,
           __global: "Mieterstammdaten konnten nicht geladen werden. Bitte tenant_profiles/tenant_contracts prüfen.",
@@ -1045,6 +1085,7 @@ export default function Mietuebersicht() {
           return units.map((unit) => {
             const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
             const tenantForMatch = tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
+            const tenantContract = tenantContracts[tenantKey] ?? tenantContracts[object.id] ?? null;
             const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
             let unitBookings = relevantBookings.filter(unit.matcher);
 
@@ -1087,12 +1128,17 @@ export default function Mietuebersicht() {
               });
             }
             const rentalReference = expectedRentFromRentals(portfolioRentals, objectCandidateIds, unit, period.start, period.end);
-            const expectedAmount = rentalReference.expectedAmount;
-            const expectedSource = rentalReference.source;
-            const inactive = rentalReference.activeRentalCount === 0 || isInactiveForRentMonth(object.label, period.start);
+            const contractExpectedAmount = contractRentAmount(tenantContract);
+            const expectedAmount = rentalReference.expectedAmount ?? contractExpectedAmount;
+            const expectedSource = rentalReference.expectedAmount !== null
+              ? rentalReference.source
+              : contractExpectedAmount !== null
+                ? "Mieter anlegen > Mietvertrag"
+                : rentalReference.source;
             const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, expectedAmount);
             const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
-            const paidAmount = vacancy || inactive ? 0 : bookingAmount;
+            const inactive = !vacancy && bookingAmount <= 0 && !tenantContract && (rentalReference.activeRentalCount === 0 || isInactiveForRentMonth(object.label, period.start));
+            const paidAmount = vacancy ? 0 : bookingAmount;
             const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
             const lastBookingDate = lilienthalerAllocation?.lastBookingDate ?? (sortedDates.length ? sortedDates[sortedDates.length - 1] : null);
 
@@ -1117,7 +1163,7 @@ export default function Mietuebersicht() {
           });
         });
       }),
-    [sourceObjects, appData, portfolioProperties, monthBookings, displayedPeriods, tenantInfo, vacancies, portfolioRentals]
+    [sourceObjects, appData, portfolioProperties, monthBookings, displayedPeriods, tenantInfo, tenantContracts, vacancies, portfolioRentals]
   );
 
   const filteredRows = useMemo(() => {
