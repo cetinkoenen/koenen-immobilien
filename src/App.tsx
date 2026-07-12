@@ -14,17 +14,27 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  BookOpenCheck,
+  BriefcaseBusiness,
   Building2,
+  CalendarCheck,
+  ClipboardList,
   DoorOpen,
   Euro,
-  Gauge,
+  FileText,
+  FolderKanban,
+  FolderOpen,
   KeyRound,
   Landmark,
+  LayoutDashboard,
+  ListChecks,
   Menu,
+  PieChart,
   PlusCircle,
   ReceiptText,
   Settings2,
   ShieldCheck,
+  UserCog,
   Users,
   WalletCards,
   X,
@@ -148,11 +158,27 @@ function sidebarNavLinkClass(isActive: boolean): string {
   ].join(" ");
 }
 
+type ShellNavItem = {
+  to: string;
+  label: string;
+  group: string;
+  icon: LucideIcon;
+  end?: boolean;
+};
+
 const groupAccent: Record<string, string> = {
   Administrator: "text-rose-300",
+  Dashboard: "text-sky-300",
+  Immobilien: "text-cyan-300",
+  Mieter: "text-emerald-300",
+  Buchhaltung: "text-violet-300",
+  Nebenkosten: "text-amber-300",
+  Finanzierung: "text-blue-300",
+  Organisation: "text-teal-300",
+  Berichte: "text-indigo-300",
+  System: "text-slate-300",
   Überblick: "text-sky-300",
   Finanzen: "text-violet-300",
-  Mieter: "text-emerald-300",
   Verwaltung: "text-amber-300",
 };
 
@@ -277,6 +303,168 @@ function NebenkostenIndexPage() {
   );
 }
 
+function ModuleHubPage({
+  eyebrow,
+  title,
+  description,
+  links,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  links: Array<{ to: string; label: string; description: string; icon: LucideIcon }>;
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">{title}</h1>
+        <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{description}</p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {links.map((link) => {
+          const Icon = link.icon;
+          return (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className="group rounded-[22px] border border-slate-200 bg-white p-5 text-slate-900 no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-800 transition group-hover:bg-slate-900 group-hover:text-white">
+                  <Icon size={20} />
+                </div>
+                <ArrowRight size={18} className="mt-2 text-slate-400 transition group-hover:text-slate-900" />
+              </div>
+              <h2 className="mt-5 text-lg font-black text-slate-950">{link.label}</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{link.description}</p>
+            </NavLink>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+function MieterHubPage() {
+  return (
+    <ModuleHubPage
+      eyebrow="Mietermanagement"
+      title="Mieter"
+      description="Zentrale Mieter-Navigation. Die Stammdaten, Verträge und Zahlungskontrollen bleiben in den bestehenden Modulen."
+      links={[
+        { to: "/mieter/mieteingang", label: "Zahlungen", description: "Mieteingänge aus Buchhaltung und Vermietungszeiträumen prüfen.", icon: WalletCards },
+        { to: "/mieter/stammdaten", label: "Stammdaten", description: "Mieter anlegen und vorhandene Mieterstammdaten pflegen.", icon: Users },
+        { to: "/mieter/leerstand", label: "Leerstand", description: "Leerstände und nicht aktive Einheiten verwalten.", icon: DoorOpen },
+        { to: "/mieter/ein-auszug", label: "Ein-/Auszug", description: "Übergaben, Prozesse und Historie rund um Mieterwechsel.", icon: KeyRound },
+        { to: "/mieter/mahnwesen", label: "Mahnwesen", description: "Offene Posten und Mahnprozess aus bestehenden Daten.", icon: Bell },
+      ]}
+    />
+  );
+}
+
+function BuchhaltungHubPage() {
+  return (
+    <ModuleHubPage
+      eyebrow="Single Source of Truth"
+      title="Buchhaltung"
+      description="Buchungen bleiben die wichtigste Datenquelle. Dieses Modul ordnet Transaktionen, Erfassung, Regeln und Auswertungen."
+      links={[
+        { to: "/buchhaltung/transaktionen", label: "Transaktionen", description: "Vorhandene Buchhaltungsübersicht mit Einnahmen und Ausgaben.", icon: WalletCards },
+        { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", description: "Buchungen über das bestehende Erfassungsmodul anlegen.", icon: PlusCircle },
+        { to: "/buchhaltung/regeln", label: "Regeln", description: "Transaktionsregeln und Zuordnungen verwalten.", icon: Settings2 },
+        { to: "/buchhaltung/mahnwesen", label: "Mahnwesen", description: "Offene Posten über das vorhandene Mahnwesen prüfen.", icon: Bell },
+        { to: "/berichte", label: "Berichte", description: "Reports und Auswertungen aus vorhandenen Datenquellen.", icon: BarChart3 },
+      ]}
+    />
+  );
+}
+
+function VermoegenHubPage() {
+  return (
+    <ModuleHubPage
+      eyebrow="Aggregierte Sicht"
+      title="Vermögen"
+      description="Investor- und Bankensicht aus vorhandenen Immobilien-, Buchhaltungs-, Darlehens- und Steuerdaten. Keine eigene Datenhaltung."
+      links={[
+        { to: "/immobilien", label: "Immobilienbestand", description: "Objekte, Einheiten und Objektakten aus dem Portfolio.", icon: Building2 },
+        { to: "/darlehen", label: "Darlehen", description: "Finanzierung, Restschuld und Zuordnung zu Immobilien.", icon: Landmark },
+        { to: "/buchhaltung", label: "Cashflow", description: "Zahlungsströme aus der bestehenden Buchhaltung.", icon: WalletCards },
+        { to: "/steuer", label: "Steuer", description: "Steuerliche Auswertungen aus dem bestehenden Steuercenter.", icon: Euro },
+        { to: "/berichte", label: "Investment-Reports", description: "Auswertungen als Grundlage für Investor-Informationen.", icon: PieChart },
+      ]}
+    />
+  );
+}
+
+function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "produktivitaet" | "einstellungen" | "benutzer" | "kautionen" }) {
+  const configs = {
+    ticketing: {
+      eyebrow: "Arbeitsorganisation",
+      title: "Ticketing",
+      description: "Tickets und Vorgänge werden als Organisationsschicht eingeordnet. Bestehende Aufgaben- und Prüfmodule bleiben die Grundlage.",
+      links: [
+        { to: "/dashboard", label: "Heute wichtig", description: "Offene Vorgänge und Hinweise im Dashboard prüfen.", icon: LayoutDashboard },
+        { to: "/datenpruefung", label: "Datenprüfung", description: "Bestehende Prüfseite unverändert nutzen.", icon: ShieldCheck },
+        { to: "/mieter/mahnwesen", label: "Mahnwesen", description: "Zahlungsbezogene Vorgänge aus offenen Posten.", icon: Bell },
+      ],
+    },
+    dokumente: {
+      eyebrow: "Dokumentenmanagement",
+      title: "Dokumentenmanagement",
+      description: "Dokumente bleiben an Immobilien, Mietern, Buchungen und Verträgen verknüpft. Diese Seite bündelt die Zugänge.",
+      links: [
+        { to: "/immobilien", label: "Immobilien-Dokumente", description: "Objektbezogene Unterlagen über Portfolio und Objektakten.", icon: FolderOpen },
+        { to: "/mieter", label: "Mieter-Dokumente", description: "Mieterbezogene Dokumente über Mieterstammdaten und Prozesse.", icon: Users },
+        { to: "/buchhaltung", label: "Buchungsbelege", description: "Belege und Zahlungsinformationen über Buchhaltung.", icon: ReceiptText },
+        { to: "/darlehen", label: "Darlehensunterlagen", description: "Finanzierungsdokumente über Darlehen.", icon: Landmark },
+      ],
+    },
+    produktivitaet: {
+      eyebrow: "Querschnitt",
+      title: "Produktivität",
+      description: "Aufgaben, Erinnerungen, Workflows und Automatisierungen werden über bestehende Module erreichbar gemacht.",
+      links: [
+        { to: "/dashboard", label: "Aufgaben", description: "Cockpit-Aufgaben und wichtige Hinweise.", icon: ListChecks },
+        { to: "/automatisierung", label: "Automatisierung", description: "Bestehende Automatisierungs- und Reporting-Zugänge.", icon: CalendarCheck },
+        { to: "/ticketing", label: "Tickets", description: "Organisatorische Vorgänge aus Prüf- und Fachmodulen.", icon: FolderKanban },
+      ],
+    },
+    einstellungen: {
+      eyebrow: "System",
+      title: "Einstellungen",
+      description: "Konfigurationen werden nur logisch gruppiert. Vorhandene Einstellungsseiten bleiben erhalten.",
+      links: [
+        { to: "/buchhaltung/regeln", label: "Transaktionsregeln", description: "Regeln und Zuordnungen für Buchungen.", icon: Settings2 },
+        { to: "/datenpruefung", label: "Datenprüfung", description: "Qualitätssicherung der vorhandenen Daten.", icon: ShieldCheck },
+        { to: "/benutzer", label: "Benutzer", description: "Benutzer- und Rollenverwaltung.", icon: UserCog },
+      ],
+    },
+    benutzer: {
+      eyebrow: "Zugriff",
+      title: "Benutzer",
+      description: "Benutzerübersicht für Admin und Lesezugänge. Rechteverwaltung bleibt in der bestehenden Administrator-Seite.",
+      links: [
+        { to: "/administrator", label: "Administrator", description: "Admin-Funktionen, Benutzer und Immobilienanlage.", icon: ShieldCheck },
+        { to: "/dashboard", label: "Read-Only Übersicht", description: "Lesende Nutzer verwenden die App als Informationsquelle.", icon: BookOpenCheck },
+      ],
+    },
+    kautionen: {
+      eyebrow: "Buchhaltung",
+      title: "Kautionen",
+      description: "Kautionsrelevante Informationen werden über bestehende Buchungen, Mieter und Berichte eingeordnet.",
+      links: [
+        { to: "/buchhaltung/transaktionen", label: "Buchungen", description: "Kautionsbuchungen über bestehende Transaktionen prüfen.", icon: WalletCards },
+        { to: "/mieter/stammdaten", label: "Mieter", description: "Kautionsangaben in den vorhandenen Mieterstammdaten.", icon: Users },
+        { to: "/berichte", label: "Berichte", description: "Auswertungen und Nachweise aus bestehenden Reports.", icon: BarChart3 },
+      ],
+    },
+  } satisfies Record<string, { eyebrow: string; title: string; description: string; links: Array<{ to: string; label: string; description: string; icon: LucideIcon }> }>;
+
+  return <ModuleHubPage {...configs[kind]} />;
+}
+
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
@@ -287,30 +475,38 @@ function AppShell() {
     ? new URLSearchParams(location.search).get("view") ?? "cockpit"
     : "";
 
-  const navItems = useMemo<Array<{ to: string; label: string; group: string; icon: LucideIcon; end?: boolean }>>(
+  const navItems = useMemo<ShellNavItem[]>(
     () => [
       ...(isAdmin ? [{ to: "/administrator", label: "Administrator", group: "Administrator", icon: ShieldCheck }] : []),
-      { to: "/cockpit", label: "Cockpit", group: "Überblick", icon: Gauge },
-      { to: "/portfolio", label: "Portfolio", group: "Überblick", icon: Building2 },
-      { to: "/buchhaltung", label: "Buchhaltung", group: "Finanzen", icon: WalletCards },
-      { to: "/buchungen", label: "Neue Buchung", group: "Finanzen", icon: PlusCircle },
-      { to: "/transaktionsregeln", label: "Regeln", group: "Finanzen", icon: Settings2 },
-      { to: "/steuer", label: "Steuer", group: "Finanzen", icon: Euro },
-      { to: "/auswertungen", label: "Auswertungen", group: "Finanzen", icon: BarChart3 },
-      { to: "/mieteruebersicht", label: "Mieteingang", group: "Mieter", icon: Users },
-      { to: "/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
-      { to: "/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
-      { to: "/mahnwesen", label: "Mahnwesen", group: "Mieter", icon: Bell },
-      { to: "/darlehensuebersicht", label: "Darlehen", group: "Verwaltung", icon: Landmark },
-      { to: "/nebenkosten", label: "NK-Abrechnungen", group: "Verwaltung", icon: ReceiptText },
-      { to: "/datenpruefung", label: "Datenprüfung", group: "Verwaltung", icon: ShieldCheck },
+      { to: "/dashboard", label: "Dashboard", group: "Dashboard", icon: LayoutDashboard, end: true },
+      { to: "/immobilien", label: "Immobilien", group: "Immobilien", icon: Building2 },
+      { to: "/mieter", label: "Mieter", group: "Mieter", icon: Users, end: true },
+      { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: WalletCards },
+      { to: "/mieter/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
+      { to: "/mieter/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
+      { to: "/buchhaltung", label: "Buchhaltung", group: "Buchhaltung", icon: WalletCards, end: true },
+      { to: "/buchhaltung/transaktionen", label: "Transaktionen", group: "Buchhaltung", icon: ReceiptText },
+      { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", group: "Buchhaltung", icon: PlusCircle },
+      { to: "/buchhaltung/regeln", label: "Regeln", group: "Buchhaltung", icon: Settings2 },
+      { to: "/nebenkosten", label: "Nebenkosten", group: "Nebenkosten", icon: ClipboardList },
+      { to: "/kautionen", label: "Kautionen", group: "Nebenkosten", icon: KeyRound },
+      { to: "/darlehen", label: "Darlehen", group: "Finanzierung", icon: Landmark },
+      { to: "/vermoegen", label: "Vermögen", group: "Finanzierung", icon: BriefcaseBusiness },
+      { to: "/ticketing", label: "Ticketing", group: "Organisation", icon: FolderKanban },
+      { to: "/dokumente", label: "Dokumente", group: "Organisation", icon: FileText },
+      { to: "/produktivitaet", label: "Produktivität", group: "Organisation", icon: ListChecks },
+      { to: "/berichte", label: "Berichte", group: "Berichte", icon: BarChart3 },
+      { to: "/steuer", label: "Steuer", group: "Berichte", icon: Euro },
+      { to: "/datenpruefung", label: "Datenprüfung", group: "Berichte", icon: ShieldCheck },
+      { to: "/benutzer", label: "Benutzer", group: "System", icon: UserCog },
+      { to: "/einstellungen", label: "Einstellungen", group: "System", icon: Settings2 },
     ],
     [isAdmin],
   );
 
   const navGroups = useMemo(
     () =>
-      ["Administrator", "Überblick", "Finanzen", "Mieter", "Verwaltung"].map((group) => ({
+      ["Administrator", "Dashboard", "Immobilien", "Mieter", "Buchhaltung", "Nebenkosten", "Finanzierung", "Organisation", "Berichte", "System"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
@@ -321,9 +517,9 @@ function AppShell() {
     <div className={["min-h-screen bg-[#f6f1e8] text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-slate-800 bg-[#101827] text-white shadow-2xl xl:flex">
         <NavLink
-          to="/cockpit"
+          to="/dashboard"
           className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
-          title="Zum Cockpit"
+          title="Zum Dashboard"
         >
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
             <img src={logo} alt="Könen Immobilien" className="h-full w-full object-cover" />
@@ -410,9 +606,9 @@ function AppShell() {
         <div className="mx-auto max-w-[1760px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
           <div className="flex items-center justify-between gap-3 sm:gap-5">
             <NavLink
-              to="/"
+              to="/dashboard"
               className="flex min-w-0 items-center gap-3"
-              title="Zur Hauptseite"
+              title="Zum Dashboard"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#e3d8ca] bg-[#f3eadc] shadow-sm sm:h-14 sm:w-14">
                 <img
@@ -538,9 +734,10 @@ export default function App() {
           path="/dashboard"
           element={<Cockpit />}
         />
-        <Route path="/cockpit" element={<Cockpit />} />
+        <Route path="/cockpit" element={<Navigate to="/dashboard" replace />} />
 
         <Route path="/portfolio" element={<Portfolio />} />
+        <Route path="/immobilien" element={<Portfolio />} />
         <Route
           path="/portfolio/:propertyId"
           element={<PortfolioPropertyLayout />}
@@ -554,6 +751,26 @@ export default function App() {
           <Route path="income" element={<PortfolioFinanceModules focus="income" />} />
           <Route path="capex" element={<PortfolioFinanceModules focus="capex" />} />
           <Route path="finanzen" element={<PortfolioFinance />} />
+          <Route path="energie" element={<PortfolioEnergy />} />
+          <Route path="vermietung" element={<PortfolioRenting />} />
+        </Route>
+        <Route path="/immobilien/:propertyId" element={<PortfolioPropertyLayout />}>
+          <Route index element={<Navigate to="objektakte" replace />} />
+          <Route path="uebersicht" element={<PortfolioObjectDetail />} />
+          <Route path="einheiten" element={<PortfolioDetails />} />
+          <Route path="mieter" element={<PortfolioRenting />} />
+          <Route path="leerstand" element={<Leerstand />} />
+          <Route path="finanzen" element={<PortfolioFinance />} />
+          <Route path="dokumente" element={<PortfolioObjectDetail />} />
+          <Route path="historie" element={<PortfolioObjectDetail />} />
+          <Route path="einstellungen" element={<PortfolioDetails />} />
+          <Route path="address" element={<PortfolioAddress />} />
+          <Route path="details" element={<PortfolioDetails />} />
+          <Route path="objektakte" element={<PortfolioObjectDetail />} />
+          <Route path="darlehen" element={<PortfolioFinanceModules focus="darlehen" />} />
+          <Route path="finance-pro-jahr" element={<PortfolioFinanceModules focus="finance" />} />
+          <Route path="income" element={<PortfolioFinanceModules focus="income" />} />
+          <Route path="capex" element={<PortfolioFinanceModules focus="capex" />} />
           <Route path="energie" element={<PortfolioEnergy />} />
           <Route path="vermietung" element={<PortfolioRenting />} />
         </Route>
@@ -585,9 +802,20 @@ export default function App() {
         />
 
         <Route path="/monate" element={<Monate />} />
-        <Route path="/buchhaltung" element={<Monate />} />
+        <Route path="/buchhaltung" element={<BuchhaltungHubPage />} />
+        <Route path="/buchhaltung/transaktionen" element={<Monate />} />
+        <Route path="/buchhaltung/einnahmen" element={<Monate />} />
+        <Route path="/buchhaltung/ausgaben" element={<Monate />} />
+        <Route path="/buchhaltung/neue-buchung" element={<EntryAdd />} />
+        <Route path="/buchhaltung/regeln" element={<Transaktionsregeln />} />
+        <Route path="/buchhaltung/mahnwesen" element={<Mahnwesen />} />
+        <Route path="/buchhaltung/kautionen" element={<OrganisationHubPage kind="kautionen" />} />
+        <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/nebenkosten" replace />} />
+        <Route path="/buchhaltung/berichte" element={<Navigate to="/berichte" replace />} />
+        <Route path="/buchhaltung/export" element={<Navigate to="/berichte" replace />} />
         <Route path="/steuer" element={<SteuerCenter />} />
         <Route path="/auswertungen" element={<Auswertung />} />
+        <Route path="/berichte" element={<Auswertung />} />
         <Route
           path="/auswertung"
           element={<Navigate to="/auswertungen" replace />}
@@ -595,6 +823,19 @@ export default function App() {
 
         <Route path="/buchungen" element={<EntryAdd />} />
         <Route path="/administrator" element={<Administrator />} />
+        <Route path="/mieter" element={<MieterHubPage />} />
+        <Route path="/mieter/uebersicht" element={<MieterHubPage />} />
+        <Route path="/mieter/stammdaten" element={<MieterAnlegen />} />
+        <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
+        <Route path="/mieter/zahlungen" element={<Mietuebersicht />} />
+        <Route path="/mieter/mieteingang" element={<Mietuebersicht />} />
+        <Route path="/mieter/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
+        <Route path="/mieter/historie" element={<EinAuszug />} />
+        <Route path="/mieter/ein-auszug" element={<EinAuszug />} />
+        <Route path="/mieter/notizen" element={<MieterAnlegen />} />
+        <Route path="/mieter/kommunikation" element={<Mahnwesen />} />
+        <Route path="/mieter/leerstand" element={<Leerstand />} />
+        <Route path="/mieter/mahnwesen" element={<Mahnwesen />} />
         <Route path="/mieteruebersicht" element={<Mietuebersicht />} />
         <Route path="/mieter-anlegen" element={<MieterAnlegen />} />
         <Route path="/leerstand" element={<Leerstand />} />
@@ -607,7 +848,7 @@ export default function App() {
         />
 
         <Route path="/datenpruefung" element={<Datenpruefung />} />
-        <Route path="/automatisierung" element={<Navigate to="/auswertungen" replace />} />
+        <Route path="/automatisierung" element={<Navigate to="/produktivitaet" replace />} />
 
         <Route path="/nebenkosten" element={<NebenkostenIndexPage />} />
         <Route
@@ -620,10 +861,25 @@ export default function App() {
         />
 
         <Route path="/darlehen" element={<Navigate to="/darlehensuebersicht" replace />} />
+        <Route path="/darlehen/tilgungsplan" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/zahlungen" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/restschuld" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/zinsen" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/historie" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
+        <Route path="/darlehen/immobilienzuordnung" element={<Darlehensuebersicht />} />
         <Route path="/darlehensübersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
         <Route path="/darlehensubersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
         <Route path="/darlehensuebersicht" element={<Darlehensuebersicht />} />
         <Route path="/darlehensuebersicht/:propertyId" element={<Darlehensuebersicht />} />
+
+        <Route path="/kautionen" element={<OrganisationHubPage kind="kautionen" />} />
+        <Route path="/vermoegen" element={<VermoegenHubPage />} />
+        <Route path="/ticketing" element={<OrganisationHubPage kind="ticketing" />} />
+        <Route path="/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
+        <Route path="/produktivitaet" element={<OrganisationHubPage kind="produktivitaet" />} />
+        <Route path="/benutzer" element={<OrganisationHubPage kind="benutzer" />} />
+        <Route path="/einstellungen" element={<OrganisationHubPage kind="einstellungen" />} />
       </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
