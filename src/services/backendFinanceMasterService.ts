@@ -150,7 +150,29 @@ export async function loadBackendDataQualityChecks(year = new Date().getFullYear
 
 export async function refreshBackendFinanceMaterializedViews(): Promise<RefreshMaterializedViewResult[]> {
   const { data, error } = await supabase.rpc("refresh_koenen_finance_materialized_views");
-  if (error) throw new Error(`Materialized Views konnten nicht aktualisiert werden: ${error.message}`);
+  if (error) {
+    const message = String(error.message ?? "");
+    const code = String((error as { code?: unknown }).code ?? "");
+    const normalized = message.toLowerCase();
+
+    if (
+      code === "42501" ||
+      normalized.includes("permission denied") ||
+      normalized.includes("not allowed") ||
+      normalized.includes("could not find the function") ||
+      normalized.includes("schema cache")
+    ) {
+      return [
+        {
+          view_name: "refresh_koenen_finance_materialized_views",
+          status: "service_role_only",
+        },
+      ];
+    }
+
+    throw new Error(`Materialized Views konnten nicht aktualisiert werden: ${error.message}`);
+  }
+
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     view_name: String(row.view_name ?? ""),
     status: String(row.status ?? "unknown"),

@@ -267,7 +267,10 @@ export default function Datenpruefung() {
   }, [app, loadAuditTables]);
 
   useEffect(() => {
-    void runCheck();
+    const timeoutId = window.setTimeout(() => {
+      void runCheck();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -439,6 +442,11 @@ export default function Datenpruefung() {
       const result = await refreshBackendFinanceMaterializedViews();
       setBackendRefreshKey((value) => value + 1);
       await runCheck();
+
+      if (result.some((row) => row.status === "service_role_only")) {
+        setNotice("Server-Refresh ist aus Sicherheitsgründen nur noch über Service-Role/Backend möglich. Datenprüfung wurde ohne Refresh neu geladen.");
+        return;
+      }
 
       const refreshedCount = result.filter((row) => row.status === "refreshed" || row.status === "ok").length;
       setNotice(
