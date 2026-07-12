@@ -8,6 +8,7 @@ Stand: 2026-07-12
 - Snapshot-Commit: `441c15a PRE UI REFACTOR SNAPSHOT`
 - Lokales Git-Bundle: `../backups/pre-ui-refactor-20260712.bundle`
 - Arbeitsbranch: `codex/ui-refactor-navigation`
+- Datenbank: Live-Dump wurde versucht, konnte in dieser lokalen Umgebung aber nicht erstellt werden, weil die Supabase-CLI kein Profil unter `~/.supabase/profile` gefunden hat. Datenmodelle, Migrationen und Konfigurationen sind über Git-Branch und Bundle gesichert; an der Live-Datenbank wurden keine Änderungen vorgenommen.
 
 ## Geänderte Dateien
 
