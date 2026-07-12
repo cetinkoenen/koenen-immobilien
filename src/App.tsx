@@ -18,6 +18,7 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarCheck,
+  ChevronDown,
   ClipboardList,
   DoorOpen,
   Euro,
@@ -51,7 +52,8 @@ import { isAdminEmail, isReadonlyApprovalEmail } from "./auth/accessControl";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
 import logo from "./assets/koenen-brand-logo.webp";
-import { AppDataProvider } from "./state/AppDataContext";
+import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
+import { EmptyState, KpiCard, ModuleCard, PageHeader } from "./components/ui/professional";
 import "./App.css";
 
 type AppErrorBoundaryProps = {
@@ -201,6 +203,38 @@ function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
   return <Navigate to={propertyId ? `/portfolio/${encodeURIComponent(propertyId)}/${section}` : "/portfolio"} replace />;
 }
 
+function RedirectLoanRoute() {
+  const { propertyId } = useParams<{ propertyId: string }>();
+  return <Navigate to={propertyId ? `/darlehen/${encodeURIComponent(propertyId)}` : "/darlehen"} replace />;
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("de-DE");
+}
+
+function isCurrentMonthEntry(entry: FinanceEntry, today = new Date()): boolean {
+  if (!entry.booking_date) return false;
+  const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  return entry.booking_date.startsWith(monthKey);
+}
+
+function isRentLikeEntry(entry: FinanceEntry): boolean {
+  if (entry.entry_type !== "income") return false;
+  const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
+  return text.includes("miet") || text.includes("pacht");
+}
+
 function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boolean; compact?: boolean }) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -316,32 +350,10 @@ function ModuleHubPage({
 }) {
   return (
     <div className="space-y-5">
-      <section className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
-        <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">{title}</h1>
-        <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{description}</p>
-      </section>
+      <PageHeader eyebrow={eyebrow} title={title} description={description} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {links.map((link) => {
-          const Icon = link.icon;
-          return (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              className="group rounded-[22px] border border-slate-200 bg-white p-5 text-slate-900 no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-800 transition group-hover:bg-slate-900 group-hover:text-white">
-                  <Icon size={20} />
-                </div>
-                <ArrowRight size={18} className="mt-2 text-slate-400 transition group-hover:text-slate-900" />
-              </div>
-              <h2 className="mt-5 text-lg font-black text-slate-950">{link.label}</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{link.description}</p>
-            </NavLink>
-          );
-        })}
+        {links.map((link) => <ModuleCard key={link.to} {...link} />)}
       </section>
     </div>
   );
@@ -365,19 +377,116 @@ function MieterHubPage() {
 }
 
 function BuchhaltungHubPage() {
+  const { user } = useAuth();
+  const isReadOnly = !isAdminEmail(user?.email) && isReadonlyApprovalEmail(user?.email);
+  const { entries, loading, error, getPropertyName } = useAppData();
+  const currentMonthEntries = useMemo(
+    () => entries.filter((entry) => isCurrentMonthEntry(entry)),
+    [entries],
+  );
+  const income = currentMonthEntries
+    .filter((entry) => entry.entry_type === "income")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const expenses = currentMonthEntries
+    .filter((entry) => entry.entry_type === "expense")
+    .reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+  const rentIncome = currentMonthEntries
+    .filter((entry) => isRentLikeEntry(entry))
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const unassigned = currentMonthEntries.filter((entry) => !entry.object_id || !entry.category).length;
+  const recentEntries = useMemo(
+    () =>
+      [...entries]
+        .sort((a, b) => String(b.booking_date ?? "").localeCompare(String(a.booking_date ?? "")))
+        .slice(0, 6),
+    [entries],
+  );
+  const monthLabel = new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+
   return (
-    <ModuleHubPage
-      eyebrow="Single Source of Truth"
-      title="Buchhaltung"
-      description="Buchungen bleiben die wichtigste Datenquelle. Dieses Modul ordnet Transaktionen, Erfassung, Regeln und Auswertungen."
-      links={[
-        { to: "/buchhaltung/transaktionen", label: "Transaktionen", description: "Vorhandene Buchhaltungsübersicht mit Einnahmen und Ausgaben.", icon: WalletCards },
-        { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", description: "Buchungen über das bestehende Erfassungsmodul anlegen.", icon: PlusCircle },
-        { to: "/buchhaltung/regeln", label: "Regeln", description: "Transaktionsregeln und Zuordnungen verwalten.", icon: Settings2 },
-        { to: "/buchhaltung/mahnwesen", label: "Mahnwesen", description: "Offene Posten über das vorhandene Mahnwesen prüfen.", icon: Bell },
-        { to: "/berichte", label: "Berichte", description: "Reports und Auswertungen aus vorhandenen Datenquellen.", icon: BarChart3 },
-      ]}
-    />
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Single Source of Truth"
+        title="Buchhaltung"
+        description="Arbeitscockpit für Transaktionen, Monatsbewegungen, Regeln und Auswertungen. Die Buchungen bleiben die zentrale Datenquelle der App."
+      >
+        <NavLink
+          to="/buchhaltung/transaktionen"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white no-underline shadow-sm"
+        >
+          Transaktionen öffnen <ArrowRight size={16} />
+        </NavLink>
+      </PageHeader>
+
+      {error ? (
+        <div className="rounded-[22px] border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-900">
+          {error}
+        </div>
+      ) : null}
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label={`Einnahmen ${monthLabel}`} value={formatCurrency(income)} icon={WalletCards} tone="green" />
+        <KpiCard label={`Ausgaben ${monthLabel}`} value={formatCurrency(expenses)} icon={ReceiptText} tone="red" />
+        <KpiCard label="Saldo" value={formatCurrency(income - expenses)} icon={BarChart3} tone={income - expenses >= 0 ? "blue" : "amber"} />
+        <KpiCard label="Mieteingänge" value={formatCurrency(rentIncome)} detail={`${currentMonthEntries.length} Buchungen im Monat`} icon={CalendarCheck} tone="violet" />
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Arbeitsliste</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">Letzte Buchungen</h2>
+            </div>
+            {loading ? <span className="text-sm font-bold text-slate-500">Daten werden geladen...</span> : null}
+          </div>
+
+          {recentEntries.length ? (
+            <div className="mt-5 overflow-hidden rounded-[18px] border border-slate-200">
+              {recentEntries.map((entry) => (
+                <div
+                  key={`${entry.id ?? "entry"}-${entry.booking_date}-${entry.amount}`}
+                  className="grid gap-3 border-b border-slate-100 p-4 last:border-b-0 md:grid-cols-[110px_1fr_140px]"
+                >
+                  <div className="text-sm font-black text-slate-700">{formatDate(entry.booking_date)}</div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-black text-slate-950">
+                      {getPropertyName(entry.object_id) || entry.objekt_code || "Ohne Objekt"}
+                    </div>
+                    <div className="mt-1 truncate text-xs font-bold text-slate-500">
+                      {entry.category || "Ohne Kategorie"} {entry.note ? `- ${entry.note}` : ""}
+                    </div>
+                  </div>
+                  <div className={["text-left text-sm font-black md:text-right", entry.entry_type === "expense" ? "text-red-700" : "text-emerald-700"].join(" ")}>
+                    {formatCurrency(entry.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-5">
+              <EmptyState title="Noch keine Buchungen geladen" description="Sobald Buchhaltungsdaten verfügbar sind, erscheinen hier die neuesten Bewegungen." />
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <KpiCard
+            label="Zu prüfen"
+            value={unassigned}
+            detail="Buchungen ohne Objekt oder Kategorie im aktuellen Monat"
+            icon={ShieldCheck}
+            tone={unassigned ? "amber" : "green"}
+          />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <ModuleCard to="/buchhaltung/transaktionen" label="Transaktionen" description="Buchhaltungsübersicht mit Einnahmen und Ausgaben prüfen." icon={WalletCards} />
+            <ModuleCard to="/buchhaltung/neue-buchung" label="Neue Buchung" description={isReadOnly ? "Nur Admins können neue Buchungen erfassen." : "Buchungen über das bestehende Erfassungsmodul anlegen."} icon={PlusCircle} disabled={isReadOnly} />
+            <ModuleCard to="/buchhaltung/regeln" label="Regeln" description={isReadOnly ? "Nur Admins können Regeln bearbeiten." : "Transaktionsregeln und Zuordnungen verwalten."} icon={Settings2} disabled={isReadOnly} />
+            <ModuleCard to="/berichte" label="Berichte" description="Reports und Auswertungen aus vorhandenen Datenquellen." icon={BarChart3} />
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -467,6 +576,9 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
 
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
+    () => new Set(["Dashboard", "Immobilien", "Mieter", "Buchhaltung"]),
+  );
   const { user } = useAuth();
   const location = useLocation();
   const isAdmin = isAdminEmail(user?.email);
@@ -486,8 +598,10 @@ function AppShell() {
       { to: "/mieter/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
       { to: "/buchhaltung", label: "Buchhaltung", group: "Buchhaltung", icon: WalletCards, end: true },
       { to: "/buchhaltung/transaktionen", label: "Transaktionen", group: "Buchhaltung", icon: ReceiptText },
-      { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", group: "Buchhaltung", icon: PlusCircle },
-      { to: "/buchhaltung/regeln", label: "Regeln", group: "Buchhaltung", icon: Settings2 },
+      ...(!isReadOnly ? [
+        { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", group: "Buchhaltung", icon: PlusCircle },
+        { to: "/buchhaltung/regeln", label: "Regeln", group: "Buchhaltung", icon: Settings2 },
+      ] : []),
       { to: "/nebenkosten", label: "Nebenkosten", group: "Nebenkosten", icon: ClipboardList },
       { to: "/kautionen", label: "Kautionen", group: "Nebenkosten", icon: KeyRound },
       { to: "/darlehen", label: "Darlehen", group: "Finanzierung", icon: Landmark },
@@ -498,10 +612,10 @@ function AppShell() {
       { to: "/berichte", label: "Berichte", group: "Berichte", icon: BarChart3 },
       { to: "/steuer", label: "Steuer", group: "Berichte", icon: Euro },
       { to: "/datenpruefung", label: "Datenprüfung", group: "Berichte", icon: ShieldCheck },
-      { to: "/benutzer", label: "Benutzer", group: "System", icon: UserCog },
+      ...(isAdmin ? [{ to: "/benutzer", label: "Benutzer", group: "System", icon: UserCog }] : []),
       { to: "/einstellungen", label: "Einstellungen", group: "System", icon: Settings2 },
     ],
-    [isAdmin],
+    [isAdmin, isReadOnly],
   );
 
   const navGroups = useMemo(
@@ -512,6 +626,15 @@ function AppShell() {
       })).filter((group) => group.items.length > 0),
     [navItems],
   );
+
+  function toggleMobileGroup(group: string) {
+    setOpenMobileGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }
 
   return (
     <div className={["min-h-screen bg-[#f6f1e8] text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
@@ -642,11 +765,26 @@ function AppShell() {
             <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-[#e7ddcf] bg-white/90 p-3 shadow-sm xl:hidden">
               <nav className="grid gap-4">
                 {navGroups.map(({ group, items }) => (
-                  <div key={group} className="grid gap-2">
-                    <div className="px-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                      {group}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+                  <div key={group} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => toggleMobileGroup(group)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      aria-expanded={openMobileGroups.has(group)}
+                    >
+                      <span className={`text-[11px] font-black uppercase tracking-[0.16em] ${groupAccent[group] ?? "text-slate-500"}`}>
+                        {group}
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        className={[
+                          "text-slate-500 transition-transform",
+                          openMobileGroups.has(group) ? "rotate-180" : "",
+                        ].join(" ")}
+                      />
+                    </button>
+                    {openMobileGroups.has(group) ? (
+                    <div className="grid grid-cols-1 gap-2 border-t border-slate-100 p-2 sm:grid-cols-2">
                       {items.map((item) => {
                         const Icon = item.icon;
                         return (
@@ -691,6 +829,7 @@ function AppShell() {
                         );
                       })}
                     </div>
+                    ) : null}
                   </div>
                 ))}
               </nav>
@@ -860,7 +999,8 @@ export default function App() {
           element={<NebenkostenWohnungen />}
         />
 
-        <Route path="/darlehen" element={<Navigate to="/darlehensuebersicht" replace />} />
+        <Route path="/darlehen" element={<Darlehensuebersicht />} />
+        <Route path="/darlehen/:propertyId" element={<Darlehensuebersicht />} />
         <Route path="/darlehen/tilgungsplan" element={<Darlehensuebersicht />} />
         <Route path="/darlehen/zahlungen" element={<Darlehensuebersicht />} />
         <Route path="/darlehen/restschuld" element={<Darlehensuebersicht />} />
@@ -868,10 +1008,10 @@ export default function App() {
         <Route path="/darlehen/historie" element={<Darlehensuebersicht />} />
         <Route path="/darlehen/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
         <Route path="/darlehen/immobilienzuordnung" element={<Darlehensuebersicht />} />
-        <Route path="/darlehensübersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
-        <Route path="/darlehensubersicht" element={<Navigate to="/darlehensuebersicht" replace />} />
-        <Route path="/darlehensuebersicht" element={<Darlehensuebersicht />} />
-        <Route path="/darlehensuebersicht/:propertyId" element={<Darlehensuebersicht />} />
+        <Route path="/darlehensübersicht" element={<Navigate to="/darlehen" replace />} />
+        <Route path="/darlehensubersicht" element={<Navigate to="/darlehen" replace />} />
+        <Route path="/darlehensuebersicht" element={<Navigate to="/darlehen" replace />} />
+        <Route path="/darlehensuebersicht/:propertyId" element={<RedirectLoanRoute />} />
 
         <Route path="/kautionen" element={<OrganisationHubPage kind="kautionen" />} />
         <Route path="/vermoegen" element={<VermoegenHubPage />} />
