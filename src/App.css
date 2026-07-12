@@ -729,12 +729,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   pointer-events: auto;
 }
 
-.app-readonly main button:not(.tenant-mini-button):not([aria-label*="Menü"]):not([aria-label*="menu"]),
-.app-readonly main [role="button"] {
+.app-readonly main button:disabled,
+.app-readonly main [aria-disabled="true"] {
   filter: grayscale(.45);
-}
-
-.app-readonly main button:not(.tenant-mini-button):not([aria-label*="Menü"]):not([aria-label*="menu"]) {
   opacity: .58;
 }
 

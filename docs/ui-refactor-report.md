@@ -13,7 +13,19 @@ Stand: 2026-07-12
 ## Geänderte Dateien
 
 - `src/App.tsx`
+- `src/App.css`
+- `src/components/ui/professional.tsx`
 - `docs/ui-refactor-report.md`
+
+## Phase 2: Professionalisierung
+
+- Wiederverwendbare UI-Bausteine ergänzt: `PageHeader`, `ModuleCard`, `KpiCard`, `SectionPanel`, `InfoList`, `EmptyState`
+- Buchhaltung als Arbeitscockpit mit vorhandenen Buchungsdaten aufgebaut
+- Vermögen als aggregierte Sicht aus Portfolio, Buchhaltung und Darlehensdaten verbessert
+- Nebenkosten-Startseite in dieselbe Modulstruktur gebracht
+- Mobile Navigation als Akkordeon umgesetzt
+- Read-only UX verfeinert: Lesezugänge behalten Such-, Filter- und Ladeaktionen, Admin-Aktionen werden aus Navigation/Hubs entfernt oder deaktiviert
+- Darlehen auf `/darlehen` kanonisiert; alte Darlehensrouten bleiben kompatibel
 
 ## Verschobene Seiten / neue Informationsarchitektur
 

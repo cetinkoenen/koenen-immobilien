@@ -53,7 +53,7 @@ import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
-import { EmptyState, KpiCard, ModuleCard, PageHeader } from "./components/ui/professional";
+import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
 import "./App.css";
 
 type AppErrorBoundaryProps = {
@@ -166,6 +166,22 @@ type ShellNavItem = {
   group: string;
   icon: LucideIcon;
   end?: boolean;
+};
+
+type ModuleLink = {
+  to: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  badge?: string;
+  adminOnly?: boolean;
+};
+
+type ModuleHubConfig = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  links: ModuleLink[];
 };
 
 const groupAccent: Record<string, string> = {
@@ -284,55 +300,47 @@ function ProtectedAppShell() {
 
 function NebenkostenIndexPage() {
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-        <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-slate-500">
-          Nebenkostenabrechnungen
-        </p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
-          NK-Abrechnungen
-        </h1>
-        <p className="mt-4 max-w-3xl text-slate-600">
-          Wähle die passende Abrechnungsseite. Die bestehenden Inhalte,
-          Berechnungen und Funktionen bleiben unverändert.
-        </p>
-      </section>
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Nebenkostenabrechnungen"
+        title="Nebenkosten"
+        description="Zentrale Auswahl fuer Wohnungs- und Tiefgaragenabrechnungen. Berechnungen und Eingaben bleiben in den bestehenden Fachseiten."
+        meta={[
+          { label: "Quelle", value: "Buchhaltung + NK-Seiten" },
+          { label: "Modus", value: "Bestand erhalten" },
+        ]}
+      />
 
-      <section className="grid gap-5 md:grid-cols-2">
-        <NavLink
+      <section className="grid gap-4 md:grid-cols-2">
+        <ModuleCard
           to="/nebenkosten/wohnungen"
-          className="rounded-[28px] border border-slate-200 bg-white p-6 text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:p-8"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">
-            <Building2 size={22} />
-          </div>
-          <h2 className="mt-5 text-2xl font-black">NK-Wohnungen</h2>
-          <p className="mt-3 leading-7 text-slate-600">
-            Nebenkostenabrechnung für Wohnungen mit den vorhandenen Eingaben,
-            Umlageschlüsseln und Berechnungen.
-          </p>
-          <span className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white">
-            Öffnen <ArrowRight size={16} />
-          </span>
-        </NavLink>
-
-        <NavLink
+          label="NK-Wohnungen"
+          description="Nebenkostenabrechnung fuer Wohnungen mit vorhandenen Umlageschluesseln, Kostenpositionen und Ausgaben."
+          icon={Building2}
+          badge="Wohnungen"
+        />
+        <ModuleCard
           to="/nebenkosten/tiefgarage"
-          className="rounded-[28px] border border-slate-200 bg-white p-6 text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:p-8"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
-            <Building2 size={22} />
-          </div>
-          <h2 className="mt-5 text-2xl font-black">NK-Tiefgaragen</h2>
-          <p className="mt-3 leading-7 text-slate-600">
-            Nebenkostenabrechnung für Tiefgaragen/Stellplätze mit den bisherigen
-            Funktionen und Ausgaben.
-          </p>
-          <span className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white">
-            Öffnen <ArrowRight size={16} />
-          </span>
-        </NavLink>
+          label="NK-Tiefgaragen"
+          description="Abrechnung fuer Tiefgaragen und Stellplaetze mit den bestehenden Tabellen und Exporten."
+          icon={ClipboardList}
+          badge="Garage"
+        />
       </section>
+
+      <SectionPanel
+        eyebrow="Arbeitslogik"
+        title="Bestehende Fachseiten bleiben die Quelle"
+        description="Diese Uebersicht sortiert nur die Zugriffe. Die fachlichen Berechnungen bleiben auf den bereits geprueften NK-Seiten."
+      >
+        <InfoList
+          items={[
+            { label: "Wohnungen", value: "Abrechnung, Umlagen, PDF/Export", tone: "blue" },
+            { label: "Tiefgarage", value: "Stellplaetze, Kosten, Export", tone: "amber" },
+            { label: "Buchungen", value: "Kostenquelle bleibt Buchhaltung", tone: "green" },
+          ]}
+        />
+      </SectionPanel>
     </div>
   );
 }
@@ -342,15 +350,17 @@ function ModuleHubPage({
   title,
   description,
   links,
+  meta,
 }: {
   eyebrow: string;
   title: string;
   description: string;
-  links: Array<{ to: string; label: string; description: string; icon: LucideIcon }>;
+  links: ModuleLink[];
+  meta?: Array<{ label: string; value: ReactNode }>;
 }) {
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow={eyebrow} title={title} description={description} />
+      <PageHeader eyebrow={eyebrow} title={title} description={description} meta={meta} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {links.map((link) => <ModuleCard key={link.to} {...link} />)}
@@ -365,12 +375,16 @@ function MieterHubPage() {
       eyebrow="Mietermanagement"
       title="Mieter"
       description="Zentrale Mieter-Navigation. Die Stammdaten, Verträge und Zahlungskontrollen bleiben in den bestehenden Modulen."
+      meta={[
+        { label: "Quelle", value: "Mieterstammdaten + Buchhaltung" },
+        { label: "Pflege", value: "Mieter anlegen" },
+      ]}
       links={[
-        { to: "/mieter/mieteingang", label: "Zahlungen", description: "Mieteingänge aus Buchhaltung und Vermietungszeiträumen prüfen.", icon: WalletCards },
-        { to: "/mieter/stammdaten", label: "Stammdaten", description: "Mieter anlegen und vorhandene Mieterstammdaten pflegen.", icon: Users },
-        { to: "/mieter/leerstand", label: "Leerstand", description: "Leerstände und nicht aktive Einheiten verwalten.", icon: DoorOpen },
-        { to: "/mieter/ein-auszug", label: "Ein-/Auszug", description: "Übergaben, Prozesse und Historie rund um Mieterwechsel.", icon: KeyRound },
-        { to: "/mieter/mahnwesen", label: "Mahnwesen", description: "Offene Posten und Mahnprozess aus bestehenden Daten.", icon: Bell },
+        { to: "/mieter/mieteingang", label: "Zahlungen", description: "Mieteingänge aus Buchhaltung und Vermietungszeiträumen prüfen.", icon: WalletCards, badge: "Soll/Ist" },
+        { to: "/mieter/stammdaten", label: "Stammdaten", description: "Mieter anlegen und vorhandene Mieterstammdaten pflegen.", icon: Users, badge: "Stamm" },
+        { to: "/mieter/leerstand", label: "Leerstand", description: "Leerstände und nicht aktive Einheiten verwalten.", icon: DoorOpen, badge: "Status" },
+        { to: "/mieter/ein-auszug", label: "Ein-/Auszug", description: "Übergaben, Prozesse und Historie rund um Mieterwechsel.", icon: KeyRound, badge: "Prozess" },
+        { to: "/mieter/mahnwesen", label: "Mahnwesen", description: "Offene Posten und Mahnprozess aus bestehenden Daten.", icon: Bell, badge: "Offen" },
       ]}
     />
   );
@@ -491,24 +505,69 @@ function BuchhaltungHubPage() {
 }
 
 function VermoegenHubPage() {
+  const { entries, loanRows, objects } = useAppData();
+  const currentYear = new Date().getFullYear();
+  const currentYearEntries = useMemo(
+    () => entries.filter((entry) => entry.booking_date?.startsWith(`${currentYear}-`)),
+    [currentYear, entries],
+  );
+  const yearlyIncome = currentYearEntries
+    .filter((entry) => entry.entry_type === "income")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const yearlyExpenses = currentYearEntries
+    .filter((entry) => entry.entry_type === "expense")
+    .reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+  const loanBalance = loanRows.reduce((sum, row) => sum + (row.last_balance ?? 0), 0);
+
   return (
-    <ModuleHubPage
-      eyebrow="Aggregierte Sicht"
-      title="Vermögen"
-      description="Investor- und Bankensicht aus vorhandenen Immobilien-, Buchhaltungs-, Darlehens- und Steuerdaten. Keine eigene Datenhaltung."
-      links={[
-        { to: "/immobilien", label: "Immobilienbestand", description: "Objekte, Einheiten und Objektakten aus dem Portfolio.", icon: Building2 },
-        { to: "/darlehen", label: "Darlehen", description: "Finanzierung, Restschuld und Zuordnung zu Immobilien.", icon: Landmark },
-        { to: "/buchhaltung", label: "Cashflow", description: "Zahlungsströme aus der bestehenden Buchhaltung.", icon: WalletCards },
-        { to: "/steuer", label: "Steuer", description: "Steuerliche Auswertungen aus dem bestehenden Steuercenter.", icon: Euro },
-        { to: "/berichte", label: "Investment-Reports", description: "Auswertungen als Grundlage für Investor-Informationen.", icon: PieChart },
-      ]}
-    />
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Aggregierte Sicht"
+        title="Vermögen"
+        description="Investor- und Bankensicht aus vorhandenen Immobilien-, Buchhaltungs-, Darlehens- und Steuerdaten. Dieses Modul speichert keine eigenen Daten."
+        meta={[
+          { label: "Jahr", value: currentYear },
+          { label: "Quelle", value: "Portfolio, Buchhaltung, Darlehen" },
+        ]}
+      />
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Immobilien" value={objects.length} icon={Building2} tone="blue" />
+        <KpiCard label="Darlehen Restschuld" value={formatCurrency(loanBalance)} icon={Landmark} tone="violet" />
+        <KpiCard label="Einnahmen Jahr" value={formatCurrency(yearlyIncome)} icon={WalletCards} tone="green" />
+        <KpiCard label="Cashflow Jahr" value={formatCurrency(yearlyIncome - yearlyExpenses)} icon={PieChart} tone={yearlyIncome - yearlyExpenses >= 0 ? "green" : "amber"} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ModuleCard to="/immobilien" label="Immobilienbestand" description="Objekte, Einheiten und Objektakten aus dem Portfolio." icon={Building2} />
+        <ModuleCard to="/darlehen" label="Darlehen" description="Finanzierung, Restschuld und Zuordnung zu Immobilien." icon={Landmark} />
+        <ModuleCard to="/buchhaltung" label="Cashflow" description="Zahlungsstroeme aus der bestehenden Buchhaltung." icon={WalletCards} />
+        <ModuleCard to="/steuer" label="Steuer" description="Steuerliche Auswertungen aus dem bestehenden Steuercenter." icon={Euro} />
+        <ModuleCard to="/berichte" label="Investment-Reports" description="Auswertungen als Grundlage fuer Investor-Informationen." icon={PieChart} />
+      </section>
+
+      <SectionPanel
+        eyebrow="Investor-Logik"
+        title="Keine eigene Datenhaltung"
+        description="Die Vermoegenssicht ist ein Einstiegspunkt fuer Bank-, Investor- und Management-Fragen. Zahlen werden aus bestehenden Modulen gelesen."
+      >
+        <InfoList
+          items={[
+            { label: "Immobilien", value: "Portfolio und Objektakte", tone: "blue" },
+            { label: "Cashflow", value: "Buchhaltung", tone: "green" },
+            { label: "Finanzierung", value: "Darlehensuebersicht", tone: "violet" },
+            { label: "Steuer", value: "Steuercenter", tone: "amber" },
+          ]}
+        />
+      </SectionPanel>
+    </div>
   );
 }
 
 function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "produktivitaet" | "einstellungen" | "benutzer" | "kautionen" }) {
-  const configs = {
+  const { user } = useAuth();
+  const isAdmin = isAdminEmail(user?.email);
+  const configs: Record<string, ModuleHubConfig> = {
     ticketing: {
       eyebrow: "Arbeitsorganisation",
       title: "Ticketing",
@@ -536,7 +595,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
       description: "Aufgaben, Erinnerungen, Workflows und Automatisierungen werden über bestehende Module erreichbar gemacht.",
       links: [
         { to: "/dashboard", label: "Aufgaben", description: "Cockpit-Aufgaben und wichtige Hinweise.", icon: ListChecks },
-        { to: "/automatisierung", label: "Automatisierung", description: "Bestehende Automatisierungs- und Reporting-Zugänge.", icon: CalendarCheck },
+        { to: "/berichte?view=automation", label: "Automatisierung", description: "Bestehende Automatisierungs- und Reporting-Zugänge.", icon: CalendarCheck },
         { to: "/ticketing", label: "Tickets", description: "Organisatorische Vorgänge aus Prüf- und Fachmodulen.", icon: FolderKanban },
       ],
     },
@@ -545,9 +604,9 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
       title: "Einstellungen",
       description: "Konfigurationen werden nur logisch gruppiert. Vorhandene Einstellungsseiten bleiben erhalten.",
       links: [
-        { to: "/buchhaltung/regeln", label: "Transaktionsregeln", description: "Regeln und Zuordnungen für Buchungen.", icon: Settings2 },
+        { to: "/buchhaltung/regeln", label: "Transaktionsregeln", description: "Regeln und Zuordnungen für Buchungen.", icon: Settings2, adminOnly: true },
         { to: "/datenpruefung", label: "Datenprüfung", description: "Qualitätssicherung der vorhandenen Daten.", icon: ShieldCheck },
-        { to: "/benutzer", label: "Benutzer", description: "Benutzer- und Rollenverwaltung.", icon: UserCog },
+        { to: "/benutzer", label: "Benutzer", description: "Benutzer- und Rollenverwaltung.", icon: UserCog, adminOnly: true },
       ],
     },
     benutzer: {
@@ -555,7 +614,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
       title: "Benutzer",
       description: "Benutzerübersicht für Admin und Lesezugänge. Rechteverwaltung bleibt in der bestehenden Administrator-Seite.",
       links: [
-        { to: "/administrator", label: "Administrator", description: "Admin-Funktionen, Benutzer und Immobilienanlage.", icon: ShieldCheck },
+        { to: "/administrator", label: "Administrator", description: "Admin-Funktionen, Benutzer und Immobilienanlage.", icon: ShieldCheck, adminOnly: true },
         { to: "/dashboard", label: "Read-Only Übersicht", description: "Lesende Nutzer verwenden die App als Informationsquelle.", icon: BookOpenCheck },
       ],
     },
@@ -569,9 +628,29 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
         { to: "/berichte", label: "Berichte", description: "Auswertungen und Nachweise aus bestehenden Reports.", icon: BarChart3 },
       ],
     },
-  } satisfies Record<string, { eyebrow: string; title: string; description: string; links: Array<{ to: string; label: string; description: string; icon: LucideIcon }> }>;
+  };
 
-  return <ModuleHubPage {...configs[kind]} />;
+  const config = configs[kind];
+  const links = config.links.filter((link) => !link.adminOnly || isAdmin);
+
+  return (
+    <div className="space-y-5">
+      <ModuleHubPage {...config} links={links} />
+      <SectionPanel
+        eyebrow="Struktur"
+        title="Logisch gruppiert, fachlich unverändert"
+        description="Diese Seite bündelt vorhandene Module. Daten, Berechnungen und Erfassungslogik bleiben in den jeweiligen Fachseiten."
+      >
+        <InfoList
+          items={[
+            { label: "Datenquelle", value: "Bestehende Module", tone: "blue" },
+            { label: "Aenderungen", value: isAdmin ? "Admin-Rechte aktiv" : "Nur Lesen", tone: isAdmin ? "green" : "slate" },
+            { label: "Ziel", value: "Schneller Einstieg statt doppelter Logik", tone: "violet" },
+          ]}
+        />
+      </SectionPanel>
+    </div>
+  );
 }
 
 function AppShell() {
