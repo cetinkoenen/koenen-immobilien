@@ -27,6 +27,14 @@ Stand: 2026-07-12
 - Read-only UX verfeinert: Lesezugänge behalten Such-, Filter- und Ladeaktionen, Admin-Aktionen werden aus Navigation/Hubs entfernt oder deaktiviert
 - Darlehen auf `/darlehen` kanonisiert; alte Darlehensrouten bleiben kompatibel
 
+## Phase 3: Nahaus-Funktionsvergleich
+
+- Neue Seite `/funktionsvergleich` ergänzt
+- Nahaus-Funktionsstruktur als Vorlage gegen die vorhandene Koenen-App gemappt
+- Status je Funktionsblock ergänzt: `Vorhanden`, `Teilweise`, `Ausbau`
+- Priorisierte Ausbauschritte sichtbar gemacht: Fristen/Erinnerungen, Vorlagen/Anschreiben, Bewerber-Pipeline, Zählerverwaltung, Bankintegration
+- Keine Businesslogik, Datenmodelle oder vorhandenen Fachseiten geändert
+
 ## Verschobene Seiten / neue Informationsarchitektur
 
 Die bestehenden Seiten wurden nicht fachlich verschoben oder neu implementiert. Es wurden neue Modul-Routen und Hubseiten ergänzt, die auf vorhandene Seiten zeigen.

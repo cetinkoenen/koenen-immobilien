@@ -121,6 +121,7 @@ const Monate = lazy(() => import("./pages/Monate"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
+const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
 const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
@@ -689,6 +690,7 @@ function AppShell() {
       { to: "/dokumente", label: "Dokumente", group: "Organisation", icon: FileText },
       { to: "/produktivitaet", label: "Produktivität", group: "Organisation", icon: ListChecks },
       { to: "/berichte", label: "Berichte", group: "Berichte", icon: BarChart3 },
+      { to: "/funktionsvergleich", label: "Funktionsvergleich", group: "Berichte", icon: ClipboardList },
       { to: "/steuer", label: "Steuer", group: "Berichte", icon: Euro },
       { to: "/datenpruefung", label: "Datenprüfung", group: "Berichte", icon: ShieldCheck },
       ...(isAdmin ? [{ to: "/benutzer", label: "Benutzer", group: "System", icon: UserCog }] : []),
@@ -1034,6 +1036,7 @@ export default function App() {
         <Route path="/steuer" element={<SteuerCenter />} />
         <Route path="/auswertungen" element={<Auswertung />} />
         <Route path="/berichte" element={<Auswertung />} />
+        <Route path="/funktionsvergleich" element={<Funktionsvergleich />} />
         <Route
           path="/auswertung"
           element={<Navigate to="/auswertungen" replace />}
