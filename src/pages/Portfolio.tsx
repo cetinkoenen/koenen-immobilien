@@ -1,5 +1,5 @@
 import { parseLocaleNumber } from "@/utils/numberParser";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfolioGallery";
 import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
@@ -253,7 +253,7 @@ export default function Portfolio() {
     return map;
   }, [financeSummary]);
 
-  function getFinanceForRow(row: PortfolioLoanRow): PortfolioFinanceSummary | undefined {
+  const getFinanceForRow = useCallback((row: PortfolioLoanRow): PortfolioFinanceSummary | undefined => {
     const backend = backendFinance.snapshots.find((item) => {
       const rowName = normalizeText(row.property_name);
       const itemName = normalizeText(item.propertyName);
@@ -283,7 +283,7 @@ export default function Portfolio() {
       const firstWord = itemName.split(" ")[0];
       return rowName.includes(itemName) || rowName.includes(firstWord);
     });
-  }
+  }, [backendFinance.snapshots, financeMap, financeSummary]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -308,7 +308,7 @@ export default function Portfolio() {
       },
       { lastBalance: 0, principalTotal: 0, interestTotal: 0, income: 0, expenses: 0, cashflow: 0, portfolioValue: 0 }
     );
-  }, [rows, extraInfo, financeMap, financeSummary, backendFinance.snapshots]);
+  }, [rows, extraInfo, getFinanceForRow]);
 
   const averageRepaidPercent = useMemo(
     () => (rows.length ? rows.reduce((sum, row) => sum + row.repaid_percent, 0) / rows.length : 0),
@@ -421,8 +421,16 @@ export default function Portfolio() {
 
       <header className="portfolio-hero compact polished">
         <div>
+          <span className="portfolio-hero-eyebrow">Immobilienbestand</span>
           <h1>Objektübersicht</h1>
           <p>Live-Dashboard mit Buchungen als zentrale Datenquelle: Cashflow, Rendite, Mieten, Nebenkosten, Darlehen und Exposés pro Immobilie.</p>
+          <div className="portfolio-source-row" aria-label="Datenquellen">
+            <span>Quelle: Portfolio</span>
+            <span>Buchhaltung</span>
+            <span>Darlehensübersicht</span>
+            <span>Vermietung</span>
+            <span>Exposés</span>
+          </div>
         </div>
       </header>
 
@@ -485,7 +493,10 @@ export default function Portfolio() {
                   <div className="portfolio-object-titlebar">
                     <div>
                       <h2>{row.property_name}</h2>
-                      <small>Property-ID: {row.property_id}</small>
+                      <div className="portfolio-object-meta">
+                        <small>Property-ID: {row.property_id}</small>
+                        <span>{finance ? `Finanzdaten ${year}` : "Finanzdaten nicht verknüpft"}</span>
+                      </div>
                     </div>
                     <span className="portfolio-badge">{row.repayment_label ?? "Läuft"}</span>
                   </div>
