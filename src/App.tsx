@@ -129,6 +129,7 @@ const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
 const Mahnwesen = lazy(() => import("./pages/Mahnwesen"));
+const Kautionen = lazy(() => import("./pages/Kautionen"));
 const EinAuszug = lazy(() => import("./pages/EinAuszug"));
 const Transaktionsregeln = lazy(() => import("./pages/Transaktionsregeln"));
 const Darlehensuebersicht = lazy(() => import("./pages/Darlehensuebersicht"));
@@ -1029,7 +1030,7 @@ export default function App() {
         <Route path="/buchhaltung/neue-buchung" element={<EntryAdd />} />
         <Route path="/buchhaltung/regeln" element={<Transaktionsregeln />} />
         <Route path="/buchhaltung/mahnwesen" element={<Mahnwesen />} />
-        <Route path="/buchhaltung/kautionen" element={<OrganisationHubPage kind="kautionen" />} />
+        <Route path="/buchhaltung/kautionen" element={<Kautionen />} />
         <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/nebenkosten" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/berichte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/berichte" replace />} />
@@ -1095,7 +1096,7 @@ export default function App() {
         <Route path="/darlehensuebersicht" element={<Navigate to="/darlehen" replace />} />
         <Route path="/darlehensuebersicht/:propertyId" element={<RedirectLoanRoute />} />
 
-        <Route path="/kautionen" element={<OrganisationHubPage kind="kautionen" />} />
+        <Route path="/kautionen" element={<Kautionen />} />
         <Route path="/vermoegen" element={<VermoegenHubPage />} />
         <Route path="/ticketing" element={<OrganisationHubPage kind="ticketing" />} />
         <Route path="/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
