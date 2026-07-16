@@ -45,6 +45,8 @@ type AiReport = {
   bankFazit: string;
 };
 
+type DocumentCoverage = "direct" | "package" | "missing";
+
 type RequiredDocument = {
   label: string;
   examples: string;
@@ -55,7 +57,7 @@ const requiredDocuments: RequiredDocument[] = [
   {
     label: "Exposé / Objektbeschreibung",
     examples: "Adresse, Wohnfläche, Kaufpreis, Miete, Bilder",
-    keywords: ["expose", "exposé", "objekt", "verkauf", "angebot"],
+    keywords: ["expose", "exposé", "objekt", "verkauf", "angebot", "investment", "analyse"],
   },
   {
     label: "Grundrisse / Bauzeichnungen",
@@ -85,7 +87,7 @@ const requiredDocuments: RequiredDocument[] = [
   {
     label: "Finanzierungsdaten",
     examples: "Eigenkapital, Zins, Tilgung, Kaufnebenkosten",
-    keywords: ["finanz", "zins", "tilgung", "darlehen", "bank"],
+    keywords: ["finanz", "zins", "tilgung", "darlehen", "bank", "investment", "analyse"],
   },
 ];
 
@@ -112,6 +114,17 @@ function matchesDocument(file: UploadedFile, document: RequiredDocument) {
   return document.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
+function isZipPackage(file: UploadedFile) {
+  const text = `${file.name} ${file.type}`.toLowerCase();
+  return text.endsWith(".zip") || text.includes("zip") || text.includes("compressed");
+}
+
+function coverageWeight(coverage: DocumentCoverage) {
+  if (coverage === "direct") return 1;
+  if (coverage === "package") return 0.6;
+  return 0;
+}
+
 function createFileId(file: File) {
   const randomPart =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -131,17 +144,26 @@ export default function InvestmentBericht() {
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
 
+  const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
+
   const coveredDocuments = useMemo(
     () =>
-      requiredDocuments.map((document) => ({
-        ...document,
-        covered: files.some((file) => matchesDocument(file, document)),
-      })),
-    [files],
+      requiredDocuments.map((document) => {
+        const directMatch = files.some((file) => matchesDocument(file, document));
+        const coverage: DocumentCoverage = directMatch ? "direct" : hasZipPackage ? "package" : "missing";
+        return {
+          ...document,
+          covered: coverage !== "missing",
+          coverage,
+        };
+      }),
+    [files, hasZipPackage],
   );
 
   const readiness = Math.round(
-    (coveredDocuments.filter((document) => document.covered).length / coveredDocuments.length) * 100,
+    (coveredDocuments.reduce((sum, document) => sum + coverageWeight(document.coverage), 0) /
+      coveredDocuments.length) *
+      100,
   );
 
   const promptText = useMemo(() => {
@@ -256,18 +278,22 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
     setCopyStatus("");
 
     window.setTimeout(() => {
-      const missingDocuments = coveredDocuments.filter((document) => !document.covered);
+      const missingDocuments = coveredDocuments.filter((document) => document.coverage === "missing");
+      const packageDocuments = coveredDocuments.filter((document) => document.coverage === "package");
       const hasFinanceInputs = Boolean(purchasePrice || equity || targetRent);
-      const hasZip = files.some((file) => file.name.toLowerCase().endsWith(".zip"));
       const completenessLabel =
-        readiness >= 85 ? "gut vorbereitet" : readiness >= 55 ? "teilweise vorbereitet" : "noch unvollständig";
+        readiness >= 85 ? "gut vorbereitet" : readiness >= 55 ? "Unterlagenpaket vorhanden" : "noch unvollständig";
 
       const risks = [
         ...missingDocuments.map((document) => `${document.label} fehlt oder ist anhand der Dateinamen nicht erkennbar.`),
+        ...packageDocuments.map(
+          (document) =>
+            `${document.label} ist vermutlich im ZIP-Unterlagenpaket enthalten, muss aber inhaltlich noch geprüft werden.`,
+        ),
         !hasFinanceInputs
           ? "Kaufpreis, Eigenkapital oder Zielmiete sind noch nicht vollständig gepflegt; Rendite und Finanzierung bleiben Annahmen."
           : "",
-        hasZip
+        hasZipPackage
           ? "ZIP-Datei erkannt: Für eine echte Inhaltsprüfung muss der spätere Backend-Dienst die ZIP-Datei entpacken und die enthaltenen Dokumente auslesen."
           : "",
       ].filter(Boolean);
@@ -275,6 +301,8 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
       const nextSteps = [
         missingDocuments.length
           ? `Fehlende Unterlagen nachreichen: ${missingDocuments.map((document) => document.label).join(", ")}.`
+          : packageDocuments.length
+            ? "ZIP-Unterlagenpaket entpacken bzw. per Backend analysieren, damit die enthaltenen Dokumente kapitelgenau geprüft werden."
           : "Unterlagenbasis ist für den Erstbericht vollständig genug; Inhalte im nächsten Schritt fachlich prüfen.",
         "Bankfähigen DOCX-Bericht mit klaren Annahmen, offenen Punkten und Kaufempfehlung erstellen.",
         "Nach finaler Prüfung Bericht, Exposé, Wirtschaftsplan, Mietvertrag und Energieausweis an Bank/Finanzberater senden.",
@@ -315,8 +343,10 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
         return {
           chapter,
           status: matchingDocument?.covered ? "Prüfen" : "Offen",
-          note: matchingDocument?.covered
+          note: matchingDocument?.coverage === "direct"
             ? "Passende Unterlagen erkannt; Inhalte im Bericht prüfen."
+            : matchingDocument?.coverage === "package"
+              ? "ZIP-Unterlagenpaket erkannt; Inhalte müssen für dieses Kapitel entpackt und geprüft werden."
             : "Benötigte Unterlagen fehlen oder sind nicht eindeutig benannt.",
         };
       });
@@ -324,14 +354,16 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
       setAiReport({
         generatedAt: new Date().toLocaleString("de-DE"),
         statusLabel: `KI-Erstbewertung: ${completenessLabel}`,
-        summary: `Die Unterlagenbasis für ${objectName || "die neue Investition"} ist zu ${readiness}% abgedeckt. Die App kann daraus sofort eine strukturierte Erstbewertung, Kapitelstatus, offene Prüfpositionen und ein konservatives Bankfazit vorbereiten. Eine vollständige Dokumenteninhaltsanalyse benötigt die sichere ChatGPT/OpenAI-Backend-Anbindung.`,
+        summary: `Die Unterlagenbasis für ${objectName || "die neue Investition"} ist zu ${readiness}% abgedeckt. ${hasZipPackage ? "Ein ZIP-Unterlagenpaket wurde erkannt und wird als vorhandene, aber noch nicht inhaltlich geprüfte Unterlagenbasis bewertet." : "Die App bewertet die erkennbaren Dateinamen und Objektstammdaten."} Daraus kann die App sofort eine strukturierte Erstbewertung, Kapitelstatus, offene Prüfpositionen und ein konservatives Bankfazit vorbereiten. Eine vollständige Dokumenteninhaltsanalyse benötigt die sichere ChatGPT/OpenAI-Backend-Anbindung.`,
         risks: risks.length ? risks : ["Keine wesentlichen Unterlagenlücken anhand der Dateinamen erkannt."],
         nextSteps,
         chapterStatus,
         bankFazit:
           readiness >= 85 && hasFinanceInputs
             ? "Grundsätzlich bankfähig vorbereitbar. Vor Versand sollten Rendite, Cashflow, WEG-Risiken und Dokumenteninhalte final geprüft werden."
-            : "Noch nicht final bankfähig. Erst fehlende Unterlagen und Finanzierungsannahmen ergänzen, dann DOCX-Bericht erzeugen.",
+            : hasZipPackage && hasFinanceInputs
+              ? "Als Vorprüfung nutzbar. Für ein bankfähiges Ergebnis müssen die ZIP-Inhalte noch automatisch oder manuell dokumentengenau ausgewertet werden."
+              : "Noch nicht final bankfähig. Erst fehlende Unterlagen und Finanzierungsannahmen ergänzen, dann DOCX-Bericht erzeugen.",
       });
       setAiStatus("ready");
     }, 650);
@@ -403,7 +435,7 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
             <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Berichtsreife</p>
             <div className="mt-3 text-4xl font-black text-emerald-900">{readiness}%</div>
             <p className="mt-2 text-sm font-bold leading-6 text-emerald-800">
-              Dokumentenabdeckung auf Basis der Dateinamen. Fehlende Unterlagen werden im Bericht als offene Prüfpositionen markiert.
+              Dokumentenabdeckung auf Basis der Dateinamen. ZIP-Pakete zählen als vorhandene, aber noch zu prüfende Unterlagenbasis.
             </p>
             <button
               type="button"
@@ -504,10 +536,21 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
           <div className="grid gap-3">
             {coveredDocuments.map((document) => (
               <div key={document.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <CheckCircle2 className={document.covered ? "mt-0.5 shrink-0 text-emerald-600" : "mt-0.5 shrink-0 text-slate-300"} size={20} />
+                <CheckCircle2 className={
+                  document.coverage === "direct"
+                    ? "mt-0.5 shrink-0 text-emerald-600"
+                    : document.coverage === "package"
+                      ? "mt-0.5 shrink-0 text-amber-500"
+                      : "mt-0.5 shrink-0 text-slate-300"
+                } size={20} />
                 <div>
                   <div className="text-sm font-black text-slate-950">{document.label}</div>
                   <div className="mt-1 text-xs font-semibold leading-5 text-slate-600">{document.examples}</div>
+                  {document.coverage === "package" ? (
+                    <div className="mt-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-amber-700">
+                      Im ZIP-Paket prüfen
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
