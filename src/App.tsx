@@ -125,6 +125,7 @@ const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
 const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
+const Datenschutz = lazy(() => import("./pages/Datenschutz"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
@@ -186,17 +187,34 @@ type ModuleHubConfig = {
   links: ModuleLink[];
 };
 
+type WorkspaceSubpage = {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+type WorkspaceTab = {
+  label: string;
+  description: string;
+};
+
+type WorkspaceConfig = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  basePath: string;
+  source: string;
+  subpages: WorkspaceSubpage[];
+  tabs: WorkspaceTab[];
+};
+
 const groupAccent: Record<string, string> = {
-  Administrator: "text-rose-300",
-  Dashboard: "text-sky-300",
-  Immobilien: "text-cyan-300",
-  Mieter: "text-emerald-300",
-  Buchhaltung: "text-violet-300",
-  Nebenkosten: "text-amber-300",
-  Finanzierung: "text-blue-300",
-  Organisation: "text-teal-300",
-  Berichte: "text-indigo-300",
-  System: "text-slate-300",
+  "1. 📊 Dashboard": "text-sky-300",
+  "2. 🏢 Immobilien & Einheiten": "text-cyan-300",
+  "3. 👥 Kontakte & Mietverhältnisse": "text-emerald-300",
+  "4. 💼 Buchhaltung & Finanzen": "text-violet-300",
+  "5. 🔧 Aufgaben & Ticketsystem": "text-teal-300",
+  "6. ⚙️ System-Einstellungen": "text-slate-300",
   Überblick: "text-sky-300",
   Finanzen: "text-violet-300",
   Verwaltung: "text-amber-300",
@@ -252,6 +270,458 @@ function isRentLikeEntry(entry: FinanceEntry): boolean {
   const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
   return text.includes("miet") || text.includes("pacht");
 }
+
+const workspaceConfigs: Record<string, WorkspaceConfig> = {
+  dashboardFinanz: {
+    eyebrow: "1. Modul | Dashboard",
+    title: "Finanz-Kennzahlen",
+    description: "Zentrale Übersicht aus Portfolio, Buchhaltung, Leerstand, Darlehen und Steuer. Diese Seite aggregiert nur bestehende Datenquellen.",
+    basePath: "/dashboard",
+    source: "Cockpit, Buchhaltung, Mieteingang, Leerstand, Darlehen",
+    subpages: [
+      { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
+      { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
+    ],
+    tabs: [
+      { label: "Soll/Ist-Vergleich", description: "Ist-Mieten aus Buchungen, Soll-Mieten aus Vermietungszeiträumen und Mietrückstände als Differenz." },
+      { label: "Gesamteinnahmen & Cashflow", description: "Bruttomieteinnahmen, Nebenkostenvorauszahlungen und bereinigter Cashflow aus vorhandenen Buchungen." },
+      { label: "Offene Posten & Forderungsmanagement", description: "Überfällige Mieten, unbezahlte Rechnungen und vorhandene Mahnstatus bündeln." },
+      { label: "Leerstandskosten & Effizienz", description: "Leerstandsquote und Mietausfall über bestehende Leerstands- und Mietdaten sichtbar machen." },
+      { label: "Filter & Export", description: "Objekt-, Zeitraum- und Exportkontext für steuerberaterfähige Auswertungen." },
+    ],
+  },
+  dashboardWarnungen: {
+    eyebrow: "1. Modul | Dashboard",
+    title: "Warnmeldungen",
+    description: "Operative Frühwarnzentrale aus bestehenden Prüf-, Buchhaltungs-, Leerstands- und Fristendaten.",
+    basePath: "/dashboard",
+    source: "Datenprüfung, Mieteingang, Leerstand, Mahnwesen",
+    subpages: [
+      { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
+      { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
+    ],
+    tabs: [
+      { label: "Zahlungsverzug & Mietrückstände", description: "Kurzzeitiger Verzug, gravierender Rückstand, Teilzahlungen und Mahn-Quick-Actions." },
+      { label: "Leerstand & Vermietungsrisiko", description: "Akuter Leerstand, bevorstehender Leerstand und kritische Leerstandsdauer." },
+      { label: "Konto- & Buchungsalarme", description: "Nicht zugeordnete Transaktionen und auffällige Buchungszustände." },
+      { label: "Fristen & Instandhaltung", description: "Überfällige Tickets, Prüffristen, Wartung und Vertragsfristen." },
+      { label: "Dringlichkeits-Filter", description: "Hohe, mittlere und informative Warnungen getrennt betrachten." },
+    ],
+  },
+  dashboardTodos: {
+    eyebrow: "1. Modul | Dashboard",
+    title: "Aktuelle To-dos",
+    description: "Tagesgeschäft für Mieterwechsel, Fristen, Vertragsanpassungen und technische Vorgänge.",
+    basePath: "/dashboard",
+    source: "Ein-/Auszug, Nebenkosten, Mahnwesen, Ticketing",
+    subpages: [
+      { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
+      { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
+    ],
+    tabs: [
+      { label: "Mieterwechsel & Übergaben", description: "Auszugs-To-dos, Übergabeprotokolle, Einzugs-To-dos und Kautionsmanagement." },
+      { label: "Rechtliche & gesetzliche Fristen", description: "Nebenkostenabrechnung, Sicherheit, Wartung und WEG-Fristen überwachen." },
+      { label: "Vertrags- & Mietanpassungen", description: "Indexmieten, Staffelmieten und befristete Verträge im Blick behalten." },
+      { label: "Handwerker & Schadensabwicklung", description: "Angebotsfreigaben, Reparaturstatus und Rechnungsprüfung bündeln." },
+      { label: "Organisation & Filter", description: "Zuständigkeit, Fälligkeit und Status-Tracker für die tägliche Arbeit." },
+    ],
+  },
+  immobilienObjekte: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Objektübersicht",
+    description: "Bestehende Immobilienseite als zentrale Objekt- und Finanzübersicht im neuen Modulrahmen.",
+    basePath: "/immobilien",
+    source: "Portfolio, Objektakten, Buchhaltung, Darlehen",
+    subpages: [
+      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+    ],
+    tabs: [
+      { label: "Wohnimmobilien", description: "Gebäude-Stammdaten, Einheiten-Struktur, Grundstücksdaten und Gemeinschaftsflächen." },
+      { label: "Gewerbeimmobilien", description: "Nutzflächen, Umsatzsteueroptionen sowie Stellplatz- und Logistik-Zuordnung." },
+    ],
+  },
+  immobilienEinheiten: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Einheiten-Verwaltung",
+    description: "Wohnungen, Garagen, Gewerbeeinheiten und Belegungshistorie auf Basis vorhandener Objekt- und Mietdaten.",
+    basePath: "/immobilien",
+    source: "Portfolio, Vermietungszeiträume, Leerstand",
+    subpages: [
+      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+    ],
+    tabs: [
+      { label: "Wohnungen", description: "Einheiten-Details, Ausstattung, Zustand, Grundriss, Fotos und abrechnungsrelevante Faktoren." },
+      { label: "Garagen & Stellplätze", description: "Typisierung, E-Mobilität, Schließmedien und Kopplung an Wohnungen oder Fremdvermietung." },
+      { label: "Gewerbeeinheiten", description: "Nutzflächen, Nebenräume, technische Anschlüsse und umsatzsteuerliche Behandlung." },
+      { label: "Status & Belegungshistorie", description: "Vermietet, reserviert, leerstehend sowie Mieter- und Mietpreishistorie." },
+      { label: "Schnellauswahl & Massenbearbeitung", description: "Datenblatt, Exposé und Mietanpassungsprüfung im bestehenden Portfolio-Kontext." },
+    ],
+  },
+  immobilienVerbrauch: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Zählerstände & Verbrauch",
+    description: "Frontend-Zugang für Verbrauchs- und Zählerstandsprozesse inklusive Fotodokumentation im Objektkontext.",
+    basePath: "/immobilien",
+    source: "Objektakte, Nebenkosten, Dokumente",
+    subpages: [
+      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+    ],
+    tabs: [
+      { label: "Zählerstände", description: "Erfassung je Objekt und Einheit über vorhandene Objektakten vorbereiten." },
+      { label: "Fotodokumentation", description: "Smartphone-taugliche Dokumentation von Zählerständen als Objektanhang." },
+      { label: "Verbrauch", description: "Verbrauchsdaten als Grundlage für Nebenkosten- und Plausibilitätsprüfungen." },
+    ],
+  },
+  immobilienDokumente: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Objekt-Dokumente",
+    description: "Digitale Objektakte für Energieausweise, Prüfberichte, Versicherungen und sonstige Objektunterlagen.",
+    basePath: "/immobilien",
+    source: "Dokumentenmanagement, Objektakte",
+    subpages: [
+      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+    ],
+    tabs: [
+      { label: "Energieausweise", description: "Gültigkeit und Ablage über bestehende Objektakten prüfen." },
+      { label: "Brandschutz & Prüfberichte", description: "Berichte objektbezogen strukturieren und auffindbar halten." },
+      { label: "Versicherungen", description: "Policen, Laufzeiten und Nachweise im Objektkontext bündeln." },
+    ],
+  },
+  kontakteVertraege: {
+    eyebrow: "3. Modul | Kontakte & Mietverhältnisse",
+    title: "Aktive Mietverträge",
+    description: "Verträge, Mietzins-Struktur, Anpassungsplanung und Kautionen in einer Mieterstruktur.",
+    basePath: "/kontakte",
+    source: "Mieter anlegen, Vermietungszeiträume, Buchhaltung",
+    subpages: [
+      { path: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", icon: Users },
+      { path: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", icon: FolderOpen },
+      { path: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", icon: UserCog },
+      { path: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", icon: KeyRound },
+    ],
+    tabs: [
+      { label: "Vertragsdetails", description: "Laufzeiten, Kündigungsfristen und Verlängerungen." },
+      { label: "Mietzins-Struktur", description: "Kaltmiete, Nebenkosten, Stellplatzmiete und Vertragsbestandteile." },
+      { label: "Mietanpassungs-Planer", description: "Indexklauseln, Staffelmieten und Termine." },
+      { label: "Kautions-Status", description: "Beträge, Bürgschaften, Verpfändungen und Kautionsbuchungen." },
+    ],
+  },
+  kontakteAkten: {
+    eyebrow: "3. Modul | Kontakte & Mietverhältnisse",
+    title: "Mieter- & Eigentümerakten",
+    description: "Stammdaten, SEPA, Kommunikation und Dokumente aus bestehenden Mieterinformationen.",
+    basePath: "/kontakte",
+    source: "Mieterstammdaten, Dokumente, Mahnwesen",
+    subpages: [
+      { path: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", icon: Users },
+      { path: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", icon: FolderOpen },
+      { path: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", icon: UserCog },
+      { path: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", icon: KeyRound },
+    ],
+    tabs: [
+      { label: "Stammdaten", description: "Kontaktdaten, Mitmieter und Notfallkontakte." },
+      { label: "SEPA-Mandate", description: "Lastschrift-Erteilungen und Bankverbindungen." },
+      { label: "Kommunikations-Historie", description: "E-Mails, Briefe und Telefonnotizen." },
+      { label: "Dokumenten-Archiv", description: "Ausweise, Nachweise und Schriftverkehr." },
+    ],
+  },
+  kontakteInteressenten: {
+    eyebrow: "3. Modul | Kontakte & Mietverhältnisse",
+    title: "Interessenten & Selbstauskünfte",
+    description: "Bewerber-Pool, Selbstauskunft, Besichtigungsplanung und KI-Matching als CRM-Arbeitsbereich.",
+    basePath: "/kontakte",
+    source: "Mieteranlage, Dokumente, Kommunikation",
+    subpages: [
+      { path: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", icon: Users },
+      { path: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", icon: FolderOpen },
+      { path: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", icon: UserCog },
+      { path: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", icon: KeyRound },
+    ],
+    tabs: [
+      { label: "Bewerber-Pool", description: "Eingegangene Anfragen und Interessentenlisten." },
+      { label: "Digitale Selbstauskunft", description: "Bonitätsprüfung und vorhandene Nachweisdokumente." },
+      { label: "Besichtigungs-Planer", description: "Terminkoordination und Einladungen." },
+      { label: "KI-Matching", description: "Vorauswahl nach Objektkriterien, ohne zusätzliche Datenquelle." },
+    ],
+  },
+  kontakteUebergaben: {
+    eyebrow: "3. Modul | Kontakte & Mietverhältnisse",
+    title: "Wohnungsgeberbescheinigungen & Übergabeprotokolle",
+    description: "Einzug, Auszug, Formulare und Fotodokumentation aus bestehenden Mieterwechselprozessen.",
+    basePath: "/kontakte",
+    source: "Ein-/Auszug, Mieterakten, Objektakten",
+    subpages: [
+      { path: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", icon: Users },
+      { path: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", icon: FolderOpen },
+      { path: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", icon: UserCog },
+      { path: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", icon: KeyRound },
+    ],
+    tabs: [
+      { label: "Meldebehörden-Formulare", description: "Wohnungsgeberbestätigung und Formularprozesse." },
+      { label: "Einzugsprotokolle", description: "Zustand, Schlüssel und Zählerstände beim Einzug." },
+      { label: "Auszugsprotokolle", description: "Mängel, Renovierungspflichten und Rückgabe." },
+      { label: "Fotodokumentation", description: "Visuelle Beweissicherung im Übergabeprozess." },
+    ],
+  },
+  buchhaltungBuchungen: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Buchungen",
+    description: "Operative Finanzzentrale mit Bankbewegungen, offenen Posten, manueller Erfassung, Belegen und Zahlungsverkehr.",
+    basePath: "/buchhaltung",
+    source: "Buchhaltung, Transaktionen, Buchungsmaske",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Bankkonten & Transaktionen", description: "Live-Feeds und vorhandene Transaktionsübersicht." },
+      { label: "Offene Posten", description: "Manuelle und KI-gestützte Zahlungszuordnung." },
+      { label: "Einnahmen & Ausgaben", description: "Bestehende manuelle Buchungserfassung." },
+      { label: "Belegarchiv & OCR", description: "Rechnungs-Upload und Belegkontext." },
+      { label: "Daueraufträge & Lastschriften", description: "SEPA-Einzüge und wiederkehrende Zahlungen." },
+    ],
+  },
+  buchhaltungSoll: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Sollstellungen & Mietanpassungen",
+    description: "Monatliche Forderungen, Mietanpassungen und Kautionsverwaltung im bestehenden Miet- und Buchhaltungskontext.",
+    basePath: "/buchhaltung",
+    source: "Mietverträge, Mieteingang, Kautionen",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Monatliche Sollstellung", description: "Automatische Mietforderungen aus aktiven Verträgen." },
+      { label: "Index- & Staffelmieten", description: "Berechnung und Anpassungsschreiben im Vertragskontext." },
+      { label: "Kautionsverwaltung", description: "Treuhand, Raten, Zinsen und Auszahlungen." },
+    ],
+  },
+  buchhaltungNebenkosten: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Nebenkostenabrechnung",
+    description: "Pflichtseite NK-Abrechnung bleibt vollständig erhalten und wird in die neue Buchhaltungsstruktur eingeordnet.",
+    basePath: "/buchhaltung",
+    source: "NK-Seiten, Buchhaltung, Umlageschlüssel",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Umlageschlüssel & Verteiler", description: "Wohnfläche, Personen und bestehende Verteilungsschlüssel." },
+      { label: "Heizkosten-Integration", description: "Messdienstleister-Importe und Verbrauchsdaten als bestehender Prozess." },
+      { label: "Abrechnungserstellung", description: "PDF-Erstellung und Versandprozess über vorhandene NK-Seiten." },
+    ],
+  },
+  buchhaltungMahnwesen: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Automatisiertes Mahnwesen",
+    description: "Mahnfristen, Vorlagen und Eskalation auf Grundlage bestehender offener Posten.",
+    basePath: "/buchhaltung",
+    source: "Mahnwesen, Mieteingang, Buchhaltung",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Mahnstufen & Fristen", description: "Workflow-Konfiguration für Erinnerung, Mahnung und Eskalation." },
+      { label: "Vorlagen-Editor", description: "Texte für Zahlungserinnerung und Mahnungen." },
+      { label: "Inkasso & Rechtsübergabe", description: "Übergabe harter Fälle an Dienstleister oder Rechtsanwälte." },
+    ],
+  },
+  buchhaltungSteuer: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Steuer-Center & Berater-Schnittstelle",
+    description: "Pflichtseite Steuer bleibt erhalten und wird als strukturierter Jahresabschlussbereich eingebunden.",
+    basePath: "/buchhaltung",
+    source: "Steuer-Center, Buchungen, Darlehenszinsen",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Anlage V Vorbereitung", description: "Strukturierung für Einkünfte aus Vermietung und Verpachtung." },
+      { label: "Einnahmen-Aufstellung", description: "Kaltmieten, Umlagen, Garagen und steuerpflichtige Zuflüsse." },
+      { label: "Werbungskosten-Erfassung", description: "Erhaltungsaufwand, Verwaltungskosten und sonstige Abzüge." },
+      { label: "Grundsteuer & Abgaben", description: "Nicht umlagefähige öffentliche Lasten und Abgaben." },
+    ],
+  },
+  buchhaltungBerichte: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Berichte & Exporte",
+    description: "Pflichtseite Auswertungen bleibt erhalten und liefert Stichtagsberichte und Multi-Format-Exports.",
+    basePath: "/buchhaltung",
+    source: "Auswertungen, Datenprüfung, Exportlogik",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "Jahres-Mietaufstellung", description: "Stichtagsbezogene Miet- und Objektberichte." },
+      { label: "Überschuss-/Verlustrechnung", description: "Grafische und tabellarische Reports." },
+      { label: "Multi-Format-Export", description: "PDF, CSV und Excel über bestehende Exportlogik." },
+    ],
+  },
+  buchhaltungPortal: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Steuerberater-Portal",
+    description: "Übergabebereich für DATEV, Gast-Zugang und Beleg-Sammel-Download auf Basis vorhandener Rechte und Berichte.",
+    basePath: "/buchhaltung",
+    source: "Reports, Benutzerrechte, Belege",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "DATEV-Export", description: "Buchungsstapel und strukturierte Übergabe." },
+      { label: "Gast-Zugang", description: "Nur-Lese-Zugang für Steuerberater über bestehende Rollen." },
+      { label: "Beleg-Sammel-Download", description: "ZIP-Export für Rechnungsbelege und OCR-Daten." },
+    ],
+  },
+  buchhaltungUst: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Umsatzsteuer-Optionen",
+    description: "Spezialbereich für Gewerbemieten, USt.-Voranmeldung und Vorsteuer-Schlüsselung bei Mischobjekten.",
+    basePath: "/buchhaltung",
+    source: "Buchhaltung, Steuer, Gewerbeobjekte",
+    subpages: [
+      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+    ],
+    tabs: [
+      { label: "USt.-Voranmeldung", description: "Netto-/Bruttomieten und eingenommene Umsatzsteuer." },
+      { label: "Vorsteuer-Schlüsselung", description: "Abziehbare Vorsteuern bei Wohn-/Gewerbe-Mischobjekten." },
+    ],
+  },
+  ticketSchaden: {
+    eyebrow: "5. Modul | Aufgaben & Ticketsystem",
+    title: "Schadenmeldungen",
+    description: "Technische Mängel, Fotos und Mieter-Kommunikation als Gebäudemanagement-Arbeitsbereich.",
+    basePath: "/ticketsystem",
+    source: "Datenprüfung, Mieterkommunikation, Dokumente",
+    subpages: [
+      { path: "/ticketsystem/schadenmeldungen", label: "Schadenmeldungen", icon: FolderKanban },
+      { path: "/ticketsystem/handwerker-beauftragung", label: "Handwerker-Beauftragung", icon: BriefcaseBusiness },
+    ],
+    tabs: [
+      { label: "Kategorisierung & Priorität", description: "Wasser, Strom, Heizung und weitere Gewerke nach Dringlichkeit sortieren." },
+      { label: "Foto-Dokumentation & Anhänge", description: "Schadensbilder und Dokumente direkt im Vorgang einsehen." },
+      { label: "Mieter-Kommunikation", description: "Mail- und Status-Updates im Ticket-Kontext." },
+    ],
+  },
+  ticketHandwerker: {
+    eyebrow: "5. Modul | Aufgaben & Ticketsystem",
+    title: "Handwerker-Beauftragung",
+    description: "Dienstleister, Angebote, Aufträge und Statusverfolgung für technische Instandhaltung.",
+    basePath: "/ticketsystem",
+    source: "Tickets, Dienstleister, E-Mail-Schnittstellen",
+    subpages: [
+      { path: "/ticketsystem/schadenmeldungen", label: "Schadenmeldungen", icon: FolderKanban },
+      { path: "/ticketsystem/handwerker-beauftragung", label: "Handwerker-Beauftragung", icon: BriefcaseBusiness },
+    ],
+    tabs: [
+      { label: "Dienstleister-Verzeichnis", description: "Gewerk- und Regionen-Filter für passende Handwerker." },
+      { label: "Angebotseinholung", description: "Kostenvoranschläge digital vergleichen." },
+      { label: "Auftragserteilung", description: "PDF-Aufträge und E-Mail-Versand vorbereiten." },
+      { label: "Statusverfolgung", description: "Termine, Ausführung und Fertigmeldung überwachen." },
+    ],
+  },
+  einstellungenBenutzer: {
+    eyebrow: "6. Modul | System-Einstellungen",
+    title: "Benutzer- & Rechteverwaltung",
+    description: "Administratives Zentrum für Benutzer, Rollen, Berechtigungen und Login-Sicherheit.",
+    basePath: "/einstellungen",
+    source: "Administrator, Rollen, Zugriffsschutz",
+    subpages: [
+      { path: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", icon: UserCog },
+      { path: "/einstellungen/datenschutz-compliance", label: "Datenschutz & Compliance", icon: ShieldCheck },
+    ],
+    tabs: [
+      { label: "Benutzerübersicht", description: "Registrierte Profile und Zugänge." },
+      { label: "Rollen-Editor", description: "Admin, Verwalter, Buchhalter und Gast definieren." },
+      { label: "Berechtigungs-Matrix", description: "Lese-/Schreibrechte für Objekte und Finanzen." },
+      { label: "Sicherheit & Login", description: "2FA und Passwort-Richtlinien." },
+    ],
+  },
+  einstellungenDatenschutz: {
+    eyebrow: "6. Modul | System-Einstellungen",
+    title: "Datenschutz & Compliance",
+    description: "DSGVO-Exporte, Löschprozesse, Logbücher und Audit-Trail als geschützter Administrationsbereich.",
+    basePath: "/einstellungen",
+    source: "Datenschutz, Audit, Administrator",
+    subpages: [
+      { path: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", icon: UserCog },
+      { path: "/einstellungen/datenschutz-compliance", label: "Datenschutz & Compliance", icon: ShieldCheck },
+    ],
+    tabs: [
+      { label: "DSGVO-Exporte", description: "Selbstauskünfte exportieren oder nach Frist löschen." },
+      { label: "Logbücher & Audit-Trail", description: "Kritische Aktionen nachvollziehbar protokollieren." },
+    ],
+  },
+};
 
 function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boolean; compact?: boolean }) {
   const navigate = useNavigate();
@@ -369,6 +839,106 @@ function ModuleHubPage({
       </section>
     </div>
   );
+}
+
+function ModuleWorkspacePage({
+  config,
+  children,
+}: {
+  config: WorkspaceConfig;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="module-workspace space-y-5">
+      <PageHeader
+        eyebrow={config.eyebrow}
+        title={config.title}
+        description={config.description}
+        meta={[
+          { label: "Route", value: config.basePath },
+          { label: "Quelle", value: config.source },
+        ]}
+      />
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {config.subpages.map((subpage) => {
+            const Icon = subpage.icon;
+            return (
+              <NavLink
+                key={subpage.path}
+                to={subpage.path}
+                className={({ isActive }) =>
+                  [
+                    "flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-black no-underline transition",
+                    isActive
+                      ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                      : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white",
+                  ].join(" ")
+                }
+              >
+                <Icon size={18} />
+                <span>{subpage.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      </section>
+
+      <SectionPanel
+        eyebrow="Tabs"
+        title="Arbeitsbereiche"
+        description="Die Tabs strukturieren die Fachseite nach der neuen Modulhierarchie. Die darunterliegenden Daten und Funktionen bleiben in den bestehenden Seiten."
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {config.tabs.map((tab) => (
+            <div
+              key={tab.label}
+              className="rounded-[18px] border border-slate-200 bg-slate-50 p-4"
+            >
+              <h3 className="text-sm font-black text-slate-950">{tab.label}</h3>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
+                {tab.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </SectionPanel>
+
+      <div className="module-workspace-content">
+        {children ?? (
+          <EmptyState
+            title="Vorhandene Fachseite wird hier eingebunden"
+            description="Diese Unterseite ist strukturell vorbereitet und verwendet vorhandene Datenquellen, sobald die passende Fachkomponente verfügbar ist."
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminOnlyWorkspace({
+  config,
+  children,
+}: {
+  config: WorkspaceConfig;
+  children: ReactNode;
+}) {
+  const { user } = useAuth();
+  const isAdmin = isAdminEmail(user?.email);
+
+  if (!isAdmin) {
+    return (
+      <ModuleWorkspacePage config={config}>
+        <EmptyState
+          title="Administrationsbereich geschützt"
+          description="Diese Unterseite ist nur für Admin-Benutzer freigegeben. Bestehende Zugriffsbeschränkungen bleiben aktiv."
+        />
+      </ModuleWorkspacePage>
+    );
+  }
+
+  return <ModuleWorkspacePage config={config}>{children}</ModuleWorkspacePage>;
 }
 
 function MieterHubPage() {
@@ -658,7 +1228,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
-    () => new Set(["Dashboard", "Immobilien", "Mieter", "Buchhaltung"]),
+    () => new Set(["1. 📊 Dashboard", "2. 🏢 Immobilien & Einheiten", "3. 👥 Kontakte & Mietverhältnisse", "4. 💼 Buchhaltung & Finanzen"]),
   );
   const { user } = useAuth();
   const location = useLocation();
@@ -670,39 +1240,40 @@ function AppShell() {
 
   const navItems = useMemo<ShellNavItem[]>(
     () => [
-      ...(isAdmin ? [{ to: "/administrator", label: "Administrator", group: "Administrator", icon: ShieldCheck }] : []),
-      { to: "/dashboard", label: "Dashboard", group: "Dashboard", icon: LayoutDashboard, end: true },
-      { to: "/immobilien", label: "Immobilien", group: "Immobilien", icon: Building2 },
-      { to: "/mieter", label: "Mieter", group: "Mieter", icon: Users, end: true },
-      { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: WalletCards },
-      { to: "/mieter/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
-      { to: "/mieter/ein-auszug", label: "Ein/Auszug", group: "Mieter", icon: KeyRound },
-      { to: "/buchhaltung", label: "Buchhaltung", group: "Buchhaltung", icon: WalletCards, end: true },
-      { to: "/buchhaltung/transaktionen", label: "Transaktionen", group: "Buchhaltung", icon: ReceiptText },
-      ...(!isReadOnly ? [
-        { to: "/buchhaltung/neue-buchung", label: "Neue Buchung", group: "Buchhaltung", icon: PlusCircle },
-        { to: "/buchhaltung/regeln", label: "Regeln", group: "Buchhaltung", icon: Settings2 },
-      ] : []),
-      { to: "/nebenkosten", label: "Nebenkosten", group: "Nebenkosten", icon: ClipboardList },
-      { to: "/kautionen", label: "Kautionen", group: "Nebenkosten", icon: KeyRound },
-      { to: "/darlehen", label: "Darlehen", group: "Finanzierung", icon: Landmark },
-      { to: "/vermoegen", label: "Vermögen", group: "Finanzierung", icon: BriefcaseBusiness },
-      { to: "/ticketing", label: "Ticketing", group: "Organisation", icon: FolderKanban },
-      { to: "/dokumente", label: "Dokumente", group: "Organisation", icon: FileText },
-      { to: "/produktivitaet", label: "Produktivität", group: "Organisation", icon: ListChecks },
-      { to: "/berichte", label: "Berichte", group: "Berichte", icon: BarChart3 },
-      { to: "/funktionsvergleich", label: "Funktionsvergleich", group: "Berichte", icon: ClipboardList },
-      { to: "/steuer", label: "Steuer", group: "Berichte", icon: Euro },
-      { to: "/datenpruefung", label: "Datenprüfung", group: "Berichte", icon: ShieldCheck },
-      ...(isAdmin ? [{ to: "/benutzer", label: "Benutzer", group: "System", icon: UserCog }] : []),
-      { to: "/einstellungen", label: "Einstellungen", group: "System", icon: Settings2 },
+      { to: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", group: "1. 📊 Dashboard", icon: BarChart3 },
+      { to: "/dashboard/warnmeldungen", label: "Warnmeldungen", group: "1. 📊 Dashboard", icon: Bell },
+      { to: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", group: "1. 📊 Dashboard", icon: ListChecks },
+      { to: "/immobilien/objektuebersicht", label: "Objektübersicht", group: "2. 🏢 Immobilien & Einheiten", icon: Building2 },
+      { to: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", group: "2. 🏢 Immobilien & Einheiten", icon: FolderKanban },
+      { to: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", group: "2. 🏢 Immobilien & Einheiten", icon: ClipboardList },
+      { to: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", group: "2. 🏢 Immobilien & Einheiten", icon: FileText },
+      { to: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", group: "3. 👥 Kontakte & Mietverhältnisse", icon: Users },
+      { to: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", group: "3. 👥 Kontakte & Mietverhältnisse", icon: FolderOpen },
+      { to: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", group: "3. 👥 Kontakte & Mietverhältnisse", icon: UserCog },
+      { to: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", group: "3. 👥 Kontakte & Mietverhältnisse", icon: KeyRound },
+      { to: "/buchhaltung/buchungen", label: "Buchungen", group: "4. 💼 Buchhaltung & Finanzen", icon: WalletCards },
+      { to: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", group: "4. 💼 Buchhaltung & Finanzen", icon: CalendarCheck },
+      { to: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkostenabrechnung", group: "4. 💼 Buchhaltung & Finanzen", icon: ClipboardList },
+      { to: "/buchhaltung/automatisiertes-mahnwesen", label: "Automatisiertes Mahnwesen", group: "4. 💼 Buchhaltung & Finanzen", icon: Bell },
+      { to: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", group: "4. 💼 Buchhaltung & Finanzen", icon: Euro },
+      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "4. 💼 Buchhaltung & Finanzen", icon: BarChart3 },
+      { to: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", group: "4. 💼 Buchhaltung & Finanzen", icon: BriefcaseBusiness },
+      { to: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", group: "4. 💼 Buchhaltung & Finanzen", icon: ReceiptText },
+      { to: "/ticketsystem/schadenmeldungen", label: "Schadenmeldungen", group: "5. 🔧 Aufgaben & Ticketsystem", icon: FolderKanban },
+      { to: "/ticketsystem/handwerker-beauftragung", label: "Handwerker-Beauftragung", group: "5. 🔧 Aufgaben & Ticketsystem", icon: BriefcaseBusiness },
+      ...(isAdmin ? [
+        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "6. ⚙️ System-Einstellungen", icon: UserCog },
+        { to: "/einstellungen/datenschutz-compliance", label: "Datenschutz & Compliance", group: "6. ⚙️ System-Einstellungen", icon: ShieldCheck },
+      ] : [
+        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "6. ⚙️ System-Einstellungen", icon: UserCog },
+      ]),
     ],
-    [isAdmin, isReadOnly],
+    [isAdmin],
   );
 
   const navGroups = useMemo(
     () =>
-      ["Administrator", "Dashboard", "Immobilien", "Mieter", "Buchhaltung", "Nebenkosten", "Finanzierung", "Organisation", "Berichte", "System"].map((group) => ({
+      ["1. 📊 Dashboard", "2. 🏢 Immobilien & Einheiten", "3. 👥 Kontakte & Mietverhältnisse", "4. 💼 Buchhaltung & Finanzen", "5. 🔧 Aufgaben & Ticketsystem", "6. ⚙️ System-Einstellungen"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
@@ -722,7 +1293,7 @@ function AppShell() {
     <div className={["min-h-screen bg-[#f6f1e8] text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-slate-800 bg-[#101827] text-white shadow-2xl xl:flex">
         <NavLink
-          to="/dashboard"
+          to="/dashboard/finanz-kennzahlen"
           className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
           title="Zum Dashboard"
         >
@@ -811,7 +1382,7 @@ function AppShell() {
         <div className="mx-auto max-w-[1760px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
           <div className="flex items-center justify-between gap-3 sm:gap-5">
             <NavLink
-              to="/dashboard"
+              to="/dashboard/finanz-kennzahlen"
               className="flex min-w-0 items-center gap-3"
               title="Zum Dashboard"
             >
@@ -951,14 +1522,40 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
 
       <Route element={<ProtectedAppShell />}>
+        <Route path="/dashboard" element={<Navigate to="/dashboard/finanz-kennzahlen" replace />} />
         <Route
-          path="/dashboard"
-          element={<Cockpit />}
+          path="/dashboard/finanz-kennzahlen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardFinanz}><Cockpit /></ModuleWorkspacePage>}
         />
-        <Route path="/cockpit" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/dashboard/warnmeldungen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardWarnungen}><Datenpruefung /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/dashboard/aktuelle-todos"
+          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardTodos}><OrganisationHubPage kind="produktivitaet" /></ModuleWorkspacePage>}
+        />
+        <Route path="/cockpit" element={<Navigate to="/dashboard/finanz-kennzahlen" replace />} />
 
         <Route path="/portfolio" element={<Portfolio />} />
-        <Route path="/immobilien" element={<Portfolio />} />
+        <Route path="/immobilien" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
+        <Route path="/Immobilien" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
+        <Route
+          path="/immobilien/objektuebersicht"
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienObjekte}><Portfolio /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/immobilien/einheiten-verwaltung"
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienEinheiten}><Portfolio /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/immobilien/zaehlerstaende-verbrauch"
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienVerbrauch}><NebenkostenIndexPage /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/immobilien/objekt-dokumente"
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienDokumente}><OrganisationHubPage kind="dokumente" /></ModuleWorkspacePage>}
+        />
         <Route
           path="/portfolio/:propertyId"
           element={<PortfolioPropertyLayout />}
@@ -996,7 +1593,7 @@ export default function App() {
           <Route path="vermietung" element={<PortfolioRenting />} />
         </Route>
 
-        <Route path="/objekte" element={<Navigate to="/portfolio" replace />} />
+        <Route path="/objekte" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
         <Route
           path="/objekte/:propertyId"
           element={<RedirectObjectRoute section="objektakte" />}
@@ -1023,17 +1620,49 @@ export default function App() {
         />
 
         <Route path="/monate" element={<Monate />} />
-        <Route path="/buchhaltung" element={<BuchhaltungHubPage />} />
+        <Route path="/buchhaltung" element={<Navigate to="/buchhaltung/buchungen" replace />} />
+        <Route
+          path="/buchhaltung/buchungen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBuchungen}><BuchhaltungHubPage /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/sollstellungen-mietanpassungen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSoll}><Mietuebersicht /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/nebenkostenabrechnung"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungNebenkosten}><NebenkostenIndexPage /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/automatisiertes-mahnwesen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungMahnwesen}><Mahnwesen /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/steuer-center-berater"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSteuer}><SteuerCenter /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/berichte-exporte"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><Auswertung /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/steuerberater-portal"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungPortal}><OrganisationHubPage kind="benutzer" /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/umsatzsteuer-optionen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungUst}><SteuerCenter /></ModuleWorkspacePage>}
+        />
         <Route path="/buchhaltung/transaktionen" element={<Monate />} />
         <Route path="/buchhaltung/einnahmen" element={<Monate />} />
         <Route path="/buchhaltung/ausgaben" element={<Monate />} />
         <Route path="/buchhaltung/neue-buchung" element={<EntryAdd />} />
         <Route path="/buchhaltung/regeln" element={<Transaktionsregeln />} />
-        <Route path="/buchhaltung/mahnwesen" element={<Mahnwesen />} />
-        <Route path="/buchhaltung/kautionen" element={<Kautionen />} />
-        <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/nebenkosten" replace />} />
-        <Route path="/buchhaltung/berichte" element={<Navigate to="/berichte" replace />} />
-        <Route path="/buchhaltung/export" element={<Navigate to="/berichte" replace />} />
+        <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
+        <Route path="/buchhaltung/kautionen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
+        <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/buchhaltung/nebenkostenabrechnung" replace />} />
+        <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
+        <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/steuer" element={<SteuerCenter />} />
         <Route path="/auswertungen" element={<Auswertung />} />
         <Route path="/berichte" element={<Auswertung />} />
@@ -1044,8 +1673,25 @@ export default function App() {
         />
 
         <Route path="/buchungen" element={<EntryAdd />} />
-        <Route path="/administrator" element={<Administrator />} />
-        <Route path="/mieter" element={<MieterHubPage />} />
+        <Route path="/administrator" element={<Navigate to="/einstellungen/benutzer-rechteverwaltung" replace />} />
+        <Route path="/kontakte" element={<Navigate to="/kontakte/aktive-mietvertraege" replace />} />
+        <Route
+          path="/kontakte/aktive-mietvertraege"
+          element={<ModuleWorkspacePage config={workspaceConfigs.kontakteVertraege}><MieterAnlegen /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/kontakte/mieter-eigentuemerakten"
+          element={<ModuleWorkspacePage config={workspaceConfigs.kontakteAkten}><MieterAnlegen /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/kontakte/interessenten-selbstauskuenfte"
+          element={<ModuleWorkspacePage config={workspaceConfigs.kontakteInteressenten}><MieterAnlegen /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle"
+          element={<ModuleWorkspacePage config={workspaceConfigs.kontakteUebergaben}><EinAuszug /></ModuleWorkspacePage>}
+        />
+        <Route path="/mieter" element={<Navigate to="/kontakte/aktive-mietvertraege" replace />} />
         <Route path="/mieter/uebersicht" element={<MieterHubPage />} />
         <Route path="/mieter/stammdaten" element={<MieterAnlegen />} />
         <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
@@ -1098,11 +1744,28 @@ export default function App() {
 
         <Route path="/kautionen" element={<Kautionen />} />
         <Route path="/vermoegen" element={<VermoegenHubPage />} />
-        <Route path="/ticketing" element={<OrganisationHubPage kind="ticketing" />} />
+        <Route path="/ticketsystem" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
+        <Route
+          path="/ticketsystem/schadenmeldungen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketSchaden}><OrganisationHubPage kind="ticketing" /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/ticketsystem/handwerker-beauftragung"
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketHandwerker}><OrganisationHubPage kind="ticketing" /></ModuleWorkspacePage>}
+        />
+        <Route path="/ticketing" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route path="/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
         <Route path="/produktivitaet" element={<OrganisationHubPage kind="produktivitaet" />} />
-        <Route path="/benutzer" element={<OrganisationHubPage kind="benutzer" />} />
-        <Route path="/einstellungen" element={<OrganisationHubPage kind="einstellungen" />} />
+        <Route path="/benutzer" element={<Navigate to="/einstellungen/benutzer-rechteverwaltung" replace />} />
+        <Route path="/einstellungen" element={<Navigate to="/einstellungen/benutzer-rechteverwaltung" replace />} />
+        <Route
+          path="/einstellungen/benutzer-rechteverwaltung"
+          element={<AdminOnlyWorkspace config={workspaceConfigs.einstellungenBenutzer}><Administrator /></AdminOnlyWorkspace>}
+        />
+        <Route
+          path="/einstellungen/datenschutz-compliance"
+          element={<AdminOnlyWorkspace config={workspaceConfigs.einstellungenDatenschutz}><Datenschutz /></AdminOnlyWorkspace>}
+        />
       </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
