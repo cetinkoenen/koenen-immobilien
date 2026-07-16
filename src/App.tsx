@@ -35,6 +35,7 @@ import {
   ReceiptText,
   Settings2,
   ShieldCheck,
+  TrendingUp,
   UserCog,
   Users,
   WalletCards,
@@ -128,6 +129,7 @@ const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
 const Datenschutz = lazy(() => import("./pages/Datenschutz"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
+const Mietentwicklung = lazy(() => import("./pages/Mietentwicklung"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
 const Mahnwesen = lazy(() => import("./pages/Mahnwesen"));
@@ -350,6 +352,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Portfolio, Objektakten, Buchhaltung, Darlehen",
     subpages: [
       { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
       { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
       { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
       { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
@@ -357,6 +360,26 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     tabs: [
       { label: "Wohnimmobilien", description: "Gebäude-Stammdaten, Einheiten-Struktur, Grundstücksdaten und Gemeinschaftsflächen." },
       { label: "Gewerbeimmobilien", description: "Nutzflächen, Umsatzsteueroptionen sowie Stellplatz- und Logistik-Zuordnung." },
+    ],
+  },
+  immobilienMietentwicklung: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Mietentwicklung",
+    description: "Zentrale Übersicht aller Sollmieten, Ist-Buchungen und Mieterhöhungen seit Januar 2024.",
+    basePath: "/immobilien",
+    source: "Portfolio > Vermietungszeiträume, Buchhaltung, Mieteingang",
+    subpages: [
+      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
+      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+    ],
+    tabs: [
+      { label: "Sollmieten", description: "Aktuelle Sollmiete pro Immobilie aus den gepflegten Vermietungszeiträumen." },
+      { label: "Buchungsprüfung", description: "Tatsächliche Mietzahlungen und Mietbestandteil-NK aus der Buchhaltung." },
+      { label: "Erhöhungen", description: "Automatisch erkannte Mietsteigerungen aus Vermietungszeiträumen und Buchungen." },
+      { label: "Datenqualität", description: "Objekte mit fehlender oder abweichender Soll-/Ist-Miete priorisiert prüfen." },
     ],
   },
   immobilienEinheiten: {
@@ -367,6 +390,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Portfolio, Vermietungszeiträume, Leerstand",
     subpages: [
       { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
       { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
       { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
       { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
@@ -387,6 +411,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Objektakte, Nebenkosten, Dokumente",
     subpages: [
       { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
       { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
       { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
       { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
@@ -1202,6 +1227,7 @@ function AppShell() {
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
       { to: "/immobilien/objektuebersicht", label: "Objekte", group: "Immobilien", icon: Building2 },
+      { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
       { to: "/kontakte/aktive-mietvertraege", label: "Stammdaten", group: "Mieter", icon: Users },
@@ -1502,6 +1528,10 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.immobilienObjekte}><Portfolio /></ModuleWorkspacePage>}
         />
         <Route
+          path="/immobilien/mietentwicklung"
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienMietentwicklung}><Mietentwicklung /></ModuleWorkspacePage>}
+        />
+        <Route
           path="/immobilien/einheiten-verwaltung"
           element={<ModuleWorkspacePage config={workspaceConfigs.immobilienEinheiten}><Portfolio /></ModuleWorkspacePage>}
         />
@@ -1665,6 +1695,7 @@ export default function App() {
         <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
         <Route path="/mieter/zahlungen" element={<Mietuebersicht />} />
         <Route path="/mieter/mieteingang" element={<Mietuebersicht />} />
+        <Route path="/mieter/mietentwicklung" element={<Mietentwicklung />} />
         <Route path="/mieter/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
         <Route path="/mieter/historie" element={<EinAuszug />} />
         <Route path="/mieter/ein-auszug" element={<EinAuszug />} />
