@@ -258,6 +258,149 @@ button.portfolio-object-media.small img,
   .portfolio-object-head {
     grid-template-columns: 96px minmax(0, 1fr) !important;
   }
+}
+
+/* Modernisierung 2026: ruhiger SaaS-Look fuer gewachsene Fachseiten */
+:root {
+  --app-surface: rgba(255, 255, 255, 0.84);
+  --app-surface-strong: rgba(255, 255, 255, 0.94);
+  --app-border: rgba(226, 232, 240, 0.78);
+  --app-text: #111827;
+  --app-muted: #5c6a7e;
+  --app-teal: #315f72;
+  --app-teal-soft: #e8f3ef;
+  --app-indigo: #6878d8;
+  --app-violet: #8d74bf;
+  --app-positive: #38a189;
+  --app-warning: #d08a5b;
+  --app-critical: #c77992;
+  --app-shadow: 0 14px 34px rgba(51, 65, 85, 0.07);
+  --app-shadow-hover: 0 18px 44px rgba(51, 65, 85, 0.1);
+}
+
+.readonly-banner,
+.tenant-hero,
+.portfolio-hero,
+.tenant-card,
+.tenant-summary,
+.portfolio-state,
+.portfolio-object-card,
+.portfolio-kpis > div,
+.portfolio-mini-card,
+.portfolio-subdashboards section,
+.portfolio-edit-box,
+.portfolio-data-pill {
+  border-color: var(--app-border) !important;
+  background: var(--app-surface) !important;
+  box-shadow: var(--app-shadow) !important;
+  backdrop-filter: blur(14px);
+}
+
+.tenant-hero,
+.portfolio-hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.tenant-hero::before,
+.portfolio-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(56, 161, 137, 0.45), transparent);
+}
+
+.tenant-hero h1,
+.portfolio-hero h1,
+.portfolio-object-titlebar h2,
+.tenant-card-head h2,
+.tenant-summary h2 {
+  color: var(--app-text) !important;
+  letter-spacing: -0.02em;
+}
+
+.tenant-hero p,
+.portfolio-hero p,
+.tenant-card-head p,
+.portfolio-subdashboards p,
+.portfolio-image-modal-caption span {
+  color: var(--app-muted) !important;
+}
+
+.tenant-actions a,
+.portfolio-actions button,
+.portfolio-subdashboards button,
+.tenant-mini-button,
+.tenant-export-button {
+  border-color: rgba(49, 95, 114, 0.22) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--app-teal) !important;
+  box-shadow: 0 8px 20px rgba(49, 95, 114, 0.08) !important;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.tenant-actions a:hover,
+.portfolio-actions button:hover,
+.portfolio-subdashboards button:hover,
+.tenant-mini-button:hover,
+.tenant-export-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(49, 95, 114, 0.36) !important;
+  background: var(--app-teal-soft) !important;
+  box-shadow: var(--app-shadow-hover) !important;
+}
+
+.portfolio-badge {
+  border-color: rgba(49, 95, 114, 0.24) !important;
+  background: var(--app-teal-soft) !important;
+  color: var(--app-teal) !important;
+}
+
+.tenant-status span,
+.tenant-summary-lines .green,
+.tenant-row.is-paid .tenant-status span {
+  background: #edf8f4 !important;
+  color: #145a4d !important;
+}
+
+.tenant-summary-lines .amber,
+.tenant-row.is-partial .tenant-status span {
+  background: #fbf6e8 !important;
+  color: #76521d !important;
+}
+
+.tenant-summary-lines .red,
+.tenant-row.is-missing .tenant-status span {
+  background: #fff0f4 !important;
+  color: #8f2442 !important;
+}
+
+.tenant-row.is-missing {
+  background: rgba(255, 240, 244, 0.58) !important;
+}
+
+.tenant-amount b,
+.tenant-card-head strong {
+  color: #287666 !important;
+}
+
+.portfolio-progress i {
+  background: linear-gradient(90deg, var(--app-teal), var(--app-indigo)) !important;
+}
+
+.portfolio-data-pill {
+  border-color: rgba(49, 95, 114, 0.16) !important;
+  background: #eef7f4 !important;
+}
+
+input,
+select,
+textarea {
+  accent-color: var(--app-teal);
+}
+
+@media(max-width: 1180px) {
   button.portfolio-object-media.small,
   .portfolio-object-media.small {
     width: 96px !important;
@@ -1662,4 +1805,65 @@ button.portfolio-object-media.small,
   .compact-actions {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Finales visuelles Overlay: moderne, ruhige Immobilien-App-Oberfläche */
+.portfolio-page-v11 {
+  --soft-border: rgba(226, 232, 240, 0.78) !important;
+  --soft-bg: rgba(255, 255, 255, 0.84) !important;
+  --ink: #111827 !important;
+}
+
+.portfolio-hero.polished,
+.portfolio-cashflow-panel,
+.refined-card,
+.portfolio-kpis.refined div {
+  border-color: var(--app-border) !important;
+  background: var(--app-surface) !important;
+  box-shadow: var(--app-shadow) !important;
+  backdrop-filter: blur(14px);
+}
+
+.portfolio-cashflow-panel h2,
+.refined-card h2,
+.portfolio-hero.polished h1 {
+  color: var(--app-text) !important;
+}
+
+.panel-label {
+  background: var(--app-teal-soft) !important;
+  color: var(--app-teal) !important;
+}
+
+.cashflow-bars i {
+  background: linear-gradient(90deg, var(--app-teal), #9bd8c4) !important;
+}
+
+.portfolio-kpis b.positive,
+.portfolio-mini-card b.positive {
+  color: #287666 !important;
+}
+
+.portfolio-kpis b.negative,
+.portfolio-mini-card b.negative {
+  color: #9b3655 !important;
+}
+
+.compact-actions button,
+.expose-actions button,
+.expose-actions a,
+.expose-toolbar button,
+.expose-toolbar a {
+  border-color: rgba(49, 95, 114, 0.22) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--app-teal) !important;
+  box-shadow: 0 8px 20px rgba(49, 95, 114, 0.08) !important;
+}
+
+.bg-slate-950 {
+  background-color: var(--app-teal) !important;
+}
+
+.hover\:bg-slate-800:hover {
+  background-color: #254f60 !important;
 }

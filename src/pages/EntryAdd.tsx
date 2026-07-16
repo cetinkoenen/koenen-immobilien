@@ -415,8 +415,8 @@ export default function EntryAdd() {
             style={{
               padding: "10px 14px",
               borderRadius: 12,
-              border: "1px solid #111827",
-              background: "#111827",
+              border: "1px solid #315f72",
+              background: "#315f72",
               color: "#ffffff",
               fontWeight: 900,
               cursor: saving ? "not-allowed" : "pointer",

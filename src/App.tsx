@@ -161,7 +161,7 @@ function sidebarNavLinkClass(isActive: boolean): string {
   return [
     "group flex min-h-11 items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-black no-underline transition",
     isActive
-      ? "bg-white/12 text-white shadow-[inset_3px_0_0_#8b7cf6]"
+      ? "bg-white/13 text-white shadow-[inset_3px_0_0_#7ed0bd,0_12px_28px_rgba(0,0,0,0.18)]"
       : "text-slate-300 hover:bg-white/8 hover:text-white",
   ].join(" ");
 }
@@ -212,19 +212,19 @@ type WorkspaceConfig = {
 };
 
 const groupAccent: Record<string, string> = {
-  Dashboard: "text-sky-300",
-  Immobilien: "text-cyan-300",
-  Investment: "text-blue-300",
-  Mieter: "text-emerald-300",
-  Buchhaltung: "text-violet-300",
-  Darlehen: "text-indigo-300",
-  Nebenkosten: "text-amber-300",
-  Aufgaben: "text-teal-300",
-  Dokumente: "text-blue-300",
+  Dashboard: "text-[#9ed7e2]",
+  Immobilien: "text-[#9bd8c4]",
+  Investment: "text-[#aeb8ff]",
+  Mieter: "text-[#9bd8c4]",
+  Buchhaltung: "text-[#d8c5ef]",
+  Darlehen: "text-[#aeb8ff]",
+  Nebenkosten: "text-[#e9cfa4]",
+  Aufgaben: "text-[#9ed7e2]",
+  Dokumente: "text-[#bdd7e3]",
   Einstellungen: "text-slate-300",
-  Überblick: "text-sky-300",
-  Finanzen: "text-violet-300",
-  Verwaltung: "text-amber-300",
+  Überblick: "text-[#9ed7e2]",
+  Finanzen: "text-[#d8c5ef]",
+  Verwaltung: "text-[#e9cfa4]",
 };
 
 const auswertungSubNav = [
@@ -855,7 +855,7 @@ function ModuleWorkspacePage({
         ]}
       />
 
-      <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <section className="rounded-[24px] border border-white/70 bg-white/82 p-3 shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur sm:p-4">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {config.subpages.map((subpage) => {
             const Icon = subpage.icon;
@@ -867,8 +867,8 @@ function ModuleWorkspacePage({
                   [
                     "flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-black no-underline transition",
                     isActive
-                      ? "border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm"
-                      : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white",
+                      ? "border-teal-200 bg-[#e8f3ef] text-[#19485a] shadow-sm"
+                      : "border-slate-200/80 bg-slate-50/70 text-slate-800 hover:border-teal-200 hover:bg-white",
                   ].join(" ")
                 }
               >
@@ -876,9 +876,9 @@ function ModuleWorkspacePage({
                   <>
                     <Icon
                       size={18}
-                              className={isActive ? "text-indigo-700" : "text-slate-800"}
+                              className={isActive ? "text-[#255f6f]" : "text-slate-800"}
                     />
-                    <span className={isActive ? "text-indigo-950" : "text-slate-950"}>
+                    <span className={isActive ? "text-[#19485a]" : "text-slate-950"}>
                       {subpage.label}
                     </span>
                   </>
@@ -1273,8 +1273,8 @@ function AppShell() {
   }
 
   return (
-    <div className={["min-h-screen bg-[#f6f1e8] text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-slate-800 bg-[#101827] text-white shadow-2xl xl:flex">
+    <div className={["min-h-screen text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-white/10 bg-[linear-gradient(180deg,#102535_0%,#132a38_48%,#0d1824_100%)] text-white shadow-[18px_0_52px_rgba(15,23,42,0.20)] xl:flex">
         <NavLink
           to="/dashboard/finanz-kennzahlen"
           className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
@@ -1284,7 +1284,7 @@ function AppShell() {
             <img src={logo} alt="Könen Immobilien" className="h-full w-full object-cover" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9fb5bc]">
               Property App
             </div>
             <div className="mt-1 truncate text-base font-black leading-tight text-white">
@@ -1361,7 +1361,7 @@ function AppShell() {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-30 border-b border-[#e7ddcf] bg-[#f6f1e8]/88 backdrop-blur-xl xl:hidden">
+      <header className="sticky top-0 z-30 border-b border-white/60 bg-white/68 backdrop-blur-xl xl:hidden">
         <div className="mx-auto max-w-[1760px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
           <div className="flex items-center justify-between gap-3 sm:gap-5">
             <NavLink
@@ -1369,7 +1369,7 @@ function AppShell() {
               className="flex min-w-0 items-center gap-3"
               title="Zum Dashboard"
             >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#e3d8ca] bg-[#f3eadc] shadow-sm sm:h-14 sm:w-14">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white/80 shadow-sm sm:h-14 sm:w-14">
                 <img
                   src={logo}
                   alt="Könen Immobilien"
@@ -1389,7 +1389,7 @@ function AppShell() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm sm:h-12 sm:w-12"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 bg-white/84 text-slate-900 shadow-sm backdrop-blur sm:h-12 sm:w-12"
               aria-label={mobileMenuOpen ? "Menü schließen" : "Menü öffnen"}
               aria-expanded={mobileMenuOpen}
             >
@@ -1398,10 +1398,10 @@ function AppShell() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-[#e7ddcf] bg-white/90 p-3 shadow-sm xl:hidden">
+            <div className="mt-3 max-h-[calc(100vh-86px)] overflow-y-auto rounded-[24px] border border-white/70 bg-white/88 p-3 shadow-[0_18px_45px_rgba(55,65,81,0.10)] backdrop-blur xl:hidden">
               <nav className="grid gap-4">
                 {navGroups.map(({ group, items }) => (
-                  <div key={group} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div key={group} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/84">
                     <button
                       type="button"
                       onClick={() => toggleMobileGroup(group)}
@@ -1470,8 +1470,8 @@ function AppShell() {
                 ))}
               </nav>
 
-              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-[#e7ddcf] bg-white/80 p-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+              <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 p-3">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-sm font-medium text-slate-600">
                   {user?.email ?? "Eingeloggt"}
                   <span className="ml-2 font-black text-slate-500">{isReadOnly ? "Nur Lesen" : "Admin"}</span>
                 </div>

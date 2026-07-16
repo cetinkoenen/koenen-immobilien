@@ -4,7 +4,7 @@
 @theme {
   --radius: 1rem;
 
-  --color-background: #f6f1e8;
+  --color-background: #f3f6f3;
   --color-foreground: #0f172a;
 
   --color-card: #ffffff;
@@ -13,7 +13,7 @@
   --color-popover: #ffffff;
   --color-popover-foreground: #0f172a;
 
-  --color-primary: #2563eb;
+  --color-primary: #315f72;
   --color-primary-foreground: #ffffff;
 
   --color-secondary: #f1f5f9;
@@ -22,15 +22,15 @@
   --color-muted: #e2e8f0;
   --color-muted-foreground: #64748b;
 
-  --color-accent: #eff6ff;
-  --color-accent-foreground: #1e3a8a;
+  --color-accent: #e8f3ef;
+  --color-accent-foreground: #19485a;
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
   --color-border: #e2e8f0;
   --color-input: #cbd5e1;
-  --color-ring: #2563eb;
+  --color-ring: #477f8f;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -55,7 +55,11 @@ html {
 
 body {
   margin: 0;
-  background-color: var(--color-background);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(98, 146, 159, 0.16), transparent 34rem),
+    radial-gradient(circle at 92% 12%, rgba(104, 132, 245, 0.12), transparent 30rem),
+    linear-gradient(135deg, #f7f4ec 0%, #eef5f1 48%, #edf2f8 100%);
+  background-attachment: fixed;
   color: var(--color-foreground);
   font-family:
     ui-sans-serif,
@@ -72,6 +76,35 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(70, 127, 143, 0.24);
+  color: #0f172a;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(71, 127, 143, 0.26);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: #9fb5bc #edf3f0;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: #edf3f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #9fb5bc;
+  border: 3px solid #edf3f0;
+  border-radius: 999px;
 }
 
 #root {

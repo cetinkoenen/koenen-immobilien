@@ -29,9 +29,9 @@ export default function CashflowChart({ data }: Props) {
     <div className="h-[320px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="year" />
-          <YAxis tickFormatter={(value) => formatEuro(Number(value))} width={100} />
+          <CartesianGrid stroke="#dbe6e5" strokeDasharray="3 3" />
+          <XAxis dataKey="year" tick={{ fill: "#64748b", fontWeight: 700 }} axisLine={{ stroke: "#cbd5e1" }} tickLine={false} />
+          <YAxis tickFormatter={(value) => formatEuro(Number(value))} width={100} tick={{ fill: "#64748b", fontWeight: 700 }} axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value) => [formatEuro(Number(value)), "Cashflow"]}
             labelFormatter={(label) => `Jahr ${label}`}
@@ -40,7 +40,7 @@ export default function CashflowChart({ data }: Props) {
             {data.map((entry) => (
               <Cell
                 key={`cashflow-cell-${entry.year}`}
-                fill={entry.cashflow >= 0 ? "#16a34a" : "#dc2626"}
+                fill={entry.cashflow >= 0 ? "#38a189" : "#c77992"}
               />
             ))}
           </Bar>

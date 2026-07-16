@@ -3,6 +3,8 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recha
 
 export type PieRow = { name: string; value: number };
 
+const MODERN_CHART_COLORS = ["#315f72", "#38a189", "#6878d8", "#a16fba", "#d08a5b", "#7a9eb1", "#5f8d6f", "#c77992"];
+
 export default function CategoryPie({
   title = "Verteilung (Kreisdiagramm)",
   data,
@@ -17,13 +19,14 @@ export default function CategoryPie({
   return (
     <div
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.72)",
+        borderRadius: 20,
         padding: 14,
-        background: "white",
+        background: "rgba(255,255,255,0.84)",
+        boxShadow: "0 14px 34px rgba(51,65,85,0.07)",
       }}
     >
-      <div style={{ fontWeight: 800, marginBottom: 10 }}>{title}</div>
+      <div style={{ fontWeight: 900, marginBottom: 10, color: "#111827" }}>{title}</div>
 
       {!hasData ? (
         <div style={{ padding: 14, fontSize: 13, opacity: 0.75 }}>
@@ -43,7 +46,7 @@ export default function CategoryPie({
                 label={(d) => d.name}
               >
                 {data.map((_, idx) => (
-                  <Cell key={idx} />
+                  <Cell key={idx} fill={MODERN_CHART_COLORS[idx % MODERN_CHART_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip />
