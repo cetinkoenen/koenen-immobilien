@@ -88,13 +88,29 @@ type RunInvestmentAiAnalysisInput = {
   files: InvestmentAiFile[];
 };
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("Datei konnte nicht gelesen werden."));
-    reader.readAsDataURL(file);
-  });
+const INVESTMENT_ANALYSIS_BUCKET = "investment-analysis-files";
+
+function safeStorageFileName(value: string) {
+  const extension = value.includes(".") ? value.slice(value.lastIndexOf(".")) : "";
+  const baseName = value.replace(/\.[^.]+$/, "");
+  const safeBase =
+    baseName
+      .trim()
+      .toLowerCase()
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "unterlage";
+  return `${safeBase}${extension.toLowerCase()}`;
+}
+
+function createSessionId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export async function runInvestmentAiAnalysis(input: RunInvestmentAiAnalysisInput): Promise<InvestmentAiReport> {
@@ -106,14 +122,50 @@ export async function runInvestmentAiAnalysis(input: RunInvestmentAiAnalysisInpu
     throw new Error("Bitte zuerst anmelden. Die KI-Bewertung benötigt eine aktive Supabase-Sitzung.");
   }
 
-  const files = await Promise.all(
-    input.files.map(async (entry) => ({
-      name: entry.name,
-      size: entry.size,
-      type: entry.type || entry.file.type || "application/octet-stream",
-      dataUrl: await readFileAsDataUrl(entry.file),
-    })),
-  );
+  const userId = session.user.id;
+  const sessionId = createSessionId();
+  const uploadedPaths: string[] = [];
+
+  let storageFiles: Array<{
+    bucket: string;
+    path: string;
+    name: string;
+    size: number;
+    type: string;
+  }> = [];
+
+  try {
+    storageFiles = await Promise.all(
+      input.files.map(async (entry, index) => {
+        const path = `${userId}/${sessionId}/${String(index + 1).padStart(2, "0")}-${safeStorageFileName(entry.name)}`;
+        const { error } = await supabase.storage
+          .from(INVESTMENT_ANALYSIS_BUCKET)
+          .upload(path, entry.file, {
+            cacheControl: "60",
+            contentType: entry.type || entry.file.type || "application/octet-stream",
+            upsert: false,
+          });
+
+        if (error) {
+          throw new Error(`Upload fehlgeschlagen (${entry.name}): ${error.message}`);
+        }
+
+        uploadedPaths.push(path);
+        return {
+          bucket: INVESTMENT_ANALYSIS_BUCKET,
+          path,
+          name: entry.name,
+          size: entry.size,
+          type: entry.type || entry.file.type || "application/octet-stream",
+        };
+      }),
+    );
+  } catch (error) {
+    if (uploadedPaths.length) {
+      await supabase.storage.from(INVESTMENT_ANALYSIS_BUCKET).remove(uploadedPaths);
+    }
+    throw error;
+  }
 
   const { data, error } = await supabase.functions.invoke("investment-report-ai", {
     body: {
@@ -128,15 +180,21 @@ export async function runInvestmentAiAnalysis(input: RunInvestmentAiAnalysisInpu
       monthlyHousegeld: input.monthlyHousegeld,
       interestRate: input.interestRate,
       amortizationRate: input.amortizationRate,
-      files,
+      storageFiles,
     },
   });
 
   if (error) {
+    if (uploadedPaths.length) {
+      await supabase.storage.from(INVESTMENT_ANALYSIS_BUCKET).remove(uploadedPaths);
+    }
     throw new Error(error.message);
   }
 
   if (!data?.report) {
+    if (uploadedPaths.length) {
+      await supabase.storage.from(INVESTMENT_ANALYSIS_BUCKET).remove(uploadedPaths);
+    }
     throw new Error(data?.error ?? "Die KI-Bewertung hat keinen Bericht zurückgegeben.");
   }
 

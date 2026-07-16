@@ -14,6 +14,14 @@ type UploadedFilePayload = {
   dataUrl: string;
 };
 
+type StorageFilePayload = {
+  bucket: string;
+  path: string;
+  name: string;
+  size: number;
+  type: string;
+};
+
 const reportChapters = [
   "Executive Summary und Objektübersicht",
   "Standort- und Marktanalyse",
@@ -192,6 +200,10 @@ function dataUrlToBytes(dataUrl: string) {
   return bytes;
 }
 
+function bytesToDataUrl(bytes: Uint8Array, mimeType: string) {
+  return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+}
+
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -238,6 +250,10 @@ async function expandZipFiles(files: UploadedFilePayload[]) {
   return expanded;
 }
 
+async function blobToBytes(blob: Blob) {
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -280,9 +296,44 @@ Deno.serve(async (req) => {
   }
 
   const payload = await req.json();
-  const files: UploadedFilePayload[] = Array.isArray(payload.files) ? payload.files : [];
-  if (!files.length) {
+  const storageFiles: StorageFilePayload[] = Array.isArray(payload.storageFiles) ? payload.storageFiles : [];
+  if (!storageFiles.length) {
     return jsonResponse({ error: "Keine Unterlagen übertragen." }, 400);
+  }
+
+  const cleanupTargets = storageFiles.reduce<Record<string, string[]>>((groups, file) => {
+    groups[file.bucket] = [...(groups[file.bucket] ?? []), file.path];
+    return groups;
+  }, {});
+
+  async function cleanupStorageFiles() {
+    await Promise.all(
+      Object.entries(cleanupTargets).map(([bucket, paths]) => supabase.storage.from(bucket).remove(paths)),
+    );
+  }
+
+  const files: UploadedFilePayload[] = [];
+  try {
+    for (const storageFile of storageFiles) {
+      const { data, error } = await supabase.storage.from(storageFile.bucket).download(storageFile.path);
+      if (error || !data) {
+        throw new Error(`Unterlage konnte nicht gelesen werden: ${storageFile.name}`);
+      }
+      const bytes = await blobToBytes(data);
+      const type = storageFile.type || mimeFromName(storageFile.name);
+      files.push({
+        name: storageFile.name,
+        type,
+        size: bytes.byteLength,
+        dataUrl: bytesToDataUrl(bytes, type),
+      });
+    }
+  } catch (error) {
+    await cleanupStorageFiles();
+    return jsonResponse(
+      { error: error instanceof Error ? error.message : "Unterlagen konnten nicht aus dem Storage gelesen werden." },
+      500,
+    );
   }
 
   const expandedZipFiles = await expandZipFiles(files);
@@ -363,6 +414,7 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
   const openaiData = await openaiResponse.json();
 
   if (!openaiResponse.ok) {
+    await cleanupStorageFiles();
     return jsonResponse(
       {
         error:
@@ -376,11 +428,13 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
 
   const outputText = extractOutputText(openaiData);
   if (!outputText) {
+    await cleanupStorageFiles();
     return jsonResponse({ error: "OpenAI hat keinen auswertbaren Berichtstext zurückgegeben." }, 502);
   }
 
   try {
     const report = JSON.parse(outputText);
+    await cleanupStorageFiles();
     return jsonResponse({
       report: {
         ...report,
@@ -388,6 +442,7 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
       },
     });
   } catch {
+    await cleanupStorageFiles();
     return jsonResponse({ error: "KI-Antwort konnte nicht als strukturierter Bericht gelesen werden." }, 502);
   }
 });
