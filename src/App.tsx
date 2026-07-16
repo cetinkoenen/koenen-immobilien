@@ -802,6 +802,12 @@ function ModuleWorkspacePage({
   config: WorkspaceConfig;
   children?: ReactNode;
 }) {
+  const [activeTabLabel, setActiveTabLabel] = useState(config.tabs[0]?.label ?? "");
+  const activeTab = config.tabs.find((tab) => tab.label === activeTabLabel) ?? config.tabs[0];
+  const workspaceTabId = (label: string) =>
+    `workspace-tab-${config.title}-${label}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const activeTabId = activeTab ? workspaceTabId(activeTab.label) : undefined;
+
   return (
     <div className="module-workspace space-y-5">
       <PageHeader
@@ -851,24 +857,50 @@ function ModuleWorkspacePage({
       <SectionPanel
         eyebrow="Tabs"
         title="Arbeitsbereiche"
-        description="Die Tabs strukturieren die Fachseite nach der neuen Modulhierarchie. Die darunterliegenden Daten und Funktionen bleiben in den bestehenden Seiten."
+        description="Die Tabs strukturieren die Fachseite nach der neuen Modulhierarchie. Der aktive Bereich zeigt die passende Arbeitslogik und darunter die bestehende Fachfunktion."
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label={`${config.title} Arbeitsbereiche`}>
           {config.tabs.map((tab) => (
-            <div
+            <button
               key={tab.label}
-              className="rounded-[18px] border border-slate-200 bg-slate-50 p-4"
+              id={workspaceTabId(tab.label)}
+              type="button"
+              role="tab"
+              onClick={() => setActiveTabLabel(tab.label)}
+              className={[
+                "min-h-12 shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-black transition",
+                activeTab?.label === tab.label
+                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50",
+              ].join(" ")}
+              aria-pressed={activeTab?.label === tab.label}
+              aria-selected={activeTab?.label === tab.label}
+              aria-controls="module-workspace-active-panel"
             >
-              <h3 className="text-sm font-black text-slate-950">{tab.label}</h3>
-              <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
-                {tab.description}
-              </p>
-            </div>
+              {tab.label}
+            </button>
           ))}
         </div>
+
+        {activeTab ? (
+          <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Aktiver Arbeitsbereich
+            </div>
+            <h3 className="mt-2 text-lg font-black text-slate-950">{activeTab.label}</h3>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+              {activeTab.description}
+            </p>
+          </div>
+        ) : null}
       </SectionPanel>
 
-      <div className="module-workspace-content">
+      <div
+        id="module-workspace-active-panel"
+        role="tabpanel"
+        aria-labelledby={activeTabId}
+        className="module-workspace-content"
+      >
         {children ?? (
           <EmptyState
             title="Vorhandene Fachseite wird hier eingebunden"
