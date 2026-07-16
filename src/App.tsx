@@ -877,8 +877,17 @@ function ModuleWorkspacePage({
                   ].join(" ")
                 }
               >
-                <Icon size={18} />
-                <span>{subpage.label}</span>
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      size={18}
+                      className={isActive ? "text-white" : "text-slate-800"}
+                    />
+                    <span className={isActive ? "text-white" : "text-slate-950"}>
+                      {subpage.label}
+                    </span>
+                  </>
+                )}
               </NavLink>
             );
           })}
