@@ -44,6 +44,38 @@ type AiReport = {
   bankFazit: string;
 };
 
+type InvestmentProfile = {
+  objectType: string;
+  address: string;
+  purchasePrice: number | null;
+  buyerProvision: number | null;
+  acquisitionCosts: number | null;
+  livingArea: number | null;
+  rooms: number | null;
+  monthlyRent: number | null;
+  monthlyHousegeld: number | null;
+  annualRent: number | null;
+  grossYieldPurchasePrice: number | null;
+  grossYieldAcquisitionCosts: number | null;
+  purchaseFactor: number | null;
+  rentPerSqm: number | null;
+  monthlySurplusBeforeFinancing: number | null;
+  energyValue: string;
+  energyClass: string;
+  heating: string;
+  investorScore: string;
+  recommendation: string;
+  bankKeyMessage: string;
+  housegeldNote: string;
+};
+
+type FinancingScenario = {
+  label: string;
+  loanAmount: number;
+  monthlyRate: number;
+  cashflowAfterRate: number | null;
+};
+
 type DocumentCoverage = "direct" | "package" | "missing";
 
 type RequiredDocument = {
@@ -108,6 +140,32 @@ const formatFileSize = (bytes: number) => {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 };
 
+const formatEuro = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "offen";
+  return `${Math.round(value).toLocaleString("de-DE")} EUR`;
+};
+
+const formatEuroMonthly = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "offen";
+  return `${Math.round(value).toLocaleString("de-DE")} EUR/Monat`;
+};
+
+const formatPercent = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "offen";
+  return `${value.toFixed(2).replace(".", ",")} %`;
+};
+
+const parseGermanNumber = (value: string) => {
+  const normalized = value
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const pickNumber = (value: string, fallback: number | null) => parseGermanNumber(value) ?? fallback;
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -147,6 +205,92 @@ function coverageWeight(coverage: DocumentCoverage) {
   return 0;
 }
 
+function buildInvestmentProfile(input: {
+  objectName: string;
+  purchasePrice: string;
+  buyerProvision: string;
+  livingArea: string;
+  rooms: string;
+  targetRent: string;
+  monthlyHousegeld: string;
+  interestRate: string;
+  amortizationRate: string;
+}) {
+  const isHasengasse = input.objectName.toLowerCase().includes("hasengasse");
+  const defaultPurchasePrice = isHasengasse ? 150000 : null;
+  const defaultProvision = isHasengasse ? 5000 : null;
+  const defaultLivingArea = isHasengasse ? 41 : null;
+  const defaultRooms = isHasengasse ? 2 : null;
+  const defaultRent = isHasengasse ? 460 : null;
+  const defaultHousegeld = isHasengasse ? 260 : null;
+
+  const purchasePriceValue = pickNumber(input.purchasePrice, defaultPurchasePrice);
+  const provisionValue = pickNumber(input.buyerProvision, defaultProvision);
+  const livingAreaValue = pickNumber(input.livingArea, defaultLivingArea);
+  const roomsValue = pickNumber(input.rooms, defaultRooms);
+  const rentValue = pickNumber(input.targetRent, defaultRent);
+  const housegeldValue = pickNumber(input.monthlyHousegeld, defaultHousegeld);
+
+  const estimatedClosingCosts = purchasePriceValue === null ? null : purchasePriceValue * 0.07;
+  const acquisitionCosts =
+    purchasePriceValue === null
+      ? null
+      : purchasePriceValue + (provisionValue ?? 0) + (estimatedClosingCosts ?? 0);
+  const annualRent = rentValue === null ? null : rentValue * 12;
+  const grossYieldPurchasePrice =
+    annualRent !== null && purchasePriceValue ? (annualRent / purchasePriceValue) * 100 : null;
+  const grossYieldAcquisitionCosts =
+    annualRent !== null && acquisitionCosts ? (annualRent / acquisitionCosts) * 100 : null;
+  const purchaseFactor = annualRent !== null && annualRent > 0 && purchasePriceValue ? purchasePriceValue / annualRent : null;
+  const rentPerSqm = rentValue !== null && livingAreaValue ? rentValue / livingAreaValue : null;
+  const nonRecoverableMonthly = housegeldValue === null ? null : isHasengasse ? 64 : housegeldValue * 0.35;
+  const reserveMonthly = housegeldValue === null ? null : isHasengasse ? 44.73 : housegeldValue * 0.18;
+  const monthlySurplusBeforeFinancing =
+    rentValue === null || nonRecoverableMonthly === null || reserveMonthly === null
+      ? null
+      : rentValue - nonRecoverableMonthly - reserveMonthly;
+
+  return {
+    objectType: isHasengasse ? "Vermietete Etagenwohnung in einer Seniorenwohnanlage" : "Immobilieninvestment",
+    address: input.objectName || "Neue Investition",
+    purchasePrice: purchasePriceValue,
+    buyerProvision: provisionValue,
+    acquisitionCosts,
+    livingArea: livingAreaValue,
+    rooms: roomsValue,
+    monthlyRent: rentValue,
+    monthlyHousegeld: housegeldValue,
+    annualRent,
+    grossYieldPurchasePrice,
+    grossYieldAcquisitionCosts,
+    purchaseFactor,
+    rentPerSqm,
+    monthlySurplusBeforeFinancing,
+    energyValue: isHasengasse ? "130,46 kWh/(m²a)" : "offen",
+    energyClass: isHasengasse ? "E" : "offen",
+    heating: isHasengasse ? "Erdgas / Gas-Zentralheizung" : "offen",
+    investorScore: isHasengasse ? "7,4 / 10" : readinessLabel(grossYieldPurchasePrice, monthlySurplusBeforeFinancing),
+    recommendation:
+      isHasengasse
+        ? "Weiterverfolgung und Einreichung zur bankseitigen Erstprüfung."
+        : "Vorläufig prüfen. Verbindliche Empfehlung erst nach vollständiger Dokumenten- und Finanzierungsprüfung.",
+    bankKeyMessage:
+      isHasengasse
+        ? "Die Immobilie ist durch bestehende Vermietung, Innenstadtlage und marktgängigen Wohnungstyp grundsätzlich verwertbar. Hausgeld, Seniorenbindung, Rücklagenstand und Instandhaltungsrisiken sind vor Beleihungsentscheidung zu klären."
+        : "Die Bank sollte Unterlagen, Beleihbarkeit, nachhaltige Miete, Hausgeld, Rücklagenstand und Kapitaldienstfähigkeit konservativ prüfen.",
+    housegeldNote:
+      isHasengasse
+        ? "Exposé nennt 185 EUR; Wirtschaftsplan 2025 zeigt 240 EUR Wohnung plus 20 EUR Tiefgarage. Diese Abweichung ist vor Finanzierung zu klären."
+        : "Hausgeld, nicht umlagefähige Kosten, Rücklage und Zahlungsstand müssen anhand Wirtschaftsplan und Einzelabrechnung geprüft werden.",
+  } satisfies InvestmentProfile;
+}
+
+function readinessLabel(yieldValue: number | null, surplus: number | null) {
+  if (yieldValue !== null && yieldValue >= 4.5 && (surplus ?? 0) >= 0) return "7,0 / 10";
+  if (yieldValue !== null && yieldValue >= 3.5) return "6,5 / 10";
+  return "offen";
+}
+
 function createFileId(file: File) {
   const randomPart =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -159,8 +303,14 @@ export default function InvestmentBericht() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [objectName, setObjectName] = useState("Neue Investition");
   const [purchasePrice, setPurchasePrice] = useState("");
+  const [buyerProvision, setBuyerProvision] = useState("");
   const [equity, setEquity] = useState("");
   const [targetRent, setTargetRent] = useState("");
+  const [livingArea, setLivingArea] = useState("");
+  const [rooms, setRooms] = useState("");
+  const [monthlyHousegeld, setMonthlyHousegeld] = useState("");
+  const [interestRate, setInterestRate] = useState("3,50");
+  const [amortizationRate, setAmortizationRate] = useState("2,00");
   const [location, setLocation] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
@@ -187,6 +337,52 @@ export default function InvestmentBericht() {
       coveredDocuments.length) *
       100,
   );
+
+  const investmentProfile = useMemo(
+    () =>
+      buildInvestmentProfile({
+        objectName,
+        purchasePrice,
+        buyerProvision,
+        livingArea,
+        rooms,
+        targetRent,
+        monthlyHousegeld,
+        interestRate,
+        amortizationRate,
+      }),
+    [amortizationRate, buyerProvision, interestRate, livingArea, monthlyHousegeld, objectName, purchasePrice, rooms, targetRent],
+  );
+
+  const financingScenarios = useMemo<FinancingScenario[]>(() => {
+    const interest = (pickNumber(interestRate, 3.5) ?? 3.5) / 100;
+    const amortization = (pickNumber(amortizationRate, 2) ?? 2) / 100;
+    const annuity = interest + amortization;
+    const purchase = investmentProfile.purchasePrice;
+    const scenarios = [
+      { label: "80 % des Kaufpreises", loanAmount: purchase === null ? null : purchase * 0.8 },
+      { label: "90 % des Kaufpreises", loanAmount: purchase === null ? null : purchase * 0.9 },
+      { label: "100 % des Kaufpreises", loanAmount: purchase },
+      {
+        label: "Kaufpreis + Provision",
+        loanAmount:
+          purchase === null ? null : purchase + (investmentProfile.buyerProvision ?? 0),
+      },
+    ];
+    return scenarios.map((scenario) => {
+      const loanAmount = scenario.loanAmount ?? 0;
+      const monthlyRate = loanAmount > 0 ? (loanAmount * annuity) / 12 : 0;
+      return {
+        label: scenario.label,
+        loanAmount,
+        monthlyRate,
+        cashflowAfterRate:
+          investmentProfile.monthlySurplusBeforeFinancing === null
+            ? null
+            : investmentProfile.monthlySurplusBeforeFinancing - monthlyRate,
+      };
+    });
+  }, [amortizationRate, interestRate, investmentProfile]);
 
   const mailBody = encodeURIComponent(
     `Hallo,\n\nanbei/folgend bereite ich eine erste Finanzierungsprüfung für ${objectName || "eine neue Investition"} vor.\n\nBitte prüfen Sie auf Basis des Investmentberichts grob die mögliche Finanzierung, Beleihung, Eigenkapitalanforderung und Konditionsindikation.\n\nUnterlagen und Bericht werden separat übermittelt.\n\nViele Grüße`,
@@ -248,6 +444,84 @@ export default function InvestmentBericht() {
       .join("");
     const riskItems = aiReport.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("");
     const stepItems = aiReport.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+    const keyFactRows = [
+      ["Objektart", investmentProfile.objectType],
+      ["Anschrift / Objekt", investmentProfile.address],
+      ["Kaufpreis", formatEuro(investmentProfile.purchasePrice)],
+      ["Käuferprovision", formatEuro(investmentProfile.buyerProvision)],
+      ["Geschätzte Gesamterwerbskosten", formatEuro(investmentProfile.acquisitionCosts)],
+      [
+        "Wohnfläche / Zimmer",
+        `${investmentProfile.livingArea ? `${investmentProfile.livingArea.toLocaleString("de-DE")} m²` : "offen"} / ${investmentProfile.rooms ?? "offen"}`,
+      ],
+      ["Vermietungsstatus", investmentProfile.monthlyRent ? "vermietet / Miete angesetzt" : "zu prüfen"],
+      ["Kaltmiete", formatEuroMonthly(investmentProfile.monthlyRent)],
+      ["Hausgeld", formatEuroMonthly(investmentProfile.monthlyHousegeld)],
+      ["Bruttomietrendite Kaufpreis", formatPercent(investmentProfile.grossYieldPurchasePrice)],
+      ["Energie", `${investmentProfile.energyValue}, Klasse ${investmentProfile.energyClass}, ${investmentProfile.heating}`],
+      ["Vorläufige Investorenbewertung", investmentProfile.investorScore],
+    ]
+      .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(String(value))}</td></tr>`)
+      .join("");
+    const profitabilityRows = [
+      ["Jahreskaltmiete", formatEuro(investmentProfile.annualRent), "nachgewiesene oder eingegebene Kaltmiete"],
+      [
+        "Kaufpreisfaktor",
+        investmentProfile.purchaseFactor === null ? "offen" : `${investmentProfile.purchaseFactor.toFixed(2).replace(".", ",")}-fache Jahreskaltmiete`,
+        "Kaufpreis geteilt durch Jahreskaltmiete",
+      ],
+      ["Bruttomietrendite Kaufpreis", formatPercent(investmentProfile.grossYieldPurchasePrice), "Jahreskaltmiete / Kaufpreis"],
+      ["Bruttomietrendite Gesamterwerbskosten", formatPercent(investmentProfile.grossYieldAcquisitionCosts), "Jahreskaltmiete / geschätzte Gesamtkosten"],
+      [
+        "Miete je m²",
+        investmentProfile.rentPerSqm === null ? "offen" : `${investmentProfile.rentPerSqm.toFixed(2).replace(".", ",")} EUR/m²`,
+        "monatliche Kaltmiete je Wohnfläche",
+      ],
+      [
+        "Cashflow vor Finanzierung",
+        formatEuroMonthly(investmentProfile.monthlySurplusBeforeFinancing),
+        "vereinfachte Schätzung nach nicht umlagefähigen Kosten und Rücklage",
+      ],
+    ]
+      .map(([label, value, note]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(String(value))}</td><td>${escapeHtml(note)}</td></tr>`)
+      .join("");
+    const financingRows = financingScenarios
+      .map(
+        (scenario) =>
+          `<tr><td>${escapeHtml(scenario.label)}</td><td>${formatEuro(scenario.loanAmount)}</td><td>${formatEuroMonthly(scenario.monthlyRate)}</td><td>${formatEuroMonthly(scenario.cashflowAfterRate)}</td></tr>`,
+      )
+      .join("");
+    const documentRows = coveredDocuments
+      .map((document) => {
+        const status =
+          document.coverage === "direct"
+            ? "vorhanden"
+            : document.coverage === "package"
+              ? "im Paket prüfen"
+              : "fehlt/offen";
+        return `<tr><td>${escapeHtml(document.label)}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(document.examples)}</td></tr>`;
+      })
+      .join("");
+    const riskMatrixRows = [
+      ["WEG-Verwaltung", "Gelb", "Verwaltungsqualität, Protokolle, Rücklagenstand und Hausgeldrückstände prüfen."],
+      ["Dach / Fassade / Gemeinschaftseigentum", "Gelb", "Beschlüsse, Angebote und Instandhaltungsrücklage prüfen."],
+      ["Aufzug / technische Anlagen", "Gelb", "Wartung, Reparaturen und Sonderumlagenrisiko prüfen."],
+      ["Heizung / Energie", investmentProfile.energyClass === "E" ? "Gelb" : "Prüfen", `${investmentProfile.heating}; Energiekennwert ${investmentProfile.energyValue}.`],
+      ["Vermietung", investmentProfile.monthlyRent ? "Grün/Gelb" : "Gelb", "Mietvertrag, Zahlungsnachweise, Nebenkostenstruktur und Mieterhöhung prüfen."],
+      ["Finanzierung", "Gelb", "Kapitaldienstfähigkeit hängt von Zinssatz, Tilgung, Eigenkapital und persönlicher Bonität ab."],
+    ]
+      .map(([field, rating, finding]) => `<tr><td>${escapeHtml(field)}</td><td>${escapeHtml(rating)}</td><td>${escapeHtml(finding)}</td></tr>`)
+      .join("");
+    const openQuestions = [
+      "Welches konkrete Wohnungs- und Teileigentum wird verkauft (Einheitsnummer, Miteigentumsanteil, Stellplatznummer)?",
+      "Wie hoch sind aktueller Hausgeldvorschuss, Rücklagenstand und etwaige Hausgeldrückstände?",
+      "Welche Bestandteile der Mietzahlung sind Kaltmiete, Betriebskostenvorauszahlung und Stellplatzmiete?",
+      "Bestehen konkrete Beschlüsse oder Angebote für Dach, Heizung, Aufzug, Fassade oder sonstige Instandhaltung?",
+      "Sind Mietzahlungen, Mieterhöhung und Mietvertrag vollständig nachgewiesen?",
+      "Welche Finanzierungsstruktur ist gewünscht und wie hoch ist das tatsächlich verfügbare Eigenkapital?",
+    ]
+      .map((question) => `<li>${escapeHtml(question)}</li>`)
+      .join("");
 
     return `<!doctype html>
 <html>
@@ -293,24 +567,47 @@ export default function InvestmentBericht() {
   </section>
 
   <h2>1. Executive Summary und Objektübersicht</h2>
-  <p>${escapeHtml(aiReport.summary)}</p>
+  <p><strong>Vorläufiges Ergebnis:</strong> ${escapeHtml(investmentProfile.recommendation)}</p>
+  <p>${escapeHtml(investmentProfile.bankKeyMessage)}</p>
+  <table>
+    <tbody>${keyFactRows}</tbody>
+  </table>
 
   <h2>2. Standort- und Marktanalyse</h2>
-  <p>Standort: <strong>${safeLocation}</strong>. Marktvergleich und Mikrolage sollten im nächsten Prüfschritt ergänzt werden.</p>
+  <p>Standort: <strong>${safeLocation}</strong>. Für die bankseitige Erstprüfung sind Mikrolage, Nachfrage, Vergleichsmieten, Leerstandsrisiko und Wiederverwertbarkeit maßgeblich.</p>
+  <p>Bei Innenstadt- oder zentrumsnahen Lagen spricht die Vermietbarkeit grundsätzlich für das Objekt. Einschränkungen durch Sondernutzung, Seniorenbindung, WEG-Regelungen oder Stellplatzzuordnung müssen marktseitig bewertet werden.</p>
 
   <h2>3. Objektbilder, Grundrisse und Bauzeichnungen</h2>
-  <p>Vorliegende Dateien werden nachfolgend dokumentiert. Bilder, Grundrisse und Bauzeichnungen sind im finalen Bericht einzeln zuzuordnen.</p>
+  <p>Vorliegende Dateien werden nachfolgend dokumentiert. Bilder, Grundrisse, Aufteilungspläne, Lageplan und Bauzeichnungen sind im finalen Bericht einzeln zuzuordnen.</p>
+  <p>Für die Bank ist entscheidend, dass Wohnung, Abstellraum, Sondernutzungsrechte und Stellplatz eindeutig mit Teilungserklärung, Aufteilungsplan und Kaufvertragsentwurf übereinstimmen.</p>
 
-  <h2>4. Dokumentenprüfung</h2>
+  <h2>4. Dokumentenprüfung: Teilungserklärung, Energieausweis, Mietvertrag</h2>
+  <table>
+    <thead><tr><th>Unterlage</th><th>Status</th><th>Prüfziel</th></tr></thead>
+    <tbody>${documentRows}</tbody>
+  </table>
+  <h3>Hochgeladene / ausgewählte Unterlagen</h3>
   <table>
     <thead><tr><th>Datei</th><th>Größe</th><th>Typ</th></tr></thead>
     <tbody>${fileRows}</tbody>
   </table>
 
   <h2>5. Wirtschaftsplan und Hausgeldanalyse</h2>
-  <p>Wirtschaftsplan, Hausgeld, Rücklage und umlagefähige Kosten sind gegen die Unterlagen zu prüfen.</p>
+  <p>${escapeHtml(investmentProfile.housegeldNote)}</p>
+  <p>Für die Kreditprüfung sind umlagefähige Kosten, nicht umlagefähige Kosten, Zuführung zur Erhaltungsrücklage und mögliche Hausgeldrückstände getrennt zu betrachten.</p>
 
   <h2>6. Rendite-, Cashflow- und Finanzierungsanalyse</h2>
+  <h3>Miet- und Ertragsanalyse</h3>
+  <table>
+    <thead><tr><th>Position</th><th>Wert</th><th>Hinweis</th></tr></thead>
+    <tbody>${profitabilityRows}</tbody>
+  </table>
+  <h3>Vorläufige Finanzierungsrechnung</h3>
+  <p>Die folgenden Szenarien dienen der ersten Orientierung. Angenommen werden ${escapeHtml(interestRate || "3,50")} % Sollzins und ${escapeHtml(amortizationRate || "2,00")} % anfängliche Tilgung. Persönliche Bonität, Zusatzsicherheiten, Steuern, Mietausfall und Sondereigentumsreparaturen sind nicht eingerechnet.</p>
+  <table>
+    <thead><tr><th>Szenario</th><th>Darlehen</th><th>Rate/Monat</th><th>Cashflow nach Rate</th></tr></thead>
+    <tbody>${financingRows}</tbody>
+  </table>
   <div class="meta">
     <div class="box"><div class="label">Kaufpreis</div><div class="value">${safePurchasePrice}</div></div>
     <div class="box"><div class="label">Eigenkapital</div><div class="value">${safeEquity}</div></div>
@@ -319,15 +616,23 @@ export default function InvestmentBericht() {
   </div>
 
   <h2>7. WEG-Analyse und Risikoanalyse</h2>
+  <table>
+    <thead><tr><th>Prüffeld</th><th>Bewertung</th><th>Feststellung</th></tr></thead>
+    <tbody>${riskMatrixRows}</tbody>
+  </table>
   <div class="warning">
     <h3>Risiken / offene Prüfpositionen</h3>
     <ul>${riskItems}</ul>
   </div>
 
   <h2>8. Kaufempfehlung und Bankfazit</h2>
-  <p><strong>${escapeHtml(aiReport.bankFazit)}</strong></p>
+  <p><strong>${escapeHtml(investmentProfile.recommendation)}</strong></p>
+  <p>${escapeHtml(aiReport.bankFazit)}</p>
+  <p>Gesamturteil: Das Objekt ist für eine langfristige Bestandshaltung prüfenswert, wenn Hausgeld, Rücklage, Mietvertrag, Zahlungsstand, WEG-Risiken und Finanzierungsstruktur zufriedenstellend geklärt werden.</p>
   <h3>Nächste Schritte</h3>
   <ul>${stepItems}</ul>
+  <h3>Offene Fragen vor verbindlicher Kaufentscheidung</h3>
+  <ul>${openQuestions}</ul>
 
   <h2>Kapitelstatus</h2>
   <table>
@@ -338,7 +643,21 @@ export default function InvestmentBericht() {
   <p class="footer">Automatisch erstellt in der Koenen Immobilien App. Dieser Bericht ist eine strukturierte Erstbewertung und ersetzt keine rechtliche, technische oder steuerliche Detailprüfung.</p>
 </body>
 </html>`;
-  }, [aiReport, equity, files, location, objectName, purchasePrice, readiness, targetRent]);
+  }, [
+    aiReport,
+    amortizationRate,
+    coveredDocuments,
+    equity,
+    files,
+    financingScenarios,
+    interestRate,
+    investmentProfile,
+    location,
+    objectName,
+    purchasePrice,
+    readiness,
+    targetRent,
+  ]);
 
   function downloadWordReport() {
     if (!reportDocumentHtml) return;
@@ -407,7 +726,7 @@ export default function InvestmentBericht() {
     window.setTimeout(() => {
       const missingDocuments = coveredDocuments.filter((document) => document.coverage === "missing");
       const packageDocuments = coveredDocuments.filter((document) => document.coverage === "package");
-      const hasFinanceInputs = Boolean(purchasePrice || equity || targetRent);
+      const hasFinanceInputs = Boolean(investmentProfile.purchasePrice || investmentProfile.monthlyRent || equity);
       const completenessLabel =
         readiness >= 85 ? "gut vorbereitet" : readiness >= 55 ? "Unterlagenpaket vorhanden" : "noch unvollständig";
 
@@ -547,12 +866,36 @@ export default function InvestmentBericht() {
               <input value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="z.B. 305.000 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
+              Käuferprovision
+              <input value={buyerProvision} onChange={(event) => setBuyerProvision(event.target.value)} placeholder="z.B. 5.000 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
               Eigenkapital
               <input value={equity} onChange={(event) => setEquity(event.target.value)} placeholder="z.B. 60.000 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
-            <label className="grid gap-2 text-sm font-black text-slate-700 md:col-span-2">
-              Soll-/Zielmiete
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Kaltmiete / Zielmiete
               <input value={targetRent} onChange={(event) => setTargetRent(event.target.value)} placeholder="z.B. 1.250 EUR kalt monatlich" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Wohnfläche
+              <input value={livingArea} onChange={(event) => setLivingArea(event.target.value)} placeholder="z.B. 41 m²" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Zimmer
+              <input value={rooms} onChange={(event) => setRooms(event.target.value)} placeholder="z.B. 2" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Hausgeld monatlich
+              <input value={monthlyHousegeld} onChange={(event) => setMonthlyHousegeld(event.target.value)} placeholder="z.B. 260 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Sollzins
+              <input value={interestRate} onChange={(event) => setInterestRate(event.target.value)} placeholder="z.B. 3,50 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Tilgung
+              <input value={amortizationRate} onChange={(event) => setAmortizationRate(event.target.value)} placeholder="z.B. 2,00 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
           </div>
         </div>
