@@ -209,12 +209,15 @@ type WorkspaceConfig = {
 };
 
 const groupAccent: Record<string, string> = {
-  "1. 📊 Dashboard": "text-sky-300",
-  "2. 🏢 Immobilien & Einheiten": "text-cyan-300",
-  "3. 👥 Kontakte & Mietverhältnisse": "text-emerald-300",
-  "4. 💼 Buchhaltung & Finanzen": "text-violet-300",
-  "5. 🔧 Aufgaben & Ticketsystem": "text-teal-300",
-  "6. ⚙️ System-Einstellungen": "text-slate-300",
+  Dashboard: "text-sky-300",
+  Immobilien: "text-cyan-300",
+  Mieter: "text-emerald-300",
+  Buchhaltung: "text-violet-300",
+  Darlehen: "text-indigo-300",
+  Nebenkosten: "text-amber-300",
+  Aufgaben: "text-teal-300",
+  Dokumente: "text-blue-300",
+  Einstellungen: "text-slate-300",
   Überblick: "text-sky-300",
   Finanzen: "text-violet-300",
   Verwaltung: "text-amber-300",
@@ -274,14 +277,9 @@ function isRentLikeEntry(entry: FinanceEntry): boolean {
 const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
   { path: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", icon: PlusCircle },
-  { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-  { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-  { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+  { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-  { path: "/buchhaltung/darlehen", label: "Darlehensübersicht", icon: Landmark },
-  { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-  { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
 ];
 
 const workspaceConfigs: Record<string, WorkspaceConfig> = {
@@ -817,20 +815,15 @@ function ModuleWorkspacePage({
   config: WorkspaceConfig;
   children?: ReactNode;
 }) {
-  const [activeTabLabel, setActiveTabLabel] = useState(config.tabs[0]?.label ?? "");
-  const activeTab = config.tabs.find((tab) => tab.label === activeTabLabel) ?? config.tabs[0];
-  const workspaceTabId = (label: string) =>
-    `workspace-tab-${config.title}-${label}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const activeTabId = activeTab ? workspaceTabId(activeTab.label) : undefined;
+  const eyebrow = config.eyebrow.replace(/^\d+\.\s*Modul\s*\|\s*/i, "");
 
   return (
     <div className="module-workspace space-y-5">
       <PageHeader
-        eyebrow={config.eyebrow}
+        eyebrow={eyebrow}
         title={config.title}
         description={config.description}
         meta={[
-          { label: "Route", value: config.basePath },
           { label: "Quelle", value: config.source },
         ]}
       />
@@ -869,53 +862,7 @@ function ModuleWorkspacePage({
         </div>
       </section>
 
-      <SectionPanel
-        eyebrow="Tabs"
-        title="Arbeitsbereiche"
-        description="Die Tabs strukturieren die Fachseite nach der neuen Modulhierarchie. Der aktive Bereich zeigt die passende Arbeitslogik und darunter die bestehende Fachfunktion."
-      >
-        <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label={`${config.title} Arbeitsbereiche`}>
-          {config.tabs.map((tab) => (
-            <button
-              key={tab.label}
-              id={workspaceTabId(tab.label)}
-              type="button"
-              role="tab"
-              onClick={() => setActiveTabLabel(tab.label)}
-              className={[
-                "min-h-12 shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-black transition",
-                activeTab?.label === tab.label
-                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                  : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50",
-              ].join(" ")}
-              aria-pressed={activeTab?.label === tab.label}
-              aria-selected={activeTab?.label === tab.label}
-              aria-controls="module-workspace-active-panel"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab ? (
-          <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-              Aktiver Arbeitsbereich
-            </div>
-            <h3 className="mt-2 text-lg font-black text-slate-950">{activeTab.label}</h3>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
-              {activeTab.description}
-            </p>
-          </div>
-        ) : null}
-      </SectionPanel>
-
-      <div
-        id="module-workspace-active-panel"
-        role="tabpanel"
-        aria-labelledby={activeTabId}
-        className="module-workspace-content"
-      >
+      <div className="module-workspace-content">
         {children ?? (
           <EmptyState
             title="Vorhandene Fachseite wird hier eingebunden"
@@ -1238,7 +1185,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
-    () => new Set(["1. 📊 Dashboard", "2. 🏢 Immobilien & Einheiten", "3. 👥 Kontakte & Mietverhältnisse", "4. 💼 Buchhaltung & Finanzen"]),
+    () => new Set(["Dashboard", "Immobilien", "Mieter", "Buchhaltung"]),
   );
   const { user } = useAuth();
   const location = useLocation();
@@ -1250,34 +1197,29 @@ function AppShell() {
 
   const navItems = useMemo<ShellNavItem[]>(
     () => [
-      { to: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", group: "1. 📊 Dashboard", icon: BarChart3 },
-      { to: "/dashboard/warnmeldungen", label: "Warnmeldungen", group: "1. 📊 Dashboard", icon: Bell },
-      { to: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", group: "1. 📊 Dashboard", icon: ListChecks },
-      { to: "/immobilien/objektuebersicht", label: "Objektübersicht", group: "2. 🏢 Immobilien & Einheiten", icon: Building2 },
-      { to: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", group: "2. 🏢 Immobilien & Einheiten", icon: FolderKanban },
-      { to: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", group: "2. 🏢 Immobilien & Einheiten", icon: ClipboardList },
-      { to: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", group: "2. 🏢 Immobilien & Einheiten", icon: FileText },
-      { to: "/kontakte/aktive-mietvertraege", label: "Aktive Mietverträge", group: "3. 👥 Kontakte & Mietverhältnisse", icon: Users },
-      { to: "/kontakte/mieter-eigentuemerakten", label: "Mieter-/Eigentümerakten", group: "3. 👥 Kontakte & Mietverhältnisse", icon: FolderOpen },
-      { to: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", group: "3. 👥 Kontakte & Mietverhältnisse", icon: UserCog },
-      { to: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", group: "3. 👥 Kontakte & Mietverhältnisse", icon: KeyRound },
-      { to: "/buchhaltung/buchungen", label: "Buchungen", group: "4. 💼 Buchhaltung & Finanzen", icon: WalletCards },
-      { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "4. 💼 Buchhaltung & Finanzen", icon: PlusCircle },
-      { to: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", group: "4. 💼 Buchhaltung & Finanzen", icon: CalendarCheck },
-      { to: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkostenabrechnung", group: "4. 💼 Buchhaltung & Finanzen", icon: ClipboardList },
-      { to: "/buchhaltung/automatisiertes-mahnwesen", label: "Automatisiertes Mahnwesen", group: "4. 💼 Buchhaltung & Finanzen", icon: Bell },
-      { to: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", group: "4. 💼 Buchhaltung & Finanzen", icon: Euro },
-      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "4. 💼 Buchhaltung & Finanzen", icon: BarChart3 },
-      { to: "/buchhaltung/darlehen", label: "Darlehensübersicht", group: "4. 💼 Buchhaltung & Finanzen", icon: Landmark },
-      { to: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", group: "4. 💼 Buchhaltung & Finanzen", icon: BriefcaseBusiness },
-      { to: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", group: "4. 💼 Buchhaltung & Finanzen", icon: ReceiptText },
-      { to: "/ticketsystem/schadenmeldungen", label: "Schadenmeldungen", group: "5. 🔧 Aufgaben & Ticketsystem", icon: FolderKanban },
-      { to: "/ticketsystem/handwerker-beauftragung", label: "Handwerker-Beauftragung", group: "5. 🔧 Aufgaben & Ticketsystem", icon: BriefcaseBusiness },
+      { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
+      { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
+      { to: "/immobilien/objektuebersicht", label: "Objekte", group: "Immobilien", icon: Building2 },
+      { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
+      { to: "/kontakte/aktive-mietvertraege", label: "Stammdaten", group: "Mieter", icon: Users },
+      { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
+      { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
+      { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
+      { to: "/buchhaltung/buchungen", label: "Buchungen", group: "Buchhaltung", icon: WalletCards },
+      { to: "/buchhaltung/steuer-center-berater", label: "Steuer", group: "Buchhaltung", icon: Euro },
+      { to: "/buchhaltung/berichte-exporte", label: "Auswertungen", group: "Buchhaltung", icon: BarChart3 },
+      { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
+      { to: "/nebenkosten", label: "Übersicht", group: "Nebenkosten", icon: ClipboardList },
+      { to: "/nebenkosten/wohnungen", label: "Wohnungen", group: "Nebenkosten", icon: Building2 },
+      { to: "/nebenkosten/tiefgarage", label: "Tiefgarage", group: "Nebenkosten", icon: DoorOpen },
+      { to: "/mahnwesen", label: "Mahnwesen", group: "Aufgaben", icon: Bell },
+      { to: "/ticketsystem/schadenmeldungen", label: "Tickets", group: "Aufgaben", icon: FolderKanban },
+      { to: "/dokumente", label: "Archiv", group: "Dokumente", icon: FolderOpen },
       ...(isAdmin ? [
-        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "6. ⚙️ System-Einstellungen", icon: UserCog },
-        { to: "/einstellungen/datenschutz-compliance", label: "Datenschutz & Compliance", group: "6. ⚙️ System-Einstellungen", icon: ShieldCheck },
+        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
+        { to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Einstellungen", icon: ShieldCheck },
       ] : [
-        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "6. ⚙️ System-Einstellungen", icon: UserCog },
+        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
       ]),
     ],
     [isAdmin],
@@ -1285,7 +1227,7 @@ function AppShell() {
 
   const navGroups = useMemo(
     () =>
-      ["1. 📊 Dashboard", "2. 🏢 Immobilien & Einheiten", "3. 👥 Kontakte & Mietverhältnisse", "4. 💼 Buchhaltung & Finanzen", "5. 🔧 Aufgaben & Ticketsystem", "6. ⚙️ System-Einstellungen"].map((group) => ({
+      ["Dashboard", "Immobilien", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
