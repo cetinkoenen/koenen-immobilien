@@ -122,6 +122,7 @@ const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
 const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
+const InvestmentBericht = lazy(() => import("./pages/InvestmentBericht"));
 const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
@@ -211,6 +212,7 @@ type WorkspaceConfig = {
 const groupAccent: Record<string, string> = {
   Dashboard: "text-sky-300",
   Immobilien: "text-cyan-300",
+  Investment: "text-blue-300",
   Mieter: "text-emerald-300",
   Buchhaltung: "text-violet-300",
   Darlehen: "text-indigo-300",
@@ -1201,6 +1203,7 @@ function AppShell() {
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
       { to: "/immobilien/objektuebersicht", label: "Objekte", group: "Immobilien", icon: Building2 },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
+      { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
       { to: "/kontakte/aktive-mietvertraege", label: "Stammdaten", group: "Mieter", icon: Users },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
       { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
@@ -1227,7 +1230,7 @@ function AppShell() {
 
   const navGroups = useMemo(
     () =>
-      ["Dashboard", "Immobilien", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
+      ["Dashboard", "Immobilien", "Investment", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
@@ -1629,6 +1632,9 @@ export default function App() {
         <Route path="/auswertungen" element={<Auswertung />} />
         <Route path="/berichte" element={<Auswertung />} />
         <Route path="/funktionsvergleich" element={<Funktionsvergleich />} />
+        <Route path="/investment-bericht" element={<InvestmentBericht />} />
+        <Route path="/investment" element={<Navigate to="/investment-bericht" replace />} />
+        <Route path="/investition" element={<Navigate to="/investment-bericht" replace />} />
         <Route
           path="/auswertung"
           element={<Navigate to="/auswertungen" replace />}
