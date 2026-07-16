@@ -271,6 +271,18 @@ function isRentLikeEntry(entry: FinanceEntry): boolean {
   return text.includes("miet") || text.includes("pacht");
 }
 
+const buchhaltungSubpages: WorkspaceSubpage[] = [
+  { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
+  { path: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", icon: PlusCircle },
+  { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
+  { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
+  { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
+  { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+  { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+  { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
+  { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
+];
+
 const workspaceConfigs: Record<string, WorkspaceConfig> = {
   dashboardFinanz: {
     eyebrow: "1. Modul | Dashboard",
@@ -484,16 +496,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Operative Finanzzentrale mit Bankbewegungen, offenen Posten, manueller Erfassung, Belegen und Zahlungsverkehr.",
     basePath: "/buchhaltung",
     source: "Buchhaltung, Transaktionen, Buchungsmaske",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Bankkonten & Transaktionen", description: "Live-Feeds und vorhandene Transaktionsübersicht." },
       { label: "Offene Posten", description: "Manuelle und KI-gestützte Zahlungszuordnung." },
@@ -502,22 +505,27 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
       { label: "Daueraufträge & Lastschriften", description: "SEPA-Einzüge und wiederkehrende Zahlungen." },
     ],
   },
+  buchhaltungEinnahmenAusgaben: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Einnahmen & Ausgaben",
+    description: "Die bewährte Eingabeseite für neue Einnahmen und Ausgaben. Alle bestehenden Funktionen der Buchungserfassung bleiben erhalten.",
+    basePath: "/buchhaltung",
+    source: "Bestehende Buchungsmaske",
+    subpages: buchhaltungSubpages,
+    tabs: [
+      { label: "Einnahme erfassen", description: "Miete, Nebenkosten, Kautionen und sonstige Einnahmen über die vorhandene Maske eintragen." },
+      { label: "Ausgabe erfassen", description: "Reparaturen, Bewirtschaftungskosten, Darlehenskosten und sonstige Ausgaben erfassen." },
+      { label: "Objekt & Kategorie", description: "Buchungen wie bisher einem Objekt und einer Kategorie zuordnen." },
+      { label: "Beleg & Notiz", description: "Vorhandene Felder für Beschreibung, Nachweise und spätere Prüfung nutzen." },
+    ],
+  },
   buchhaltungSoll: {
     eyebrow: "4. Modul | Buchhaltung & Finanzen",
     title: "Sollstellungen & Mietanpassungen",
     description: "Monatliche Forderungen, Mietanpassungen und Kautionsverwaltung im bestehenden Miet- und Buchhaltungskontext.",
     basePath: "/buchhaltung",
     source: "Mietverträge, Mieteingang, Kautionen",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Monatliche Sollstellung", description: "Automatische Mietforderungen aus aktiven Verträgen." },
       { label: "Index- & Staffelmieten", description: "Berechnung und Anpassungsschreiben im Vertragskontext." },
@@ -530,16 +538,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Pflichtseite NK-Abrechnung bleibt vollständig erhalten und wird in die neue Buchhaltungsstruktur eingeordnet.",
     basePath: "/buchhaltung",
     source: "NK-Seiten, Buchhaltung, Umlageschlüssel",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Umlageschlüssel & Verteiler", description: "Wohnfläche, Personen und bestehende Verteilungsschlüssel." },
       { label: "Heizkosten-Integration", description: "Messdienstleister-Importe und Verbrauchsdaten als bestehender Prozess." },
@@ -552,16 +551,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Mahnfristen, Vorlagen und Eskalation auf Grundlage bestehender offener Posten.",
     basePath: "/buchhaltung",
     source: "Mahnwesen, Mieteingang, Buchhaltung",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Mahnstufen & Fristen", description: "Workflow-Konfiguration für Erinnerung, Mahnung und Eskalation." },
       { label: "Vorlagen-Editor", description: "Texte für Zahlungserinnerung und Mahnungen." },
@@ -574,16 +564,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Pflichtseite Steuer bleibt erhalten und wird als strukturierter Jahresabschlussbereich eingebunden.",
     basePath: "/buchhaltung",
     source: "Steuer-Center, Buchungen, Darlehenszinsen",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Anlage V Vorbereitung", description: "Strukturierung für Einkünfte aus Vermietung und Verpachtung." },
       { label: "Einnahmen-Aufstellung", description: "Kaltmieten, Umlagen, Garagen und steuerpflichtige Zuflüsse." },
@@ -597,16 +578,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Pflichtseite Auswertungen bleibt erhalten und liefert Stichtagsberichte und Multi-Format-Exports.",
     basePath: "/buchhaltung",
     source: "Auswertungen, Datenprüfung, Exportlogik",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "Jahres-Mietaufstellung", description: "Stichtagsbezogene Miet- und Objektberichte." },
       { label: "Überschuss-/Verlustrechnung", description: "Grafische und tabellarische Reports." },
@@ -619,16 +591,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Übergabebereich für DATEV, Gast-Zugang und Beleg-Sammel-Download auf Basis vorhandener Rechte und Berichte.",
     basePath: "/buchhaltung",
     source: "Reports, Benutzerrechte, Belege",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "DATEV-Export", description: "Buchungsstapel und strukturierte Übergabe." },
       { label: "Gast-Zugang", description: "Nur-Lese-Zugang für Steuerberater über bestehende Rollen." },
@@ -641,16 +604,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Spezialbereich für Gewerbemieten, USt.-Voranmeldung und Vorsteuer-Schlüsselung bei Mischobjekten.",
     basePath: "/buchhaltung",
     source: "Buchhaltung, Steuer, Gewerbeobjekte",
-    subpages: [
-      { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
-      { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", icon: CalendarCheck },
-      { path: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkosten", icon: ClipboardList },
-      { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
-      { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
-      { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
-      { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
-      { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
-    ],
+    subpages: buchhaltungSubpages,
     tabs: [
       { label: "USt.-Voranmeldung", description: "Netto-/Bruttomieten und eingenommene Umsatzsteuer." },
       { label: "Vorsteuer-Schlüsselung", description: "Abziehbare Vorsteuern bei Wohn-/Gewerbe-Mischobjekten." },
@@ -1075,7 +1029,7 @@ function BuchhaltungHubPage() {
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             <ModuleCard to="/buchhaltung/transaktionen" label="Transaktionen" description="Buchhaltungsübersicht mit Einnahmen und Ausgaben prüfen." icon={WalletCards} />
-            <ModuleCard to="/buchhaltung/neue-buchung" label="Neue Buchung" description={isReadOnly ? "Nur Admins können neue Buchungen erfassen." : "Buchungen über das bestehende Erfassungsmodul anlegen."} icon={PlusCircle} disabled={isReadOnly} />
+            <ModuleCard to="/buchhaltung/einnahmen-ausgaben" label="Einnahmen & Ausgaben" description={isReadOnly ? "Nur Admins können Buchungen erfassen." : "Einnahmen und Ausgaben über das bestehende Erfassungsmodul anlegen."} icon={PlusCircle} disabled={isReadOnly} />
             <ModuleCard to="/buchhaltung/regeln" label="Regeln" description={isReadOnly ? "Nur Admins können Regeln bearbeiten." : "Transaktionsregeln und Zuordnungen verwalten."} icon={Settings2} disabled={isReadOnly} />
             <ModuleCard to="/berichte" label="Berichte" description="Reports und Auswertungen aus vorhandenen Datenquellen." icon={BarChart3} />
           </div>
@@ -1261,6 +1215,7 @@ function AppShell() {
       { to: "/kontakte/interessenten-selbstauskuenfte", label: "Interessenten", group: "3. 👥 Kontakte & Mietverhältnisse", icon: UserCog },
       { to: "/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle", label: "Übergaben & Protokolle", group: "3. 👥 Kontakte & Mietverhältnisse", icon: KeyRound },
       { to: "/buchhaltung/buchungen", label: "Buchungen", group: "4. 💼 Buchhaltung & Finanzen", icon: WalletCards },
+      { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "4. 💼 Buchhaltung & Finanzen", icon: PlusCircle },
       { to: "/buchhaltung/sollstellungen-mietanpassungen", label: "Sollstellungen", group: "4. 💼 Buchhaltung & Finanzen", icon: CalendarCheck },
       { to: "/buchhaltung/nebenkostenabrechnung", label: "Nebenkostenabrechnung", group: "4. 💼 Buchhaltung & Finanzen", icon: ClipboardList },
       { to: "/buchhaltung/automatisiertes-mahnwesen", label: "Automatisiertes Mahnwesen", group: "4. 💼 Buchhaltung & Finanzen", icon: Bell },
@@ -1635,6 +1590,10 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBuchungen}><BuchhaltungHubPage /></ModuleWorkspacePage>}
         />
         <Route
+          path="/buchhaltung/einnahmen-ausgaben"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungEinnahmenAusgaben}><EntryAdd /></ModuleWorkspacePage>}
+        />
+        <Route
           path="/buchhaltung/sollstellungen-mietanpassungen"
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSoll}><Mietuebersicht /></ModuleWorkspacePage>}
         />
@@ -1663,8 +1622,8 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungUst}><SteuerCenter /></ModuleWorkspacePage>}
         />
         <Route path="/buchhaltung/transaktionen" element={<Monate />} />
-        <Route path="/buchhaltung/einnahmen" element={<Monate />} />
-        <Route path="/buchhaltung/ausgaben" element={<Monate />} />
+        <Route path="/buchhaltung/einnahmen" element={<Navigate to="/buchhaltung/einnahmen-ausgaben" replace />} />
+        <Route path="/buchhaltung/ausgaben" element={<Navigate to="/buchhaltung/einnahmen-ausgaben" replace />} />
         <Route path="/buchhaltung/neue-buchung" element={<EntryAdd />} />
         <Route path="/buchhaltung/regeln" element={<Transaktionsregeln />} />
         <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
