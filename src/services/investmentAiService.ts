@@ -89,6 +89,8 @@ type RunInvestmentAiAnalysisInput = {
 };
 
 const INVESTMENT_ANALYSIS_BUCKET = "investment-analysis-files";
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 function safeStorageFileName(value: string) {
   const extension = value.includes(".") ? value.slice(value.lastIndexOf(".")) : "";
@@ -167,8 +169,17 @@ export async function runInvestmentAiAnalysis(input: RunInvestmentAiAnalysisInpu
     throw error;
   }
 
-  const { data, error } = await supabase.functions.invoke("investment-report-ai", {
-    body: {
+  let data: { report?: InvestmentAiReport; error?: string } | null = null;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/investment-report-ai`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
       objectName: input.objectName,
       location: input.location,
       purchasePrice: input.purchasePrice,
@@ -181,14 +192,26 @@ export async function runInvestmentAiAnalysis(input: RunInvestmentAiAnalysisInpu
       interestRate: input.interestRate,
       amortizationRate: input.amortizationRate,
       storageFiles,
-    },
-  });
+      }),
+    });
 
-  if (error) {
+    data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(data?.error ?? `KI-Backend Fehler (${response.status}). Bitte später erneut versuchen.`);
+    }
+  } catch (error) {
     if (uploadedPaths.length) {
       await supabase.storage.from(INVESTMENT_ANALYSIS_BUCKET).remove(uploadedPaths);
     }
-    throw new Error(error.message);
+    if (error instanceof Error) {
+      throw new Error(
+        error.message === "Failed to fetch"
+          ? "Verbindung zur Supabase Edge Function fehlgeschlagen. Bitte Seite neu laden und erneut versuchen."
+          : error.message,
+      );
+    }
+    throw new Error("KI-Backend konnte nicht erreicht werden.");
   }
 
   if (!data?.report) {
