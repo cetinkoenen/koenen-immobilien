@@ -18,13 +18,9 @@ import {
 
 import { PageHeader, SectionPanel } from "@/components/ui/professional";
 import logo from "@/assets/koenen-brand-logo.webp";
+import { runInvestmentAiAnalysis, type InvestmentAiFile } from "@/services/investmentAiService";
 
-type UploadedFile = {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-};
+type UploadedFile = InvestmentAiFile;
 
 type AiStatus = "idle" | "running" | "ready" | "blocked";
 
@@ -42,6 +38,11 @@ type AiReport = {
   nextSteps: string[];
   chapterStatus: AiChapterStatus[];
   bankFazit: string;
+  profile?: Partial<InvestmentProfile>;
+  financialScenarios?: FinancingScenario[];
+  riskMatrix?: { field: string; rating: string; finding: string }[];
+  openQuestions?: string[];
+  documentFindings?: { document: string; status: string; finding: string }[];
 };
 
 type InvestmentProfile = {
@@ -216,20 +217,12 @@ function buildInvestmentProfile(input: {
   interestRate: string;
   amortizationRate: string;
 }) {
-  const isHasengasse = input.objectName.toLowerCase().includes("hasengasse");
-  const defaultPurchasePrice = isHasengasse ? 150000 : null;
-  const defaultProvision = isHasengasse ? 5000 : null;
-  const defaultLivingArea = isHasengasse ? 41 : null;
-  const defaultRooms = isHasengasse ? 2 : null;
-  const defaultRent = isHasengasse ? 460 : null;
-  const defaultHousegeld = isHasengasse ? 260 : null;
-
-  const purchasePriceValue = pickNumber(input.purchasePrice, defaultPurchasePrice);
-  const provisionValue = pickNumber(input.buyerProvision, defaultProvision);
-  const livingAreaValue = pickNumber(input.livingArea, defaultLivingArea);
-  const roomsValue = pickNumber(input.rooms, defaultRooms);
-  const rentValue = pickNumber(input.targetRent, defaultRent);
-  const housegeldValue = pickNumber(input.monthlyHousegeld, defaultHousegeld);
+  const purchasePriceValue = pickNumber(input.purchasePrice, null);
+  const provisionValue = pickNumber(input.buyerProvision, null);
+  const livingAreaValue = pickNumber(input.livingArea, null);
+  const roomsValue = pickNumber(input.rooms, null);
+  const rentValue = pickNumber(input.targetRent, null);
+  const housegeldValue = pickNumber(input.monthlyHousegeld, null);
 
   const estimatedClosingCosts = purchasePriceValue === null ? null : purchasePriceValue * 0.07;
   const acquisitionCosts =
@@ -243,15 +236,15 @@ function buildInvestmentProfile(input: {
     annualRent !== null && acquisitionCosts ? (annualRent / acquisitionCosts) * 100 : null;
   const purchaseFactor = annualRent !== null && annualRent > 0 && purchasePriceValue ? purchasePriceValue / annualRent : null;
   const rentPerSqm = rentValue !== null && livingAreaValue ? rentValue / livingAreaValue : null;
-  const nonRecoverableMonthly = housegeldValue === null ? null : isHasengasse ? 64 : housegeldValue * 0.35;
-  const reserveMonthly = housegeldValue === null ? null : isHasengasse ? 44.73 : housegeldValue * 0.18;
+  const nonRecoverableMonthly = housegeldValue === null ? null : housegeldValue * 0.35;
+  const reserveMonthly = housegeldValue === null ? null : housegeldValue * 0.18;
   const monthlySurplusBeforeFinancing =
     rentValue === null || nonRecoverableMonthly === null || reserveMonthly === null
       ? null
       : rentValue - nonRecoverableMonthly - reserveMonthly;
 
   return {
-    objectType: isHasengasse ? "Vermietete Etagenwohnung in einer Seniorenwohnanlage" : "Immobilieninvestment",
+    objectType: "Immobilieninvestment",
     address: input.objectName || "Neue Investition",
     purchasePrice: purchasePriceValue,
     buyerProvision: provisionValue,
@@ -266,22 +259,16 @@ function buildInvestmentProfile(input: {
     purchaseFactor,
     rentPerSqm,
     monthlySurplusBeforeFinancing,
-    energyValue: isHasengasse ? "130,46 kWh/(m²a)" : "offen",
-    energyClass: isHasengasse ? "E" : "offen",
-    heating: isHasengasse ? "Erdgas / Gas-Zentralheizung" : "offen",
-    investorScore: isHasengasse ? "7,4 / 10" : readinessLabel(grossYieldPurchasePrice, monthlySurplusBeforeFinancing),
+    energyValue: "offen",
+    energyClass: "offen",
+    heating: "offen",
+    investorScore: readinessLabel(grossYieldPurchasePrice, monthlySurplusBeforeFinancing),
     recommendation:
-      isHasengasse
-        ? "Weiterverfolgung und Einreichung zur bankseitigen Erstprüfung."
-        : "Vorläufig prüfen. Verbindliche Empfehlung erst nach vollständiger Dokumenten- und Finanzierungsprüfung.",
+      "Vorläufig prüfen. Verbindliche Empfehlung erst nach vollständiger Dokumenten-, Technik-, WEG- und Finanzierungsprüfung.",
     bankKeyMessage:
-      isHasengasse
-        ? "Die Immobilie ist durch bestehende Vermietung, Innenstadtlage und marktgängigen Wohnungstyp grundsätzlich verwertbar. Hausgeld, Seniorenbindung, Rücklagenstand und Instandhaltungsrisiken sind vor Beleihungsentscheidung zu klären."
-        : "Die Bank sollte Unterlagen, Beleihbarkeit, nachhaltige Miete, Hausgeld, Rücklagenstand und Kapitaldienstfähigkeit konservativ prüfen.",
+      "Die Bank sollte Unterlagen, Beleihbarkeit, nachhaltige Miete, Hausgeld, Rücklagenstand, technische Risiken und Kapitaldienstfähigkeit konservativ prüfen.",
     housegeldNote:
-      isHasengasse
-        ? "Exposé nennt 185 EUR; Wirtschaftsplan 2025 zeigt 240 EUR Wohnung plus 20 EUR Tiefgarage. Diese Abweichung ist vor Finanzierung zu klären."
-        : "Hausgeld, nicht umlagefähige Kosten, Rücklage und Zahlungsstand müssen anhand Wirtschaftsplan und Einzelabrechnung geprüft werden.",
+      "Hausgeld, nicht umlagefähige Kosten, Rücklage und Zahlungsstand müssen anhand Wirtschaftsplan und Einzelabrechnung geprüft werden.",
   } satisfies InvestmentProfile;
 }
 
@@ -315,6 +302,7 @@ export default function InvestmentBericht() {
   const [copyStatus, setCopyStatus] = useState("");
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
+  const [aiError, setAiError] = useState("");
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
 
@@ -423,6 +411,8 @@ export default function InvestmentBericht() {
 
   const reportDocumentHtml = useMemo(() => {
     if (!aiReport) return "";
+    const profile = { ...investmentProfile, ...(aiReport.profile ?? {}) } as InvestmentProfile;
+    const scenarios = aiReport.financialScenarios?.length ? aiReport.financialScenarios : financingScenarios;
     const safeObjectName = escapeHtml(objectName || "Neue Investition");
     const safeLocation = escapeHtml(location || "noch offen");
     const safePurchasePrice = escapeHtml(purchasePrice || "noch offen");
@@ -445,81 +435,91 @@ export default function InvestmentBericht() {
     const riskItems = aiReport.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("");
     const stepItems = aiReport.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
     const keyFactRows = [
-      ["Objektart", investmentProfile.objectType],
-      ["Anschrift / Objekt", investmentProfile.address],
-      ["Kaufpreis", formatEuro(investmentProfile.purchasePrice)],
-      ["Käuferprovision", formatEuro(investmentProfile.buyerProvision)],
-      ["Geschätzte Gesamterwerbskosten", formatEuro(investmentProfile.acquisitionCosts)],
+      ["Objektart", profile.objectType],
+      ["Anschrift / Objekt", profile.address],
+      ["Kaufpreis", formatEuro(profile.purchasePrice)],
+      ["Käuferprovision", formatEuro(profile.buyerProvision)],
+      ["Geschätzte Gesamterwerbskosten", formatEuro(profile.acquisitionCosts)],
       [
         "Wohnfläche / Zimmer",
-        `${investmentProfile.livingArea ? `${investmentProfile.livingArea.toLocaleString("de-DE")} m²` : "offen"} / ${investmentProfile.rooms ?? "offen"}`,
+        `${profile.livingArea ? `${profile.livingArea.toLocaleString("de-DE")} m²` : "offen"} / ${profile.rooms ?? "offen"}`,
       ],
-      ["Vermietungsstatus", investmentProfile.monthlyRent ? "vermietet / Miete angesetzt" : "zu prüfen"],
-      ["Kaltmiete", formatEuroMonthly(investmentProfile.monthlyRent)],
-      ["Hausgeld", formatEuroMonthly(investmentProfile.monthlyHousegeld)],
-      ["Bruttomietrendite Kaufpreis", formatPercent(investmentProfile.grossYieldPurchasePrice)],
-      ["Energie", `${investmentProfile.energyValue}, Klasse ${investmentProfile.energyClass}, ${investmentProfile.heating}`],
-      ["Vorläufige Investorenbewertung", investmentProfile.investorScore],
+      ["Vermietungsstatus", profile.monthlyRent ? "vermietet / Miete angesetzt" : "zu prüfen"],
+      ["Kaltmiete", formatEuroMonthly(profile.monthlyRent)],
+      ["Hausgeld", formatEuroMonthly(profile.monthlyHousegeld)],
+      ["Bruttomietrendite Kaufpreis", formatPercent(profile.grossYieldPurchasePrice)],
+      ["Energie", `${profile.energyValue}, Klasse ${profile.energyClass}, ${profile.heating}`],
+      ["Vorläufige Investorenbewertung", profile.investorScore],
     ]
       .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(String(value))}</td></tr>`)
       .join("");
     const profitabilityRows = [
-      ["Jahreskaltmiete", formatEuro(investmentProfile.annualRent), "nachgewiesene oder eingegebene Kaltmiete"],
+      ["Jahreskaltmiete", formatEuro(profile.annualRent), "nachgewiesene oder eingegebene Kaltmiete"],
       [
         "Kaufpreisfaktor",
-        investmentProfile.purchaseFactor === null ? "offen" : `${investmentProfile.purchaseFactor.toFixed(2).replace(".", ",")}-fache Jahreskaltmiete`,
+        profile.purchaseFactor === null ? "offen" : `${profile.purchaseFactor.toFixed(2).replace(".", ",")}-fache Jahreskaltmiete`,
         "Kaufpreis geteilt durch Jahreskaltmiete",
       ],
-      ["Bruttomietrendite Kaufpreis", formatPercent(investmentProfile.grossYieldPurchasePrice), "Jahreskaltmiete / Kaufpreis"],
-      ["Bruttomietrendite Gesamterwerbskosten", formatPercent(investmentProfile.grossYieldAcquisitionCosts), "Jahreskaltmiete / geschätzte Gesamtkosten"],
+      ["Bruttomietrendite Kaufpreis", formatPercent(profile.grossYieldPurchasePrice), "Jahreskaltmiete / Kaufpreis"],
+      ["Bruttomietrendite Gesamterwerbskosten", formatPercent(profile.grossYieldAcquisitionCosts), "Jahreskaltmiete / geschätzte Gesamtkosten"],
       [
         "Miete je m²",
-        investmentProfile.rentPerSqm === null ? "offen" : `${investmentProfile.rentPerSqm.toFixed(2).replace(".", ",")} EUR/m²`,
+        profile.rentPerSqm === null ? "offen" : `${profile.rentPerSqm.toFixed(2).replace(".", ",")} EUR/m²`,
         "monatliche Kaltmiete je Wohnfläche",
       ],
       [
         "Cashflow vor Finanzierung",
-        formatEuroMonthly(investmentProfile.monthlySurplusBeforeFinancing),
+        formatEuroMonthly(profile.monthlySurplusBeforeFinancing),
         "vereinfachte Schätzung nach nicht umlagefähigen Kosten und Rücklage",
       ],
     ]
       .map(([label, value, note]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(String(value))}</td><td>${escapeHtml(note)}</td></tr>`)
       .join("");
-    const financingRows = financingScenarios
+    const financingRows = scenarios
       .map(
         (scenario) =>
           `<tr><td>${escapeHtml(scenario.label)}</td><td>${formatEuro(scenario.loanAmount)}</td><td>${formatEuroMonthly(scenario.monthlyRate)}</td><td>${formatEuroMonthly(scenario.cashflowAfterRate)}</td></tr>`,
       )
       .join("");
-    const documentRows = coveredDocuments
-      .map((document) => {
-        const status =
-          document.coverage === "direct"
-            ? "vorhanden"
-            : document.coverage === "package"
-              ? "im Paket prüfen"
-              : "fehlt/offen";
-        return `<tr><td>${escapeHtml(document.label)}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(document.examples)}</td></tr>`;
-      })
+    const documentFindings = aiReport.documentFindings?.length
+      ? aiReport.documentFindings
+      : coveredDocuments.map((document) => ({
+          document: document.label,
+          status:
+            document.coverage === "direct"
+              ? "vorhanden"
+              : document.coverage === "package"
+                ? "im Paket prüfen"
+                : "fehlt/offen",
+          finding: document.examples,
+        }));
+    const documentRows = documentFindings
+      .map((document) => `<tr><td>${escapeHtml(document.document)}</td><td>${escapeHtml(document.status)}</td><td>${escapeHtml(document.finding)}</td></tr>`)
       .join("");
-    const riskMatrixRows = [
-      ["WEG-Verwaltung", "Gelb", "Verwaltungsqualität, Protokolle, Rücklagenstand und Hausgeldrückstände prüfen."],
-      ["Dach / Fassade / Gemeinschaftseigentum", "Gelb", "Beschlüsse, Angebote und Instandhaltungsrücklage prüfen."],
-      ["Aufzug / technische Anlagen", "Gelb", "Wartung, Reparaturen und Sonderumlagenrisiko prüfen."],
-      ["Heizung / Energie", investmentProfile.energyClass === "E" ? "Gelb" : "Prüfen", `${investmentProfile.heating}; Energiekennwert ${investmentProfile.energyValue}.`],
-      ["Vermietung", investmentProfile.monthlyRent ? "Grün/Gelb" : "Gelb", "Mietvertrag, Zahlungsnachweise, Nebenkostenstruktur und Mieterhöhung prüfen."],
-      ["Finanzierung", "Gelb", "Kapitaldienstfähigkeit hängt von Zinssatz, Tilgung, Eigenkapital und persönlicher Bonität ab."],
-    ]
-      .map(([field, rating, finding]) => `<tr><td>${escapeHtml(field)}</td><td>${escapeHtml(rating)}</td><td>${escapeHtml(finding)}</td></tr>`)
+    const riskMatrix = aiReport.riskMatrix?.length
+      ? aiReport.riskMatrix
+      : [
+          { field: "WEG-Verwaltung", rating: "Prüfen", finding: "Verwaltungsqualität, Protokolle, Rücklagenstand und Hausgeldrückstände prüfen." },
+          { field: "Dach / Fassade / Gemeinschaftseigentum", rating: "Prüfen", finding: "Beschlüsse, Angebote und Instandhaltungsrücklage prüfen." },
+          { field: "Aufzug / technische Anlagen", rating: "Prüfen", finding: "Wartung, Reparaturen und Sonderumlagenrisiko prüfen." },
+          { field: "Heizung / Energie", rating: "Prüfen", finding: `${profile.heating}; Energiekennwert ${profile.energyValue}.` },
+          { field: "Vermietung", rating: profile.monthlyRent ? "Prüfen" : "Offen", finding: "Mietvertrag, Zahlungsnachweise, Nebenkostenstruktur und Mieterhöhung prüfen." },
+          { field: "Finanzierung", rating: "Prüfen", finding: "Kapitaldienstfähigkeit hängt von Zinssatz, Tilgung, Eigenkapital und persönlicher Bonität ab." },
+        ];
+    const riskMatrixRows = riskMatrix
+      .map((item) => `<tr><td>${escapeHtml(item.field)}</td><td>${escapeHtml(item.rating)}</td><td>${escapeHtml(item.finding)}</td></tr>`)
       .join("");
-    const openQuestions = [
-      "Welches konkrete Wohnungs- und Teileigentum wird verkauft (Einheitsnummer, Miteigentumsanteil, Stellplatznummer)?",
-      "Wie hoch sind aktueller Hausgeldvorschuss, Rücklagenstand und etwaige Hausgeldrückstände?",
-      "Welche Bestandteile der Mietzahlung sind Kaltmiete, Betriebskostenvorauszahlung und Stellplatzmiete?",
-      "Bestehen konkrete Beschlüsse oder Angebote für Dach, Heizung, Aufzug, Fassade oder sonstige Instandhaltung?",
-      "Sind Mietzahlungen, Mieterhöhung und Mietvertrag vollständig nachgewiesen?",
-      "Welche Finanzierungsstruktur ist gewünscht und wie hoch ist das tatsächlich verfügbare Eigenkapital?",
-    ]
+    const questions = aiReport.openQuestions?.length
+      ? aiReport.openQuestions
+      : [
+          "Welches konkrete Wohnungs- und Teileigentum wird verkauft (Einheitsnummer, Miteigentumsanteil, Stellplatznummer)?",
+          "Wie hoch sind aktueller Hausgeldvorschuss, Rücklagenstand und etwaige Hausgeldrückstände?",
+          "Welche Bestandteile der Mietzahlung sind Kaltmiete, Betriebskostenvorauszahlung und Stellplatzmiete?",
+          "Bestehen konkrete Beschlüsse oder Angebote für Dach, Heizung, Aufzug, Fassade oder sonstige Instandhaltung?",
+          "Sind Mietzahlungen, Mieterhöhung und Mietvertrag vollständig nachgewiesen?",
+          "Welche Finanzierungsstruktur ist gewünscht und wie hoch ist das tatsächlich verfügbare Eigenkapital?",
+        ];
+    const openQuestions = questions
       .map((question) => `<li>${escapeHtml(question)}</li>`)
       .join("");
 
@@ -567,8 +567,8 @@ export default function InvestmentBericht() {
   </section>
 
   <h2>1. Executive Summary und Objektübersicht</h2>
-  <p><strong>Vorläufiges Ergebnis:</strong> ${escapeHtml(investmentProfile.recommendation)}</p>
-  <p>${escapeHtml(investmentProfile.bankKeyMessage)}</p>
+  <p><strong>Vorläufiges Ergebnis:</strong> ${escapeHtml(profile.recommendation)}</p>
+  <p>${escapeHtml(profile.bankKeyMessage)}</p>
   <table>
     <tbody>${keyFactRows}</tbody>
   </table>
@@ -593,7 +593,7 @@ export default function InvestmentBericht() {
   </table>
 
   <h2>5. Wirtschaftsplan und Hausgeldanalyse</h2>
-  <p>${escapeHtml(investmentProfile.housegeldNote)}</p>
+  <p>${escapeHtml(profile.housegeldNote)}</p>
   <p>Für die Kreditprüfung sind umlagefähige Kosten, nicht umlagefähige Kosten, Zuführung zur Erhaltungsrücklage und mögliche Hausgeldrückstände getrennt zu betrachten.</p>
 
   <h2>6. Rendite-, Cashflow- und Finanzierungsanalyse</h2>
@@ -626,7 +626,7 @@ export default function InvestmentBericht() {
   </div>
 
   <h2>8. Kaufempfehlung und Bankfazit</h2>
-  <p><strong>${escapeHtml(investmentProfile.recommendation)}</strong></p>
+  <p><strong>${escapeHtml(profile.recommendation)}</strong></p>
   <p>${escapeHtml(aiReport.bankFazit)}</p>
   <p>Gesamturteil: Das Objekt ist für eine langfristige Bestandshaltung prüfenswert, wenn Hausgeld, Rücklage, Mietvertrag, Zahlungsstand, WEG-Risiken und Finanzierungsstruktur zufriedenstellend geklärt werden.</p>
   <h3>Nächste Schritte</h3>
@@ -692,17 +692,20 @@ export default function InvestmentBericht() {
     setFiles((current) => current.filter((file) => file.id !== fileId));
     setAiStatus("idle");
     setAiReport(null);
+    setAiError("");
   }
 
   function clearFiles() {
     setFiles([]);
     setAiStatus("idle");
     setAiReport(null);
+    setAiError("");
   }
 
-  function startAiEvaluation() {
+  async function startAiEvaluation() {
     if (!files.length) {
       setAiStatus("blocked");
+      setAiError("Bitte zuerst Unterlagen auswählen. Ohne Dokumente kann die KI keine fachliche Investmentbewertung erstellen.");
       setAiReport({
         generatedAt: new Date().toLocaleString("de-DE"),
         statusLabel: "Unterlagen fehlen",
@@ -722,97 +725,45 @@ export default function InvestmentBericht() {
 
     setAiStatus("running");
     setCopyStatus("");
+    setAiError("");
 
-    window.setTimeout(() => {
-      const missingDocuments = coveredDocuments.filter((document) => document.coverage === "missing");
-      const packageDocuments = coveredDocuments.filter((document) => document.coverage === "package");
-      const hasFinanceInputs = Boolean(investmentProfile.purchasePrice || investmentProfile.monthlyRent || equity);
-      const completenessLabel =
-        readiness >= 85 ? "gut vorbereitet" : readiness >= 55 ? "Unterlagenpaket vorhanden" : "noch unvollständig";
-
-      const risks = [
-        ...missingDocuments.map((document) => `${document.label} fehlt oder ist anhand der Dateinamen nicht erkennbar.`),
-        ...packageDocuments.map(
-          (document) =>
-            `${document.label} ist vermutlich im ZIP-Unterlagenpaket enthalten, muss aber inhaltlich noch geprüft werden.`,
-        ),
-        !hasFinanceInputs
-          ? "Kaufpreis, Eigenkapital oder Zielmiete sind noch nicht vollständig gepflegt; Rendite und Finanzierung bleiben Annahmen."
-          : "",
-        hasZipPackage
-          ? "ZIP-Datei erkannt: Für eine echte Inhaltsprüfung muss der spätere Backend-Dienst die ZIP-Datei entpacken und die enthaltenen Dokumente auslesen."
-          : "",
-      ].filter(Boolean);
-
-      const nextSteps = [
-        missingDocuments.length
-          ? `Fehlende Unterlagen nachreichen: ${missingDocuments.map((document) => document.label).join(", ")}.`
-          : packageDocuments.length
-            ? "ZIP-Unterlagenpaket entpacken bzw. per Backend analysieren, damit die enthaltenen Dokumente kapitelgenau geprüft werden."
-          : "Unterlagenbasis ist für den Erstbericht vollständig genug; Inhalte im nächsten Schritt fachlich prüfen.",
-        "Bankfähigen DOCX-Bericht mit klaren Annahmen, offenen Punkten und Kaufempfehlung erstellen.",
-        "Nach finaler Prüfung Bericht, Exposé, Wirtschaftsplan, Mietvertrag und Energieausweis an Bank/Finanzberater senden.",
-      ];
-
-      const chapterStatus: AiChapterStatus[] = reportChapters.map((chapter) => {
-        const lowerChapter = chapter.toLowerCase();
-        const matchingDocument = coveredDocuments.find((document) =>
-          document.keywords.some((keyword) => lowerChapter.includes(keyword.toLowerCase())),
-        );
-
-        if (chapter.includes("Executive")) {
-          return {
-            chapter,
-            status: files.length ? "Bereit" : "Offen",
-            note: `${files.length} Unterlage(n) und Objektstammdaten liegen für die Kurzbewertung vor.`,
-          };
-        }
-
-        if (chapter.includes("Rendite") || chapter.includes("Finanzierungsanalyse")) {
-          return {
-            chapter,
-            status: hasFinanceInputs ? "Prüfen" : "Offen",
-            note: hasFinanceInputs
-              ? "Finanzierungsannahmen sind vorhanden, müssen aber rechnerisch validiert werden."
-              : "Kaufpreis, Eigenkapital und Zielmiete ergänzen.",
-          };
-        }
-
-        if (chapter.includes("Standort")) {
-          return {
-            chapter,
-            status: location ? "Prüfen" : "Offen",
-            note: location ? "Standort ist gepflegt; Marktvergleich ergänzen." : "Standort/Adresse ergänzen.",
-          };
-        }
-
-        return {
-          chapter,
-          status: matchingDocument?.covered ? "Prüfen" : "Offen",
-          note: matchingDocument?.coverage === "direct"
-            ? "Passende Unterlagen erkannt; Inhalte im Bericht prüfen."
-            : matchingDocument?.coverage === "package"
-              ? "ZIP-Unterlagenpaket erkannt; Inhalte müssen für dieses Kapitel entpackt und geprüft werden."
-            : "Benötigte Unterlagen fehlen oder sind nicht eindeutig benannt.",
-        };
+    try {
+      const report = await runInvestmentAiAnalysis({
+        objectName,
+        location,
+        purchasePrice,
+        buyerProvision,
+        equity,
+        targetRent,
+        livingArea,
+        rooms,
+        monthlyHousegeld,
+        interestRate,
+        amortizationRate,
+        files,
       });
 
       setAiReport({
-        generatedAt: new Date().toLocaleString("de-DE"),
-        statusLabel: `KI-Erstbewertung: ${completenessLabel}`,
-        summary: `Die Unterlagenbasis für ${objectName || "die neue Investition"} ist zu ${readiness}% abgedeckt. ${hasZipPackage ? "Ein ZIP-Unterlagenpaket wurde erkannt und wird als vorhandene, aber noch nicht inhaltlich geprüfte Unterlagenbasis bewertet." : "Die App bewertet die erkennbaren Dateinamen und Objektstammdaten."} Daraus kann die App sofort eine strukturierte Erstbewertung, Kapitelstatus, offene Prüfpositionen und ein konservatives Bankfazit vorbereiten. Eine vollständige Dokumenteninhaltsanalyse benötigt die sichere ChatGPT/OpenAI-Backend-Anbindung.`,
-        risks: risks.length ? risks : ["Keine wesentlichen Unterlagenlücken anhand der Dateinamen erkannt."],
-        nextSteps,
-        chapterStatus,
-        bankFazit:
-          readiness >= 85 && hasFinanceInputs
-            ? "Grundsätzlich bankfähig vorbereitbar. Vor Versand sollten Rendite, Cashflow, WEG-Risiken und Dokumenteninhalte final geprüft werden."
-            : hasZipPackage && hasFinanceInputs
-              ? "Als Vorprüfung nutzbar. Für ein bankfähiges Ergebnis müssen die ZIP-Inhalte noch automatisch oder manuell dokumentengenau ausgewertet werden."
-              : "Noch nicht final bankfähig. Erst fehlende Unterlagen und Finanzierungsannahmen ergänzen, dann DOCX-Bericht erzeugen.",
+        generatedAt: report.generatedAt ?? new Date().toLocaleString("de-DE"),
+        statusLabel: report.statusLabel,
+        summary: report.summary,
+        risks: report.risks,
+        nextSteps: report.nextSteps,
+        chapterStatus: report.chapterStatus,
+        bankFazit: report.bankFazit,
+        profile: report.profile,
+        financialScenarios: report.financialScenarios,
+        riskMatrix: report.riskMatrix,
+        openQuestions: report.openQuestions,
+        documentFindings: report.documentFindings,
       });
       setAiStatus("ready");
-    }, 650);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "KI-Bewertung konnte nicht gestartet werden.";
+      setAiStatus("blocked");
+      setAiError(message);
+      setAiReport(null);
+    }
   }
 
   return (
@@ -820,7 +771,7 @@ export default function InvestmentBericht() {
       <PageHeader
         eyebrow="Investment"
         title="Investment-Bericht"
-        description="KI-gestützter Arbeitsbereich für neue Immobilienkäufe: Unterlagen sammeln, Berichtskapitel vorbereiten, ChatGPT-Prüfprompt erstellen und Bank-/Finanzberaterpaket vorbereiten."
+        description="KI-gestützter Arbeitsbereich für neue Immobilienkäufe: Unterlagen hochladen, Inhalte analysieren, Kapitel 1-8 erstellen und Bank-/Finanzberaterpaket vorbereiten."
         meta={[
           { label: "Output", value: "DOCX-Bericht Kapitel 1-8" },
           { label: "Ziel", value: "Bank- und Finanzierungsprüfung" },
@@ -847,7 +798,7 @@ export default function InvestmentBericht() {
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Deckblatt</p>
               <h2 className="mt-2 text-2xl font-black text-slate-950">Koenen Investment- und Finanzierungsanalyse</h2>
               <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
-                Das Deckblatt soll Logo, Objektadresse, Kaufpreis, Bearbeitungsdatum, Berichtsstatus und Empfängergruppe enthalten. Die finale DOCX-Erstellung erfolgt über ChatGPT oder später über eine direkte Backend-Automation.
+                Das Deckblatt enthält Logo, Objektadresse, Kaufpreis, Bearbeitungsdatum, Berichtsstatus und Empfängergruppe. Die fachliche Analyse wird über das geschützte KI-Backend aus den hochgeladenen Unterlagen erstellt.
               </p>
             </div>
           </div>
@@ -932,7 +883,7 @@ export default function InvestmentBericht() {
         <SectionPanel
           eyebrow="Unterlagen"
           title="Dokumente hochladen"
-          description="Wähle Exposé, PDF-Unterlagen, Bilder, Grundrisse und Finanzierungsdaten aus. In diesem Schritt werden Dateien lokal im Browser gelistet; die Übertragung zu ChatGPT erfolgt bewusst erst durch dich."
+          description="Wähle Exposé, PDF-Unterlagen, Bilder, Grundrisse und Finanzierungsdaten aus. Erst beim Klick auf KI-Bewertung werden die Dateien an das geschützte KI-Backend übertragen."
         >
           <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition hover:border-slate-400 hover:bg-white">
             <Upload size={28} className="text-slate-700" />
@@ -949,10 +900,12 @@ export default function InvestmentBericht() {
                   name: file.name,
                   size: file.size,
                   type: file.type,
+                  file,
                 }));
                 setFiles((current) => [...current, ...selected]);
                 setAiStatus("idle");
                 setAiReport(null);
+                setAiError("");
                 event.target.value = "";
               }}
             />
@@ -1031,7 +984,7 @@ export default function InvestmentBericht() {
       <SectionPanel
         eyebrow="KI-Erstbewertung"
         title="Direkte Bewertung in der App"
-        description="Mit einem Klick erstellt die App sofort eine strukturierte Vorbewertung ohne zusätzliches ChatGPT-Fenster. Die vollständige Inhaltsanalyse der Dokumente benötigt später eine sichere Backend-KI-Anbindung."
+        description="Mit einem Klick erstellt die App eine strukturierte Vorbewertung ohne zusätzliches ChatGPT-Fenster. Die Analyse kommt aus dem geschützten Supabase-KI-Backend."
       >
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
@@ -1078,7 +1031,13 @@ export default function InvestmentBericht() {
 
         {aiStatus === "running" ? (
           <div className="mt-5 rounded-[22px] border border-blue-100 bg-blue-50 p-5 text-sm font-bold text-blue-800">
-            Unterlagen werden bewertet und Kapitelstatus wird vorbereitet...
+            Unterlagen werden an das KI-Backend übertragen und inhaltlich bewertet...
+          </div>
+        ) : null}
+
+        {aiError ? (
+          <div className="mt-5 rounded-[22px] border border-rose-200 bg-rose-50 p-5 text-sm font-bold leading-6 text-rose-800">
+            {aiError}
           </div>
         ) : null}
 
