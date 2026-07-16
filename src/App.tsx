@@ -279,6 +279,7 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/automatisiertes-mahnwesen", label: "Mahnwesen", icon: Bell },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+  { path: "/buchhaltung/darlehen", label: "Darlehensübersicht", icon: Landmark },
   { path: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", icon: BriefcaseBusiness },
   { path: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", icon: ReceiptText },
 ];
@@ -583,6 +584,20 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
       { label: "Jahres-Mietaufstellung", description: "Stichtagsbezogene Miet- und Objektberichte." },
       { label: "Überschuss-/Verlustrechnung", description: "Grafische und tabellarische Reports." },
       { label: "Multi-Format-Export", description: "PDF, CSV und Excel über bestehende Exportlogik." },
+    ],
+  },
+  buchhaltungDarlehen: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Darlehensübersicht",
+    description: "Finanzierungsübersicht mit Restschuld, Zinsen, Tilgung, Verlauf und Objektzuordnung. Die bestehende Darlehensseite bleibt die Datenquelle.",
+    basePath: "/buchhaltung",
+    source: "Darlehensübersicht, property_loan_ledger, Portfolio",
+    subpages: buchhaltungSubpages,
+    tabs: [
+      { label: "Übersicht", description: "Alle Immobilien mit Darlehensstatus, Restschuld und Rückzahlungsstand prüfen." },
+      { label: "Ledger bearbeiten", description: "Jahreswerte für Zinsen, Tilgung und Restschuld in der bestehenden Darlehenslogik pflegen." },
+      { label: "Objektzuordnung", description: "Darlehen den richtigen Immobilien zuordnen und Abweichungen sichtbar halten." },
+      { label: "Steuerrelevanz", description: "Zinsen werden für das Steuer-Center genutzt; Tilgung bleibt dokumentiert, aber steuerlich getrennt." },
     ],
   },
   buchhaltungPortal: {
@@ -1253,6 +1268,7 @@ function AppShell() {
       { to: "/buchhaltung/automatisiertes-mahnwesen", label: "Automatisiertes Mahnwesen", group: "4. 💼 Buchhaltung & Finanzen", icon: Bell },
       { to: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", group: "4. 💼 Buchhaltung & Finanzen", icon: Euro },
       { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "4. 💼 Buchhaltung & Finanzen", icon: BarChart3 },
+      { to: "/buchhaltung/darlehen", label: "Darlehensübersicht", group: "4. 💼 Buchhaltung & Finanzen", icon: Landmark },
       { to: "/buchhaltung/steuerberater-portal", label: "Steuerberater-Portal", group: "4. 💼 Buchhaltung & Finanzen", icon: BriefcaseBusiness },
       { to: "/buchhaltung/umsatzsteuer-optionen", label: "USt.-Optionen", group: "4. 💼 Buchhaltung & Finanzen", icon: ReceiptText },
       { to: "/ticketsystem/schadenmeldungen", label: "Schadenmeldungen", group: "5. 🔧 Aufgaben & Ticketsystem", icon: FolderKanban },
@@ -1644,6 +1660,10 @@ export default function App() {
         <Route
           path="/buchhaltung/berichte-exporte"
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><Auswertung /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/buchhaltung/darlehen"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungDarlehen}><Darlehensuebersicht /></ModuleWorkspacePage>}
         />
         <Route
           path="/buchhaltung/steuerberater-portal"
