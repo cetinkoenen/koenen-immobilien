@@ -48,10 +48,13 @@ type DevelopmentRow = {
   object: AppObject;
   currentExpected: number;
   currentActual: number;
+  lastActualAmount: number;
+  lastActualMonthLabel: string | null;
   previousExpected: number;
   deltaExpected: number;
   latestIncrease: RentChange | null;
   activeUnitSummary: string;
+  activeUnitBreakdown: Array<{ key: string; label: string; amount: number }>;
   hasGarageUnit: boolean;
   monthPoints: MonthPoint[];
   quality: "ok" | "check" | "missing";
@@ -161,6 +164,33 @@ function isStrictRentText(value: string | null | undefined): boolean {
   );
 }
 
+function isLilienthalerObject(object: AppObject): boolean {
+  return normalizeText(object.label).includes("lilienthaler");
+}
+
+function isFuertherObject(object: AppObject): boolean {
+  return normalizeText(object.label).includes("further") || normalizeText(object.label).includes("fuerther");
+}
+
+function isRosensteinObject(object: AppObject): boolean {
+  return normalizeText(object.label).includes("rosenstein");
+}
+
+function isGarageLikeText(value: string | null | undefined): boolean {
+  const normalized = normalizeText(value);
+  return normalized.includes("garage") || normalized.includes("stellplatz") || normalized.includes("tiefgarage") || normalized.includes("tg") || /\bp\d{2,}\b/.test(normalized);
+}
+
+function isSameRentalPeriod(a: PortfolioRentalRow, b: PortfolioRentalRow): boolean {
+  return (
+    money(a.rent_monthly) === money(b.rent_monthly) &&
+    (a.start_date ?? "") === (b.start_date ?? "") &&
+    (a.end_date ?? "") === (b.end_date ?? "") &&
+    normalizeText(a.unit_id) === normalizeText(b.unit_id) &&
+    normalizeText(a.rent_type) === normalizeText(b.rent_type)
+  );
+}
+
 function isExcludedIncome(entry: FinanceEntry): boolean {
   const text = normalizeText(bookingReference(entry));
   const isMietbestandteilNk = text.includes("mietbestandteil nk") || normalizeText(entry.category).includes(normalizeText(MIETBESTANDTEIL_NK_CATEGORY));
@@ -187,6 +217,16 @@ function effectiveRentMonth(entry: FinanceEntry) {
     return shifted;
   }
   return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+function effectiveRentMonthForObject(entry: FinanceEntry, object: AppObject) {
+  if (isLilienthalerObject(object)) {
+    if (!entry.booking_date) return null;
+    const date = new Date(`${entry.booking_date}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    return { year: date.getFullYear(), month: date.getMonth() + 1 };
+  }
+  return effectiveRentMonth(entry);
 }
 
 function entryMatchesObject(entry: FinanceEntry, object: AppObject, candidateIds: Set<string>) {
@@ -220,7 +260,8 @@ function unitKeyFromRental(rental: PortfolioRentalRow) {
   const raw = `${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`.trim();
   const normalized = normalizeText(raw);
   if (!normalized) return "hauptmiete";
-  if (normalized.includes("garage") || normalized.includes("stellplatz") || normalized.includes("tiefgarage") || normalized.includes("tg")) {
+  if (rental.unit_id?.trim()) return compactText(rental.unit_id);
+  if (isGarageLikeText(raw)) {
     return compactText(raw);
   }
   const parkingCode = normalized.match(/\bp\d{2,}\b/)?.[0];
@@ -230,7 +271,44 @@ function unitKeyFromRental(rental: PortfolioRentalRow) {
 }
 
 function unitLabelFromRental(rental: PortfolioRentalRow) {
-  return rental.rent_type?.trim() || rental.unit_id?.trim() || "Hauptmiete";
+  const raw = `${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`;
+  const normalized = normalizeText(raw);
+  if (normalized.includes("p250")) return "Garage 1";
+  if (normalized.includes("p253")) return "Garage 2";
+  if (normalized.includes("p254")) return "Garage 3";
+  if (rental.unit_id?.trim()) return rental.unit_id.trim();
+  const type = rental.rent_type?.trim();
+  const normalizedType = normalizeText(type);
+  if (!type || normalizedType === "monthly") return "Hauptmiete";
+  return type;
+}
+
+function friendlyUnitLabel(object: AppObject, rental: PortfolioRentalRow, index: number) {
+  const rawLabel = unitLabelFromRental(rental);
+  const compactLabel = compactText(rawLabel);
+  const looksTechnicalId = /^[0-9a-f]{16,}$/i.test(compactLabel) || compactLabel.length >= 24;
+
+  if (isRosensteinObject(object)) return `Garage ${index + 1}`;
+  if (isFuertherObject(object)) {
+    if (money(rental.rent_monthly) <= 100 || isGarageLikeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`)) return "Garage";
+    return "Wohnung";
+  }
+  if (looksTechnicalId) return isGarageLikeText(rawLabel) ? "Garage" : "Wohnung";
+  return rawLabel;
+}
+
+function completeKnownUnitBreakdown(
+  object: AppObject,
+  units: Array<{ key: string; label: string; amount: number }>,
+) {
+  if (!isRosensteinObject(object)) return units;
+
+  const byLabel = new Map(units.map((unit) => [unit.label, unit]));
+  return ["Garage 1", "Garage 2", "Garage 3"].map((label) => byLabel.get(label) ?? {
+    key: `${object.id}-${label}`,
+    label,
+    amount: 0,
+  });
 }
 
 function selectActiveRentalsForMonth(rentals: PortfolioRentalRow[], candidateIds: Set<string>, year: number, month: number) {
@@ -238,9 +316,16 @@ function selectActiveRentalsForMonth(rentals: PortfolioRentalRow[], candidateIds
   const byUnit = new Map<string, PortfolioRentalRow>();
 
   for (const rental of matches) {
-    const key = unitKeyFromRental(rental);
+    const baseKey = unitKeyFromRental(rental);
+    let key = baseKey;
     const current = byUnit.get(key);
     if (!current) {
+      byUnit.set(key, rental);
+      continue;
+    }
+
+    if (!isSameRentalPeriod(current, rental)) {
+      key = `${baseKey}-${rental.id}`;
       byUnit.set(key, rental);
       continue;
     }
@@ -260,7 +345,7 @@ function expectedRentForMonth(rentals: PortfolioRentalRow[], candidateIds: Set<s
 function actualRentForMonth(entries: FinanceEntry[], object: AppObject, candidateIds: Set<string>, year: number, month: number) {
   return entries.reduce((sum, entry) => {
     if (!isRentBookingForObject(entry, object, candidateIds)) return sum;
-    const effective = effectiveRentMonth(entry);
+    const effective = effectiveRentMonthForObject(entry, object);
     if (effective && effective.year === year && effective.month === month) return sum + money(entry.amount);
     if (!effective && dateInMonth(entry.booking_date, year, month)) return sum + money(entry.amount);
     return sum;
@@ -316,7 +401,7 @@ function rentChangesForObject(
 
     if (previous.actual > 0 && current.actual - previous.actual > 5) {
       const currentMonthEntries = entries.filter((entry) => {
-        const effective = effectiveRentMonth(entry);
+        const effective = effectiveRentMonthForObject(entry, object);
         return effective?.year === current.year && effective.month === current.month && isRentBookingForObject(entry, object, candidateIds);
       });
       changes.push({
@@ -432,12 +517,17 @@ export default function Mietentwicklung() {
       }));
       const current = monthPoints[monthPoints.length - 1] ?? { expected: 0, actual: 0 };
       const previous = monthPoints[monthPoints.length - 2] ?? { expected: 0, actual: 0 };
+      const lastActual = [...monthPoints].reverse().find((point) => point.actual > 0);
       const activeRentals = selectActiveRentalsForMonth(portfolioRentals, candidateIds, currentMonth.year, currentMonth.month);
-      const activeUnitLabels = activeRentals.map(unitLabelFromRental).filter(Boolean);
+      const activeUnitBreakdown = completeKnownUnitBreakdown(object, activeRentals.map((rental, index) => ({
+        key: rental.id,
+        label: friendlyUnitLabel(object, rental, index),
+        amount: money(rental.rent_monthly),
+      })));
+      const activeUnitLabels = activeUnitBreakdown.map((unit) => `${unit.label} ${formatCurrency(unit.amount)}`).filter(Boolean);
       const activeUnitSummary = activeUnitLabels.length ? activeUnitLabels.join(" + ") : "Keine aktive Einheit";
       const hasGarageUnit = activeUnitLabels.some((label) => {
-        const normalized = normalizeText(label);
-        return normalized.includes("garage") || normalized.includes("stellplatz") || normalized.includes("tiefgarage") || normalized.includes("tg") || /\bp\d{2,}\b/.test(normalized);
+        return isGarageLikeText(label);
       });
       const changes = rentChangesForObject(object, appData.entries, portfolioRentals, candidateIds, monthPoints);
       const latestIncrease = [...changes].reverse()[0] ?? null;
@@ -458,10 +548,13 @@ export default function Mietentwicklung() {
         object,
         currentExpected: current.expected,
         currentActual: current.actual,
+        lastActualAmount: lastActual?.actual ?? 0,
+        lastActualMonthLabel: lastActual ? monthLabel(lastActual.year, lastActual.month, true) : null,
         previousExpected: previous.expected,
         deltaExpected: current.expected - previous.expected,
         latestIncrease,
         activeUnitSummary,
+        activeUnitBreakdown,
         hasGarageUnit,
         monthPoints,
         quality,
@@ -538,7 +631,7 @@ export default function Mietentwicklung() {
               <strong className="mt-2 block text-xl font-black text-emerald-800">{formatCurrency(stats.currentExpected)}</strong>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist aktuell</span>
+              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist aktueller Monat</span>
               <strong className="mt-2 block text-xl font-black text-slate-950">{formatCurrency(stats.currentActual)}</strong>
             </div>
             <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
@@ -625,7 +718,7 @@ export default function Mietentwicklung() {
             </div>
             <div className="divide-y divide-slate-100">
               {filteredRows.map((row) => (
-                <article key={row.object.id} className="grid gap-4 p-5 lg:grid-cols-[minmax(220px,1fr)_180px_180px_260px_160px] lg:items-center">
+                <article key={row.object.id} className="grid gap-4 p-5 lg:grid-cols-[minmax(220px,1fr)_170px_170px_170px_240px_150px] lg:items-center">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={[
@@ -638,15 +731,29 @@ export default function Mietentwicklung() {
                     </div>
                     <h3 className="mt-2 text-xl font-black text-slate-950">{row.object.label}</h3>
                     <p className="mt-1 text-xs font-bold text-slate-500">Quelle: Vermietungszeiträume + Buchungen</p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">Aktive Einheit(en): {row.activeUnitSummary}</p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">Einheiten / Soll: {row.activeUnitSummary}</p>
+                    {row.activeUnitBreakdown.length > 1 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {row.activeUnitBreakdown.map((unit) => (
+                          <span key={unit.key} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
+                            {unit.label}: {formatCurrency(unit.amount)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Soll aktuell</span>
                     <strong className="mt-1 block text-xl font-black text-slate-950">{formatCurrency(row.currentExpected)}</strong>
                   </div>
                   <div>
-                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist aktuell</span>
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist Monat</span>
                     <strong className="mt-1 block text-xl font-black text-emerald-700">{formatCurrency(row.currentActual)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Letzter Eingang</span>
+                    <strong className="mt-1 block text-lg font-black text-slate-950">{row.lastActualAmount ? formatCurrency(row.lastActualAmount) : "—"}</strong>
+                    <span className="text-xs font-bold text-slate-500">{row.lastActualMonthLabel ?? "Keine Buchung"}</span>
                   </div>
                   <Sparkline points={row.monthPoints} />
                   <div className="grid gap-2">
