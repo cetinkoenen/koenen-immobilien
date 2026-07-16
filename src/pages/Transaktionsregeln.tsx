@@ -228,10 +228,10 @@ export default function Transaktionsregeln() {
               <SlidersHorizontal size={16} />
               Buchungsautomatik
             </div>
-            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
+            <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
               Transaktionsregeln
             </h1>
-            <p className="mt-4 max-w-4xl text-base font-medium leading-8 text-slate-600">
+            <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
               Regeln erkennen wiederkehrende Buchungstexte und schlagen Kategorie, Typ und Steuerrelevanz vor.
               Änderungen werden erst nach deiner Bestätigung auf vorhandene Buchungen geschrieben.
             </p>

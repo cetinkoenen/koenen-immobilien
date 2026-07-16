@@ -854,7 +854,7 @@ export default function InvestmentBericht() {
         <div className="grid gap-4">
           <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Berichtsreife</p>
-            <div className="mt-3 text-4xl font-black text-emerald-900">{readiness}%</div>
+            <div className="mt-3 text-3xl font-black text-emerald-900">{readiness}%</div>
             <p className="mt-2 text-sm font-bold leading-6 text-emerald-800">
               Dokumentenabdeckung auf Basis der Dateinamen. ZIP-Pakete zählen als vorhandene, aber noch zu prüfende Unterlagenbasis.
             </p>

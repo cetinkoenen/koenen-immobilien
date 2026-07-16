@@ -14,7 +14,7 @@ type PageHeaderProps = {
 
 export function PageHeader({ eyebrow, title, description, meta = [], children }: PageHeaderProps) {
   return (
-    <section className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+    <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
       {eyebrow ? (
         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
           {eyebrow}
@@ -22,11 +22,11 @@ export function PageHeader({ eyebrow, title, description, meta = [], children }:
       ) : null}
       <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
+          <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
             {title}
           </h1>
           {description ? (
-            <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600 md:text-base md:leading-7">
+            <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
               {description}
             </p>
           ) : null}

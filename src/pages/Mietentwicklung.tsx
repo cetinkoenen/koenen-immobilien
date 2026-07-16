@@ -525,10 +525,10 @@ export default function Mietentwicklung() {
               <TrendingUp size={16} />
               Mietentwicklung
             </div>
-            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+            <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
               Mieten, Erhöhungen und Buchungen auf einen Blick
             </h1>
-            <p className="mt-3 max-w-4xl text-base font-semibold leading-7 text-slate-600">
+            <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
               Sollmieten kommen aus Portfolio → Vermietungszeiträume. Tatsächliche Erhöhungen werden zusätzlich aus Buchungen erkannt, wenn ab einem Monat höhere Miete oder {MIETBESTANDTEIL_NK_CATEGORY} eingeht.
             </p>
           </div>

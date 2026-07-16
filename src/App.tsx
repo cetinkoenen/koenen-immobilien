@@ -867,7 +867,7 @@ function ModuleWorkspacePage({
                   [
                     "flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-black no-underline transition",
                     isActive
-                      ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm"
                       : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white",
                   ].join(" ")
                 }
@@ -876,9 +876,9 @@ function ModuleWorkspacePage({
                   <>
                     <Icon
                       size={18}
-                      className={isActive ? "text-white" : "text-slate-800"}
+                              className={isActive ? "text-indigo-700" : "text-slate-800"}
                     />
-                    <span className={isActive ? "text-white" : "text-slate-950"}>
+                    <span className={isActive ? "text-indigo-950" : "text-slate-950"}>
                       {subpage.label}
                     </span>
                   </>
