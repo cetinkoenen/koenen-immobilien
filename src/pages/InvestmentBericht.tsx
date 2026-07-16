@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import {
-  ArrowRight,
   Banknote,
-  Bot,
   CheckCircle2,
   ClipboardCheck,
   Copy,
+  Download,
   FileArchive,
   FileText,
   Image,
@@ -109,6 +108,29 @@ const formatFileSize = (bytes: number) => {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 };
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function slugifyFileName(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "investment-bericht"
+  );
+}
+
 function matchesDocument(file: UploadedFile, document: RequiredDocument) {
   const text = `${file.name} ${file.type}`.toLowerCase();
   return document.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
@@ -166,48 +188,9 @@ export default function InvestmentBericht() {
       100,
   );
 
-  const promptText = useMemo(() => {
-    const fileList = files.length
-      ? files.map((file) => `- ${file.name} (${formatFileSize(file.size)})`).join("\n")
-      : "- Noch keine Dateien hochgeladen.";
-
-    return `Erstelle einen professionellen Investment- und Finanzierungsbericht für eine Immobilieninvestition.
-
-Objekt:
-- Name/Adresse: ${objectName || "noch offen"}
-- Standort: ${location || "noch offen"}
-- Kaufpreis: ${purchasePrice || "noch offen"}
-- Eigenkapital: ${equity || "noch offen"}
-- Soll-/Zielmiete: ${targetRent || "noch offen"}
-
-Vorliegende Unterlagen:
-${fileList}
-
-Bitte erstelle einen bank- und finanzberaterfähigen DOCX-Bericht mit folgenden Kapiteln:
-1. Executive Summary und Objektübersicht
-2. Standort- und Marktanalyse
-3. Objektbilder, Grundrisse und Bauzeichnungen
-4. Dokumentenprüfung: Teilungserklärung, Energieausweis, Mietvertrag
-5. Wirtschaftsplan und Hausgeldanalyse
-6. Rendite-, Cashflow- und Finanzierungsanalyse
-7. WEG-Analyse und Risikoanalyse
-8. Kaufempfehlung und Bankfazit
-
-Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und offene Prüfpositionen, und formuliere das Bankfazit sachlich. Verwende auf dem Deckblatt das Koenen Immobilien Branding, sofern das Logo als Datei bereitgestellt wird.`;
-  }, [equity, files, location, objectName, purchasePrice, targetRent]);
-
   const mailBody = encodeURIComponent(
     `Hallo,\n\nanbei/folgend bereite ich eine erste Finanzierungsprüfung für ${objectName || "eine neue Investition"} vor.\n\nBitte prüfen Sie auf Basis des Investmentberichts grob die mögliche Finanzierung, Beleihung, Eigenkapitalanforderung und Konditionsindikation.\n\nUnterlagen und Bericht werden separat übermittelt.\n\nViele Grüße`,
   );
-
-  async function copyPrompt() {
-    try {
-      await navigator.clipboard.writeText(promptText);
-      setCopyStatus("Prompt kopiert");
-    } catch {
-      setCopyStatus("Kopieren nicht möglich");
-    }
-  }
 
   const aiReportText = useMemo(() => {
     if (!aiReport) return "";
@@ -240,6 +223,150 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
     } catch {
       setCopyStatus("Kopieren nicht möglich");
     }
+  }
+
+  const reportDocumentHtml = useMemo(() => {
+    if (!aiReport) return "";
+    const safeObjectName = escapeHtml(objectName || "Neue Investition");
+    const safeLocation = escapeHtml(location || "noch offen");
+    const safePurchasePrice = escapeHtml(purchasePrice || "noch offen");
+    const safeEquity = escapeHtml(equity || "noch offen");
+    const safeTargetRent = escapeHtml(targetRent || "noch offen");
+    const fileRows = files.length
+      ? files
+          .map(
+            (file) =>
+              `<tr><td>${escapeHtml(file.name)}</td><td>${escapeHtml(formatFileSize(file.size))}</td><td>${escapeHtml(file.type || "Datei")}</td></tr>`,
+          )
+          .join("")
+      : `<tr><td colspan="3">Keine Unterlagen gelistet.</td></tr>`;
+    const chapterRows = aiReport.chapterStatus
+      .map(
+        (item, index) =>
+          `<tr><td>${index + 1}</td><td>${escapeHtml(item.chapter)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.note)}</td></tr>`,
+      )
+      .join("");
+    const riskItems = aiReport.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("");
+    const stepItems = aiReport.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Investmentbericht ${safeObjectName}</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; line-height: 1.45; }
+    .cover { border: 1px solid #dbe3ef; border-radius: 18px; padding: 28px; margin-bottom: 28px; }
+    .logo { width: 88px; height: 88px; object-fit: cover; border-radius: 16px; border: 1px solid #dbe3ef; }
+    .eyebrow { color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; margin-top: 22px; }
+    h1 { font-size: 30px; margin: 8px 0 12px; }
+    h2 { font-size: 20px; margin: 26px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+    h3 { font-size: 15px; margin: 14px 0 6px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    .box { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #f8fafc; }
+    .label { color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+    .value { margin-top: 4px; font-weight: 800; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; font-size: 12px; }
+    th { background: #f1f5f9; color: #334155; }
+    .status { display: inline-block; border-radius: 999px; background: #ecfdf5; color: #047857; padding: 4px 10px; font-weight: 800; }
+    .warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 12px; }
+    .footer { margin-top: 34px; color: #64748b; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <img class="logo" src="${logo}" alt="Koenen Immobilien Logo" />
+    <div class="eyebrow">Koenen Investment- und Finanzierungsanalyse</div>
+    <h1>${safeObjectName}</h1>
+    <p><span class="status">${escapeHtml(aiReport.statusLabel)}</span></p>
+    <p>${escapeHtml(aiReport.summary)}</p>
+    <div class="meta">
+      <div class="box"><div class="label">Standort</div><div class="value">${safeLocation}</div></div>
+      <div class="box"><div class="label">Kaufpreis</div><div class="value">${safePurchasePrice}</div></div>
+      <div class="box"><div class="label">Eigenkapital</div><div class="value">${safeEquity}</div></div>
+      <div class="box"><div class="label">Soll-/Zielmiete</div><div class="value">${safeTargetRent}</div></div>
+      <div class="box"><div class="label">Berichtsdatum</div><div class="value">${escapeHtml(aiReport.generatedAt)}</div></div>
+      <div class="box"><div class="label">Berichtsreife</div><div class="value">${readiness}%</div></div>
+    </div>
+  </section>
+
+  <h2>1. Executive Summary und Objektübersicht</h2>
+  <p>${escapeHtml(aiReport.summary)}</p>
+
+  <h2>2. Standort- und Marktanalyse</h2>
+  <p>Standort: <strong>${safeLocation}</strong>. Marktvergleich und Mikrolage sollten im nächsten Prüfschritt ergänzt werden.</p>
+
+  <h2>3. Objektbilder, Grundrisse und Bauzeichnungen</h2>
+  <p>Vorliegende Dateien werden nachfolgend dokumentiert. Bilder, Grundrisse und Bauzeichnungen sind im finalen Bericht einzeln zuzuordnen.</p>
+
+  <h2>4. Dokumentenprüfung</h2>
+  <table>
+    <thead><tr><th>Datei</th><th>Größe</th><th>Typ</th></tr></thead>
+    <tbody>${fileRows}</tbody>
+  </table>
+
+  <h2>5. Wirtschaftsplan und Hausgeldanalyse</h2>
+  <p>Wirtschaftsplan, Hausgeld, Rücklage und umlagefähige Kosten sind gegen die Unterlagen zu prüfen.</p>
+
+  <h2>6. Rendite-, Cashflow- und Finanzierungsanalyse</h2>
+  <div class="meta">
+    <div class="box"><div class="label">Kaufpreis</div><div class="value">${safePurchasePrice}</div></div>
+    <div class="box"><div class="label">Eigenkapital</div><div class="value">${safeEquity}</div></div>
+    <div class="box"><div class="label">Soll-/Zielmiete</div><div class="value">${safeTargetRent}</div></div>
+    <div class="box"><div class="label">Bewertungsstand</div><div class="value">${readiness}%</div></div>
+  </div>
+
+  <h2>7. WEG-Analyse und Risikoanalyse</h2>
+  <div class="warning">
+    <h3>Risiken / offene Prüfpositionen</h3>
+    <ul>${riskItems}</ul>
+  </div>
+
+  <h2>8. Kaufempfehlung und Bankfazit</h2>
+  <p><strong>${escapeHtml(aiReport.bankFazit)}</strong></p>
+  <h3>Nächste Schritte</h3>
+  <ul>${stepItems}</ul>
+
+  <h2>Kapitelstatus</h2>
+  <table>
+    <thead><tr><th>#</th><th>Kapitel</th><th>Status</th><th>Hinweis</th></tr></thead>
+    <tbody>${chapterRows}</tbody>
+  </table>
+
+  <p class="footer">Automatisch erstellt in der Koenen Immobilien App. Dieser Bericht ist eine strukturierte Erstbewertung und ersetzt keine rechtliche, technische oder steuerliche Detailprüfung.</p>
+</body>
+</html>`;
+  }, [aiReport, equity, files, location, objectName, purchasePrice, readiness, targetRent]);
+
+  function downloadWordReport() {
+    if (!reportDocumentHtml) return;
+    const blob = new Blob(["\ufeff", reportDocumentHtml], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${slugifyFileName(objectName)}-investmentbericht.doc`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function createPdfReport() {
+    if (!reportDocumentHtml) return;
+    const reportWindow = window.open("", "_blank", "width=980,height=1200");
+    if (!reportWindow) {
+      setCopyStatus("PDF-Fenster konnte nicht geöffnet werden");
+      return;
+    }
+    reportWindow.document.open();
+    reportWindow.document.write(reportDocumentHtml);
+    reportWindow.document.close();
+    reportWindow.setTimeout(() => {
+      reportWindow.focus();
+      reportWindow.print();
+    }, 300);
   }
 
   function removeFile(fileId: string) {
@@ -583,6 +710,27 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
               Ergebnis kopieren
             </button>
           ) : null}
+          {aiReport ? (
+            <>
+              <button
+                type="button"
+                onClick={downloadWordReport}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm"
+              >
+                <Download size={18} />
+                Word herunterladen
+              </button>
+              <button
+                type="button"
+                onClick={createPdfReport}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-black text-white shadow-sm"
+              >
+                <FileText size={18} />
+                PDF erstellen
+              </button>
+            </>
+          ) : null}
+          {copyStatus ? <span className="self-center text-sm font-black text-emerald-700">{copyStatus}</span> : null}
         </div>
 
         {aiStatus === "running" ? (
@@ -662,36 +810,47 @@ Arbeite konservativ, kennzeichne Annahmen klar, liste fehlende Dokumente und off
 
       <section className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
         <SectionPanel
-          eyebrow="KI-Unterstützung"
-          title="ChatGPT-Bericht vorbereiten"
-          description="Kopiere diesen Prompt, öffne ChatGPT und lade dort die ausgewählten Unterlagen hoch. Danach kann ChatGPT den DOCX-Bericht kapitelweise erstellen."
+          eyebrow="Export"
+          title="Bericht herunterladen"
+          description="Sobald eine KI-Erstbewertung erstellt wurde, kannst du den Bericht direkt als Word-Datei herunterladen oder über den Browser als PDF speichern."
         >
-          <textarea
-            readOnly
-            value={promptText}
-            className="min-h-[320px] w-full rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-800 outline-none"
-          />
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <div className="grid gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-3 text-sm font-black text-slate-950"><Download size={18} /> Word-Bericht</div>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                Erstellt ein Word-kompatibles Dokument mit Deckblatt, Kapitel 1-8, Risiken, nächsten Schritten und Bankfazit.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-3 text-sm font-black text-slate-950"><FileText size={18} /> PDF-Bericht</div>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                Öffnet die druckoptimierte Berichtsversion. Im Druckdialog kannst du “Als PDF sichern” auswählen.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => void copyPrompt()}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm"
+              onClick={downloadWordReport}
+              disabled={!aiReport}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Copy size={18} />
-              Prompt kopieren
+              <Download size={18} />
+              Word herunterladen
             </button>
-            <a
-              href="https://chatgpt.com/"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white no-underline shadow-sm"
+            <button
+              type="button"
+              onClick={createPdfReport}
+              disabled={!aiReport}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Bot size={18} />
-              ChatGPT öffnen
-              <ArrowRight size={16} />
-            </a>
-            {copyStatus ? <span className="self-center text-sm font-black text-emerald-700">{copyStatus}</span> : null}
+              <FileText size={18} />
+              PDF erstellen
+            </button>
           </div>
+          {!aiReport ? (
+            <p className="mt-4 text-sm font-bold text-slate-500">Bitte zuerst “KI-Bewertung starten”, dann wird der Download aktiviert.</p>
+          ) : null}
         </SectionPanel>
 
         <SectionPanel
