@@ -525,7 +525,7 @@ export default function Mietentwicklung() {
               <TrendingUp size={16} />
               Mietentwicklung
             </div>
-            <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+            <h1 className="mt-4 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
               Mieten, Erhöhungen und Buchungen auf einen Blick
             </h1>
             <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
@@ -535,15 +535,15 @@ export default function Mietentwicklung() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <span className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">Soll aktuell</span>
-              <strong className="mt-2 block text-2xl font-black text-emerald-800">{formatCurrency(stats.currentExpected)}</strong>
+              <strong className="mt-2 block text-xl font-black text-emerald-800">{formatCurrency(stats.currentExpected)}</strong>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist aktuell</span>
-              <strong className="mt-2 block text-2xl font-black text-slate-950">{formatCurrency(stats.currentActual)}</strong>
+              <strong className="mt-2 block text-xl font-black text-slate-950">{formatCurrency(stats.currentActual)}</strong>
             </div>
             <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
               <span className="text-[11px] font-black uppercase tracking-[0.14em] text-indigo-700">Jahres-Soll</span>
-              <strong className="mt-2 block text-2xl font-black text-indigo-900">{formatCurrency(stats.annualRunRate)}</strong>
+              <strong className="mt-2 block text-xl font-black text-indigo-900">{formatCurrency(stats.annualRunRate)}</strong>
             </div>
           </div>
         </div>
@@ -552,19 +552,19 @@ export default function Mietentwicklung() {
       <section className="grid gap-4 lg:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Änderung ggü. Vorjahr</span>
-          <strong className="mt-2 block text-2xl font-black text-slate-950">{formatPercent(stats.changePct)} %</strong>
+          <strong className="mt-2 block text-xl font-black text-slate-950">{formatPercent(stats.changePct)} %</strong>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <span className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Objekte prüfen</span>
-          <strong className="mt-2 block text-2xl font-black text-amber-800">{stats.checks}</strong>
+          <strong className="mt-2 block text-xl font-black text-amber-800">{stats.checks}</strong>
         </div>
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
           <span className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-700">Erhöhungen erkannt</span>
-          <strong className="mt-2 block text-2xl font-black text-blue-900">{stats.changes}</strong>
+          <strong className="mt-2 block text-xl font-black text-blue-900">{stats.changes}</strong>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Zeitraum</span>
-          <strong className="mt-2 block text-2xl font-black text-slate-950">01/2024 bis heute</strong>
+          <strong className="mt-2 block text-xl font-black text-slate-950">01/2024 bis heute</strong>
         </div>
       </section>
 
@@ -596,7 +596,7 @@ export default function Mietentwicklung() {
             </select>
           </label>
           <div className="flex items-end">
-            <Link to="/mieter/mieteingang" className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-black text-white no-underline shadow-sm">
+            <Link to="/mieter/mieteingang" className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-900 no-underline shadow-sm">
               Zum Mieteingang
               <ArrowRight size={16} />
             </Link>

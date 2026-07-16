@@ -75,19 +75,19 @@ export function KpiCard({
   tone?: KpiTone;
 }) {
   return (
-    <div className={cn("rounded-[22px] border p-5 shadow-sm", kpiToneClasses[tone])}>
+    <div className={cn("rounded-[22px] border p-4 shadow-sm", kpiToneClasses[tone])}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-[0.16em] opacity-70">
             {label}
           </p>
-          <div className="mt-3 text-2xl font-black tracking-tight md:text-3xl">
+          <div className="mt-3 text-xl font-black tracking-tight md:text-2xl">
             {value}
           </div>
         </div>
         {Icon ? (
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/70">
-            <Icon size={21} />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/70">
+            <Icon size={19} />
           </div>
         ) : null}
       </div>

@@ -982,7 +982,7 @@ function BuchhaltungHubPage() {
       >
         <NavLink
           to="/buchhaltung/transaktionen"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white no-underline shadow-sm"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-900 no-underline shadow-sm"
         >
           Transaktionen öffnen <ArrowRight size={16} />
         </NavLink>
