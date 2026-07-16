@@ -1,11 +1,24 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const allowedOrigins = new Set([
+  "https://koenen-investment.com",
+  "https://www.koenen-investment.com",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+]);
+
+function corsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") ?? "";
+  return {
+    "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://koenen-investment.com",
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
 type UploadedFilePayload = {
   name: string;
@@ -164,10 +177,10 @@ const reportSchema = {
   },
 };
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(req: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders(req), "Content-Type": "application/json" },
   });
 }
 
@@ -256,11 +269,11 @@ async function blobToBytes(blob: Blob) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Nur POST ist erlaubt." }, 405);
+    return jsonResponse(req, { error: "Nur POST ist erlaubt." }, 405);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -268,11 +281,12 @@ Deno.serve(async (req) => {
   const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse({ error: "Supabase Edge Function ist nicht vollständig konfiguriert." }, 500);
+    return jsonResponse(req, { error: "Supabase Edge Function ist nicht vollständig konfiguriert." }, 500);
   }
 
   if (!openaiApiKey) {
     return jsonResponse(
+      req,
       {
         error:
           "OPENAI_API_KEY fehlt in Supabase Secrets. Bitte in Supabase setzen, damit die Dokumente wirklich per KI analysiert werden können.",
@@ -292,13 +306,13 @@ Deno.serve(async (req) => {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    return jsonResponse({ error: "Nicht angemeldet oder Sitzung abgelaufen." }, 401);
+    return jsonResponse(req, { error: "Nicht angemeldet oder Sitzung abgelaufen." }, 401);
   }
 
   const payload = await req.json();
   const storageFiles: StorageFilePayload[] = Array.isArray(payload.storageFiles) ? payload.storageFiles : [];
   if (!storageFiles.length) {
-    return jsonResponse({ error: "Keine Unterlagen übertragen." }, 400);
+    return jsonResponse(req, { error: "Keine Unterlagen übertragen." }, 400);
   }
 
   const cleanupTargets = storageFiles.reduce<Record<string, string[]>>((groups, file) => {
@@ -331,6 +345,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     await cleanupStorageFiles();
     return jsonResponse(
+      req,
       { error: error instanceof Error ? error.message : "Unterlagen konnten nicht aus dem Storage gelesen werden." },
       500,
     );
@@ -416,6 +431,7 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
   if (!openaiResponse.ok) {
     await cleanupStorageFiles();
     return jsonResponse(
+      req,
       {
         error:
           typeof openaiData?.error?.message === "string"
@@ -429,13 +445,13 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
   const outputText = extractOutputText(openaiData);
   if (!outputText) {
     await cleanupStorageFiles();
-    return jsonResponse({ error: "OpenAI hat keinen auswertbaren Berichtstext zurückgegeben." }, 502);
+    return jsonResponse(req, { error: "OpenAI hat keinen auswertbaren Berichtstext zurückgegeben." }, 502);
   }
 
   try {
     const report = JSON.parse(outputText);
     await cleanupStorageFiles();
-    return jsonResponse({
+    return jsonResponse(req, {
       report: {
         ...report,
         generatedAt: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
@@ -443,6 +459,6 @@ ${manifest.map((file) => `- ${file.name} (${file.type || "Datei"}, ${file.sizeMb
     });
   } catch {
     await cleanupStorageFiles();
-    return jsonResponse({ error: "KI-Antwort konnte nicht als strukturierter Bericht gelesen werden." }, 502);
+    return jsonResponse(req, { error: "KI-Antwort konnte nicht als strukturierter Bericht gelesen werden." }, 502);
   }
 });

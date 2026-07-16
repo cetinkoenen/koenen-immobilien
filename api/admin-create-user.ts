@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const ADMIN_EMAIL = "info.koenen@gmail.com";
+const ADMIN_CREATE_USER_RATE_LIMIT = 5;
+const ADMIN_CREATE_USER_WINDOW_MINUTES = 15;
 
 type ApiRequest = {
   method?: string;
@@ -12,6 +14,11 @@ type ApiRequest = {
 type ApiResponse = {
   setHeader(name: string, value: string): void;
   status(code: number): { json(payload: unknown): void };
+};
+
+type AdminUser = {
+  id: string;
+  email?: string;
 };
 
 function normalizeEmail(value: unknown): string {
@@ -35,6 +42,41 @@ async function requireAdmin(req: ApiRequest) {
   return data.user;
 }
 
+async function logAdminUserAction(
+  admin: ReturnType<typeof supabaseAdmin>,
+  actor: AdminUser,
+  action: string,
+  payload: Record<string, unknown>,
+) {
+  await admin.from("app_audit_log").insert({
+    action,
+    label: "admin-create-user",
+    created_by: actor.id,
+    meta: {
+      actor_email: normalizeEmail(actor.email),
+      ...payload,
+    },
+  });
+}
+
+async function enforceAdminCreateUserRateLimit(admin: ReturnType<typeof supabaseAdmin>, actor: AdminUser) {
+  const windowStart = new Date(Date.now() - ADMIN_CREATE_USER_WINDOW_MINUTES * 60 * 1000).toISOString();
+  const { count, error } = await admin
+    .from("app_audit_log")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", actor.id)
+    .eq("action", "admin_create_user_attempt")
+    .gte("created_at", windowStart);
+
+  if (error) throw error;
+
+  if ((count ?? 0) >= ADMIN_CREATE_USER_RATE_LIMIT) {
+    throw new Error(
+      `Zu viele User-Anlageversuche. Bitte nach ${ADMIN_CREATE_USER_WINDOW_MINUTES} Minuten erneut versuchen.`,
+    );
+  }
+}
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -42,20 +84,34 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
+  let actor: AdminUser | null = null;
+  let admin: ReturnType<typeof supabaseAdmin> | null = null;
+  let targetEmail = "";
+  let targetRole = "viewer";
+
   try {
-    await requireAdmin(req);
+    actor = await requireAdmin(req);
 
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password ?? "");
     const role = req.body?.role === "admin" ? "admin" : "viewer";
     const requiresApproval = Boolean(req.body?.requiresApproval);
+    targetEmail = email;
+    targetRole = role;
+    admin = supabaseAdmin();
+
+    await enforceAdminCreateUserRateLimit(admin, actor);
+    await logAdminUserAction(admin, actor, "admin_create_user_attempt", {
+      target_email: email,
+      target_role: role,
+      requires_approval: requiresApproval,
+    });
 
     if (!email || !password) {
       res.status(400).json({ error: "E-Mail und Passwort sind Pflicht." });
       return;
     }
 
-    const admin = supabaseAdmin();
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password,
@@ -83,9 +139,23 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       });
     }
 
+    await logAdminUserAction(admin, actor, "admin_create_user_success", {
+      target_email: email,
+      target_role: role,
+      target_user_id: userId ?? null,
+      requires_approval: requiresApproval,
+    });
+
     res.status(200).json({ ok: true, userId: userId ?? null });
   } catch (error) {
     const message = error instanceof Error ? error.message : "User konnte nicht angelegt werden.";
+    if (admin && actor) {
+      await logAdminUserAction(admin, actor, "admin_create_user_error", {
+        target_email: targetEmail,
+        target_role: targetRole,
+        error: message,
+      }).catch(() => undefined);
+    }
     res.status(500).json({ error: message });
   }
 }
