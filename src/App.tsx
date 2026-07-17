@@ -272,6 +272,14 @@ function addDaysToIsoDate(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function toIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addMonthsToDate(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
 function isCurrentMonthEntry(entry: FinanceEntry, today = new Date()): boolean {
   if (!entry.booking_date) return false;
   const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
@@ -1680,6 +1688,98 @@ type MaintenanceTask = {
   createdAt: string;
 };
 
+function TaskMonthCalendar({
+  monthDate,
+  tasks,
+  todayIso,
+  onSelectTask,
+}: {
+  monthDate: Date;
+  tasks: MaintenanceTask[];
+  todayIso: string;
+  onSelectTask: (task: MaintenanceTask) => void;
+}) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const monthLabel = monthDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+  const firstDay = new Date(year, month, 1);
+  const dayCount = new Date(year, month + 1, 0).getDate();
+  const leadingEmptyDays = (firstDay.getDay() + 6) % 7;
+  const calendarCells = [
+    ...Array.from({ length: leadingEmptyDays }, (_, index) => ({ key: `empty-${index}`, iso: "", day: 0, tasks: [] as MaintenanceTask[] })),
+    ...Array.from({ length: dayCount }, (_, index) => {
+      const day = index + 1;
+      const iso = toIsoDate(new Date(year, month, day));
+      return {
+        key: iso,
+        iso,
+        day,
+        tasks: tasks.filter((task) => task.dueDate === iso),
+      };
+    }),
+  ];
+
+  return (
+    <article className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#1f667a] px-5 py-4 text-white">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/70">Kalender</p>
+          <h3 className="mt-1 text-xl font-black capitalize">{monthLabel}</h3>
+        </div>
+        <CalendarCheck size={24} />
+      </div>
+      <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-center text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => (
+          <div key={day} className="px-2 py-3">{day}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {calendarCells.map((cell) => {
+          const isToday = cell.iso === todayIso;
+          const hasOverdue = cell.tasks.some((task) => task.dueDate < todayIso && task.status !== "Erledigt");
+          return (
+            <div key={cell.key} className={["min-h-[92px] border-b border-r border-slate-100 p-2 last:border-r-0", !cell.day ? "bg-slate-50/60" : "bg-white"].join(" ")}>
+              {cell.day ? (
+                <>
+                  <div className={[
+                    "mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-black",
+                    isToday ? "bg-[#1f667a] text-white" : hasOverdue ? "bg-rose-100 text-rose-800" : "text-slate-600",
+                  ].join(" ")}>
+                    {cell.day}
+                  </div>
+                  <div className="space-y-1">
+                    {cell.tasks.slice(0, 2).map((task) => (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => onSelectTask(task)}
+                        className={[
+                          "block w-full rounded-lg px-2 py-1 text-left text-[11px] font-black leading-4",
+                          task.status === "Erledigt"
+                            ? "bg-emerald-50 text-emerald-800"
+                            : task.dueDate < todayIso
+                              ? "bg-rose-50 text-rose-800"
+                              : task.priority === "Hoch"
+                                ? "bg-amber-50 text-amber-800"
+                                : "bg-blue-50 text-blue-800",
+                        ].join(" ")}
+                        title={task.title}
+                      >
+                        {task.title}
+                      </button>
+                    ))}
+                    {cell.tasks.length > 2 ? <div className="text-[11px] font-black text-slate-500">+{cell.tasks.length - 2} weitere</div> : null}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
 function TasksMaintenancePage() {
   const { objects } = useAppData();
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -1714,9 +1814,13 @@ function TasksMaintenancePage() {
   }, [objects, todayIso]);
 
   const tasks = [...manualTasks, ...seedTasks];
+  const overdueTasks = tasks.filter((task) => task.dueDate < todayIso && task.status !== "Erledigt");
+  const currentMonthDate = useMemo(() => new Date(), []);
+  const nextMonthDate = useMemo(() => addMonthsToDate(new Date(), 1), []);
   const filteredTasks = tasks.filter((task) => {
     if (objectFilter !== "all" && task.objectId !== objectFilter) return false;
-    if (statusFilter !== "all" && task.status !== statusFilter) return false;
+    if (statusFilter === "overdue" && !(task.dueDate < todayIso && task.status !== "Erledigt")) return false;
+    if (statusFilter !== "all" && statusFilter !== "overdue" && task.status !== statusFilter) return false;
     if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
     return true;
   });
@@ -1748,10 +1852,17 @@ function TasksMaintenancePage() {
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-4">
         <KpiCard label="Offene Aufgaben" value={tasks.filter((task) => task.status !== "Erledigt").length} icon={ListChecks} tone="blue" />
-        <KpiCard label="Hohe Priorität" value={tasks.filter((task) => task.priority === "Hoch").length} icon={Bell} tone="amber" />
+        <KpiCard label="Überfällig" value={overdueTasks.length} icon={Bell} tone="red" />
         <KpiCard label="In Arbeit" value={tasks.filter((task) => task.status === "In Arbeit").length} icon={FolderKanban} tone="violet" />
         <KpiCard label="Erledigt" value={tasks.filter((task) => task.status === "Erledigt").length} icon={ShieldCheck} tone="green" />
       </section>
+
+      <SectionPanel eyebrow="Kalenderübersicht" title="Vorgeplante Aufgaben im Kalender" description="Fälligkeiten aus Ihren Aufgaben werden im aktuellen und nächsten Monat als Kalenderübersicht sichtbar. Klicken Sie auf einen Eintrag, um die Aufgabe zu öffnen.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TaskMonthCalendar monthDate={currentMonthDate} tasks={tasks} todayIso={todayIso} onSelectTask={setSelectedTask} />
+          <TaskMonthCalendar monthDate={nextMonthDate} tasks={tasks} todayIso={todayIso} onSelectTask={setSelectedTask} />
+        </div>
+      </SectionPanel>
 
       <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionPanel eyebrow="Neue Aufgabe" title="Neue Aufgabe anlegen" description="Aufgaben werden als Arbeitsliste und Kalenderfrist sichtbar. Die Fachseiten bleiben die Datenquelle.">
@@ -1834,6 +1945,7 @@ function TasksMaintenancePage() {
             </select>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
               <option value="all">Alle Status</option>
+              <option value="overdue">Überfällige Aufgaben</option>
               <option value="Neu">Neu</option>
               <option value="In Arbeit">In Arbeit</option>
               <option value="Erledigt">Erledigt</option>
@@ -1879,24 +1991,6 @@ function TasksMaintenancePage() {
           )}
         </SectionPanel>
       </section>
-
-      <SectionPanel eyebrow="In-App-Kalender" title="Fristen und Erinnerungen" description="Jede neue Aufgabe bekommt einen Kalendereintrag mit Direktzugriff.">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {tasks.slice(0, 6).map((task) => (
-            <button
-              key={`calendar-${task.id}`}
-              type="button"
-              onClick={() => setSelectedTask(task)}
-              className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
-            >
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{task.category}: {task.status}</p>
-              <h3 className="mt-2 text-sm font-black text-slate-950">{task.title}</h3>
-              <p className="mt-2 text-sm font-bold text-slate-600">Frist: {formatDate(task.dueDate)}</p>
-              <p className="text-sm font-bold text-slate-600">Objekt: {task.objectLabel}</p>
-            </button>
-          ))}
-        </div>
-      </SectionPanel>
 
       {selectedTask ? (
         <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedTask(null)}>
