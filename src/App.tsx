@@ -1217,10 +1217,179 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-function ReportActionLink({ to, label, primary = false }: { to: string; label: string; primary?: boolean }) {
+type ReportKind = "tax" | "advisor" | "rent-account" | "utilities" | "wealth" | "handover";
+type ReportFormat = "pdf" | "csv" | "zip";
+
+function slugifyReportPart(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll("ä", "ae")
+    .replaceAll("ö", "oe")
+    .replaceAll("ü", "ue")
+    .replaceAll("ß", "ss")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "bericht";
+}
+
+function csvValue(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildCsv(headers: string[], rows: Array<Array<unknown>>): string {
+  return [headers, ...rows].map((row) => row.map(csvValue).join(";")).join("\n");
+}
+
+function wrapPdfLine(value: string, maxLength = 92): string[] {
+  const words = value.replace(/\s+/g, " ").trim().split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (`${current} ${word}`.trim().length > maxLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = `${current} ${word}`.trim();
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
+}
+
+function escapePdfText(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[^\x20-\x7EäöüÄÖÜß€]/g, " ");
+}
+
+function createSimplePdf(title: string, lines: string[]): Blob {
+  const normalizedLines = [
+    title,
+    `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    "",
+    ...lines,
+  ].flatMap((line) => wrapPdfLine(line));
+  const contentLines = ["BT", "/F1 10 Tf", "50 790 Td", "14 TL"];
+  normalizedLines.slice(0, 52).forEach((line) => {
+    contentLines.push(`(${escapePdfText(line)}) Tj`, "T*");
+  });
+  contentLines.push("ET");
+  const content = contentLines.join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+const crcTable = Array.from({ length: 256 }, (_, tableIndex) => {
+  let value = tableIndex;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  bytes.forEach((byte) => {
+    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  });
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createZip(files: Array<{ name: string; content: string }>): Blob {
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const centralChunks: Uint8Array[] = [];
+  let offset = 0;
+
+  function pushUint32(view: DataView, viewOffset: number, value: number) {
+    view.setUint32(viewOffset, value >>> 0, true);
+  }
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name);
+    const contentBytes = encoder.encode(file.content);
+    const checksum = crc32(contentBytes);
+    const local = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(local.buffer);
+    pushUint32(localView, 0, 0x04034b50);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    pushUint32(localView, 14, checksum);
+    pushUint32(localView, 18, contentBytes.length);
+    pushUint32(localView, 22, contentBytes.length);
+    localView.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    chunks.push(local, contentBytes);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(central.buffer);
+    pushUint32(centralView, 0, 0x02014b50);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    pushUint32(centralView, 16, checksum);
+    pushUint32(centralView, 20, contentBytes.length);
+    pushUint32(centralView, 24, contentBytes.length);
+    centralView.setUint16(28, nameBytes.length, true);
+    pushUint32(centralView, 42, offset);
+    central.set(nameBytes, 46);
+    centralChunks.push(central);
+    offset += local.length + contentBytes.length;
+  });
+
+  const centralOffset = offset;
+  const centralSize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  pushUint32(endView, 0, 0x06054b50);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  pushUint32(endView, 12, centralSize);
+  pushUint32(endView, 16, centralOffset);
+
+  const parts = [...chunks, ...centralChunks, end].map((chunk) =>
+    chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer,
+  );
+  return new Blob(parts, { type: "application/zip" });
+}
+
+function ReportActionButton({ label, primary = false, onClick }: { label: string; primary?: boolean; onClick: () => void }) {
   return (
-    <NavLink
-      to={to}
+    <button
+      type="button"
+      onClick={onClick}
       className={[
         "inline-flex min-h-10 items-center justify-center rounded-2xl px-4 text-sm font-black no-underline shadow-sm transition hover:-translate-y-0.5",
         primary
@@ -1229,23 +1398,143 @@ function ReportActionLink({ to, label, primary = false }: { to: string; label: s
       ].join(" ")}
     >
       {label}
-    </NavLink>
+    </button>
   );
 }
 
 function ReportsExportsPage() {
-  const { objects, entries } = useAppData();
+  const { objects, entries, loanRows, getPropertyName } = useAppData();
   const currentYear = new Date().getFullYear();
   const [objectFilter, setObjectFilter] = useState("all");
   const [period, setPeriod] = useState(String(currentYear));
   const selectedObject = objects.find((object) => object.id === objectFilter);
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
+  const matchesSelectedObject = (entry: FinanceEntry) => {
+    if (!selectedObject) return true;
+    if (entry.object_id === selectedObject.id) return true;
+    if (entry.objekt_code && selectedObject.code && entry.objekt_code === selectedObject.code) return true;
+    const entryName = getPropertyName(entry.object_id);
+    const haystack = `${entryName} ${entry.objekt_code ?? ""} ${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
+    const candidates = [selectedObject.label, selectedObject.code ?? "", ...(selectedObject.aliases ?? [])]
+      .map((value) => value.toLowerCase().trim())
+      .filter(Boolean);
+    return candidates.some((candidate) => haystack.includes(candidate) || candidate.includes(haystack));
+  };
   const scopedEntries = selectedObject
-    ? yearEntries.filter((entry) => entry.object_id === selectedObject.id || entry.objekt_code === selectedObject.code)
+    ? yearEntries.filter(matchesSelectedObject)
     : yearEntries;
   const income = scopedEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
   const expenses = scopedEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
   const rentItems = scopedEntries.filter((entry) => isRentLikeEntry(entry)).length;
+  const reportObjectName = selectedObject?.label ?? "Alle Immobilien";
+  const reportSlug = `${slugifyReportPart(reportObjectName)}-${period}`;
+  const scopedLoans = selectedObject
+    ? loanRows.filter((row) => {
+      const rowName = row.property_name.toLowerCase();
+      return row.property_id === selectedObject.id || rowName.includes(selectedObject.label.toLowerCase()) || selectedObject.label.toLowerCase().includes(rowName);
+    })
+    : loanRows;
+
+  function reportTitle(kind: ReportKind): string {
+    const titles: Record<ReportKind, string> = {
+      tax: "Steuer-Report Anlage V",
+      advisor: "Export für den Steuerberater",
+      "rent-account": "Mietkonto-Check und offene Zahlungen",
+      utilities: "Nebenkostenabrechnungen",
+      wealth: "Immobilien-Vermögen und Kredite",
+      handover: "Übergabeprotokolle und Zählerstände",
+    };
+    return titles[kind];
+  }
+
+  function entryRows(kind: ReportKind): FinanceEntry[] {
+    if (kind === "rent-account") return scopedEntries.filter((entry) => isRentLikeEntry(entry));
+    if (kind === "utilities") {
+      return scopedEntries.filter((entry) => {
+        const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
+        return text.includes("nebenkosten") || text.includes("hausgeld") || text.includes("betriebskosten") || text.includes("nk");
+      });
+    }
+    if (kind === "handover") {
+      return scopedEntries.filter((entry) => {
+        const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
+        return text.includes("übergabe") || text.includes("uebergabe") || text.includes("zähler") || text.includes("zaehler") || text.includes("einzug") || text.includes("auszug");
+      });
+    }
+    return scopedEntries;
+  }
+
+  function buildReportLines(kind: ReportKind): string[] {
+    const rows = entryRows(kind);
+    const reportIncome = rows.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+    const reportExpenses = rows.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+    const lines = [
+      `Objekt: ${reportObjectName}`,
+      `Zeitraum: ${period}`,
+      `Buchungen: ${rows.length}`,
+      `Einnahmen: ${formatCurrency(reportIncome)}`,
+      `Ausgaben: ${formatCurrency(reportExpenses)}`,
+      `Saldo: ${formatCurrency(reportIncome - reportExpenses)}`,
+      "",
+      "Buchungen:",
+      ...rows
+        .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
+        .slice(0, 40)
+        .map((entry) => `${formatDate(entry.booking_date)} | ${getPropertyName(entry.object_id) || entry.objekt_code || reportObjectName} | ${entry.entry_type === "expense" ? "Ausgabe" : "Einnahme"} | ${entry.category ?? "-"} | ${formatCurrency(entry.amount)} | ${entry.note ?? ""}`),
+    ];
+    if (kind === "wealth") {
+      lines.push("", "Darlehen:");
+      scopedLoans.forEach((loan) => {
+        lines.push(`${loan.property_name}: Restschuld ${formatCurrency(loan.last_balance ?? 0)}, Zinsen ${formatCurrency(loan.interest_total ?? 0)}, Tilgung ${formatCurrency(loan.principal_total ?? 0)}`);
+      });
+    }
+    if (!rows.length) {
+      lines.push("Für diese Filterauswahl wurden keine passenden Buchungen gefunden. Der Bericht dokumentiert die leere Auswahl nachvollziehbar.");
+    }
+    return lines;
+  }
+
+  function buildReportCsv(kind: ReportKind): string {
+    const rows = entryRows(kind)
+      .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
+      .map((entry) => [
+        formatDate(entry.booking_date),
+        getPropertyName(entry.object_id) || entry.objekt_code || reportObjectName,
+        entry.entry_type === "expense" ? "Ausgabe" : "Einnahme",
+        entry.category ?? "",
+        entry.note ?? "",
+        entry.amount,
+      ]);
+    return buildCsv(["Datum", "Objekt", "Typ", "Kategorie", "Notiz", "Betrag"], rows);
+  }
+
+  function buildSummaryText(kind: ReportKind): string {
+    return [
+      reportTitle(kind),
+      `Objekt: ${reportObjectName}`,
+      `Zeitraum: ${period}`,
+      `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+      "",
+      ...buildReportLines(kind),
+    ].join("\n");
+  }
+
+  function downloadReport(kind: ReportKind, format: ReportFormat) {
+    const baseName = `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
+    if (format === "csv") {
+      downloadBlob(`${baseName}.csv`, new Blob([`\uFEFF${buildReportCsv(kind)}`], { type: "text/csv;charset=utf-8" }));
+      return;
+    }
+    if (format === "pdf") {
+      downloadBlob(`${baseName}.pdf`, createSimplePdf(reportTitle(kind), buildReportLines(kind)));
+      return;
+    }
+    downloadBlob(`${baseName}.zip`, createZip([
+      { name: `${baseName}.csv`, content: buildReportCsv(kind) },
+      { name: `${baseName}.txt`, content: buildSummaryText(kind) },
+      { name: "hinweis.txt", content: "Dieses Paket wurde aus dem aktuellen Filter der Seite Berichte & Exporte erzeugt. Die Buchhaltung bleibt die Datenquelle." },
+    ]));
+  }
 
   const reportCards = [
     {
@@ -1253,44 +1542,49 @@ function ReportsExportsPage() {
       description: "Jahresübersicht mit Mieteinnahmen, Werbungskosten, Darlehenszinsen und objektbezogener Zuordnung.",
       icon: Euro,
       actions: [
-        { label: "PDF herunterladen", to: "/buchhaltung/steuer-center-berater", primary: true },
-        { label: "Excel-Tabelle exportieren", to: "/auswertungen" },
+        { label: "PDF herunterladen", kind: "tax", format: "pdf", primary: true },
+        { label: "Excel-Tabelle exportieren", kind: "tax", format: "csv" },
       ],
     },
     {
       title: "Export für den Steuerberater",
       description: "Strukturierte Export-Datei mit Buchungen, Objektbezug, Kategorien und Jahresfilter für die Übergabe.",
       icon: BriefcaseBusiness,
-      actions: [{ label: "Export-Datei erstellen", to: "/buchhaltung/steuer-center-berater", primary: true }],
+      actions: [{ label: "Export-Datei erstellen", kind: "advisor", format: "csv", primary: true }],
     },
     {
       title: "Mietkonto-Check & Offene Zahlungen",
       description: "Prüft Mietzahlungen, Teilzahlungen und offene Beträge gegen die vorhandenen Mieteingänge.",
       icon: CalendarCheck,
       actions: [
-        { label: "Übersicht anzeigen", to: "/mieter/mieteingang", primary: true },
-        { label: "Liste exportieren", to: "/mieter/mieteingang" },
+        { label: "PDF herunterladen", kind: "rent-account", format: "pdf", primary: true },
+        { label: "Liste exportieren", kind: "rent-account", format: "csv" },
       ],
     },
     {
       title: "Nebenkostenabrechnungen (PDF-Paket)",
       description: "Bündelt vorhandene Nebenkosten-Abrechnungen für Wohnungen und Tiefgarage als Übergabepaket.",
       icon: ReceiptText,
-      actions: [{ label: "PDFs als ZIP-Datei herunterladen", to: "/nebenkosten", primary: true }],
+      actions: [{ label: "PDFs als ZIP-Datei herunterladen", kind: "utilities", format: "zip", primary: true }],
     },
     {
       title: "Immobilien-Vermögen & Kredite",
       description: "Objektwerte, Restschulden, Zins- und Tilgungswerte für Bank, Finanzierung und Vermögensübersicht.",
       icon: Landmark,
-      actions: [{ label: "Vermögens-PDF erstellen", to: "/darlehen", primary: true }],
+      actions: [{ label: "Vermögens-PDF erstellen", kind: "wealth", format: "pdf", primary: true }],
     },
     {
       title: "Übergabeprotokolle & Zählerstände",
       description: "Dokumente für Einzug, Auszug, Übergaben und Zählerstände objektbezogen zusammenstellen.",
       icon: KeyRound,
-      actions: [{ label: "Dokumente exportieren", to: "/ein-auszug", primary: true }],
+      actions: [{ label: "Dokumente exportieren", kind: "handover", format: "zip", primary: true }],
     },
-  ];
+  ] satisfies Array<{
+    title: string;
+    description: string;
+    icon: LucideIcon;
+    actions: Array<{ label: string; kind: ReportKind; format: ReportFormat; primary?: boolean }>;
+  }>;
 
   return (
     <div className="space-y-5">
@@ -1303,7 +1597,7 @@ function ReportsExportsPage() {
       <SectionPanel
         eyebrow="Exportfilter"
         title="Bericht vorbereiten"
-        description="Wählen Sie Objekt und Zeitraum. Die Export-Kacheln darunter verwenden die bestehenden Fachseiten als Datenquelle."
+        description="Wählen Sie Objekt und Zeitraum. Alle Export-Kacheln erzeugen ihre Datei direkt aus genau dieser gefilterten Auswahl."
       >
         <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
           <label className="grid gap-2 text-sm font-black text-slate-700">
@@ -1350,7 +1644,12 @@ function ReportsExportsPage() {
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 {card.actions.map((action) => (
-                  <ReportActionLink key={action.label} {...action} />
+                  <ReportActionButton
+                    key={action.label}
+                    label={action.label}
+                    primary={action.primary}
+                    onClick={() => downloadReport(action.kind, action.format)}
+                  />
                 ))}
               </div>
             </article>
