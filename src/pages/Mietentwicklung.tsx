@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, Building2, CalendarDays, FileText, Mail, TrendingUp, WalletCards, X } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Mail, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -68,6 +68,39 @@ type DevelopmentRow = {
   quality: "ok" | "check" | "missing";
   qualityText: string;
   adjustmentStatus: "Aktiv" | "Prüfung empfohlen" | "Geplant" | "Offene Zustimmung";
+  manualAdjustments: ManualRentAdjustment[];
+};
+
+type ManualRentAdjustment = {
+  id: string;
+  property_id: string | null;
+  object_label: string;
+  tenant_name: string | null;
+  effective_date: string;
+  reason: string;
+  status: "active" | "planned" | "consent_open" | "check";
+  old_cold_rent: number | null;
+  old_operating_costs: number | null;
+  old_total_rent: number | null;
+  new_cold_rent: number | null;
+  new_operating_costs: number | null;
+  new_total_rent: number | null;
+  note: string | null;
+  document_name: string | null;
+  created_at: string | null;
+};
+
+type RentAdjustmentForm = {
+  effectiveDate: string;
+  reason: string;
+  status: ManualRentAdjustment["status"];
+  oldColdRent: string;
+  oldOperatingCosts: string;
+  oldTotalRent: string;
+  newColdRent: string;
+  newOperatingCosts: string;
+  newTotalRent: string;
+  note: string;
 };
 
 const START_YEAR = 2024;
@@ -126,6 +159,36 @@ function formatDate(value: string | null | undefined) {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("de-DE");
+}
+
+function parseMoneyInput(value: string): number | null {
+  const cleaned = value.replace(/\./g, "").replace(",", ".").replace(/[^0-9.-]/g, "").trim();
+  if (!cleaned) return null;
+  const numeric = Number(cleaned);
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) / 100 : null;
+}
+
+function formatMoneyInput(value: number) {
+  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function statusLabel(value: ManualRentAdjustment["status"] | DevelopmentRow["adjustmentStatus"]) {
+  if (value === "active" || value === "Aktiv") return "Aktiv";
+  if (value === "planned" || value === "Geplant") return "Geplant";
+  if (value === "consent_open" || value === "Offene Zustimmung") return "Offene Zustimmung";
+  return "Prüfung empfohlen";
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -455,11 +518,29 @@ export default function Mietentwicklung() {
   const appData = useAppData();
   const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
   const [portfolioRentals, setPortfolioRentals] = useState<PortfolioRentalRow[]>([]);
+  const [manualAdjustments, setManualAdjustments] = useState<ManualRentAdjustment[]>([]);
   const [loadingRentals, setLoadingRentals] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [objectFilter, setObjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "action" | "future">("all");
-  const [selectedRow, setSelectedRow] = useState<DevelopmentRow | null>(null);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [generatedLetter, setGeneratedLetter] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [adjustmentForm, setAdjustmentForm] = useState<RentAdjustmentForm>({
+    effectiveDate: toIso(new Date()),
+    reason: "Anpassung an ortsübliche Vergleichsmiete",
+    status: "planned",
+    oldColdRent: "",
+    oldOperatingCosts: "",
+    oldTotalRent: "",
+    newColdRent: "",
+    newOperatingCosts: "",
+    newTotalRent: "",
+    note: "",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -468,15 +549,21 @@ export default function Mietentwicklung() {
       setLoadingRentals(true);
       setLoadError(null);
       try {
-        const [propertiesRes, rentalsRes] = await Promise.all([
+        const [propertiesRes, rentalsRes, adjustmentsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
           supabase
             .from("portfolio_property_rentals")
             .select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at")
             .order("start_date", { ascending: true }),
+          supabase
+            .from("rent_adjustments")
+            .select("id,property_id,object_label,tenant_name,effective_date,reason,status,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,document_name,created_at")
+            .eq("is_deleted", false)
+            .order("effective_date", { ascending: false }),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
         if (rentalsRes.error) throw rentalsRes.error;
+        if (adjustmentsRes.error) throw adjustmentsRes.error;
         if (cancelled) return;
 
         setPortfolioProperties(((propertiesRes.data ?? []) as PortfolioPropertyRow[]).map((row) => ({
@@ -495,10 +582,29 @@ export default function Mietentwicklung() {
           created_at: row.created_at ?? null,
           updated_at: row.updated_at ?? null,
         })));
+        setManualAdjustments(((adjustmentsRes.data ?? []) as ManualRentAdjustment[]).map((row) => ({
+          id: String(row.id),
+          property_id: row.property_id ? String(row.property_id) : null,
+          object_label: row.object_label ?? "",
+          tenant_name: row.tenant_name ?? null,
+          effective_date: row.effective_date,
+          reason: row.reason,
+          status: row.status,
+          old_cold_rent: row.old_cold_rent == null ? null : Number(row.old_cold_rent),
+          old_operating_costs: row.old_operating_costs == null ? null : Number(row.old_operating_costs),
+          old_total_rent: row.old_total_rent == null ? null : Number(row.old_total_rent),
+          new_cold_rent: row.new_cold_rent == null ? null : Number(row.new_cold_rent),
+          new_operating_costs: row.new_operating_costs == null ? null : Number(row.new_operating_costs),
+          new_total_rent: row.new_total_rent == null ? null : Number(row.new_total_rent),
+          note: row.note ?? null,
+          document_name: row.document_name ?? null,
+          created_at: row.created_at ?? null,
+        })));
       } catch (error) {
         if (cancelled) return;
         setPortfolioProperties([]);
         setPortfolioRentals([]);
+        setManualAdjustments([]);
         setLoadError(error instanceof Error ? error.message : "Mietentwicklungsdaten konnten nicht geladen werden.");
       } finally {
         if (!cancelled) setLoadingRentals(false);
@@ -516,7 +622,7 @@ export default function Mietentwicklung() {
       window.removeEventListener("koenen:rentals-changed", reload);
       window.removeEventListener("koenen:finance-entry-changed", reload);
     };
-  }, []);
+  }, [reloadVersion]);
 
   const months = useMemo(() => monthsSince2024(), []);
   const currentMonth = months[months.length - 1];
@@ -524,6 +630,11 @@ export default function Mietentwicklung() {
   const rows = useMemo<DevelopmentRow[]>(() => {
     return appData.objects.map((object) => {
       const candidateIds = candidateIdsForObject(object, portfolioProperties);
+      const manualForObject = manualAdjustments.filter((adjustment) => {
+        if (adjustment.property_id && candidateIds.has(String(adjustment.property_id))) return true;
+        return normalizeText(adjustment.object_label) === normalizeText(object.label);
+      });
+      const latestManualAdjustment = manualForObject[0] ?? null;
       const monthPoints = months.map((month) => ({
         ...month,
         expected: expectedRentForMonth(portfolioRentals, candidateIds, month.year, month.month),
@@ -572,13 +683,22 @@ export default function Mietentwicklung() {
         : quality === "check"
           ? "Soll/Ist oder Stammdaten prüfen."
           : "Keine aktuelle Miete erkennbar.";
-      const adjustmentStatus: DevelopmentRow["adjustmentStatus"] = quality === "check"
+      const manualStatus: DevelopmentRow["adjustmentStatus"] | null = latestManualAdjustment?.status === "planned"
+        ? "Geplant"
+        : latestManualAdjustment?.status === "consent_open"
+          ? "Offene Zustimmung"
+          : latestManualAdjustment?.status === "check"
+            ? "Prüfung empfohlen"
+            : latestManualAdjustment?.status === "active"
+              ? "Aktiv"
+              : null;
+      const adjustmentStatus: DevelopmentRow["adjustmentStatus"] = manualStatus ?? (quality === "check"
         ? "Prüfung empfohlen"
         : latestIncrease
           ? "Aktiv"
           : hasRentals
             ? "Aktiv"
-            : "Offene Zustimmung";
+            : "Offene Zustimmung");
 
       return {
         object,
@@ -590,9 +710,9 @@ export default function Mietentwicklung() {
         previousNetRent,
         previousUtilitiesRent,
         previousWarmRent,
-        tenantName: "Mieterdaten aus Vermietungszeitraum",
-        lastAdjustmentDate: latestAdjustmentDate(latestIncrease),
-        adjustmentReason: latestIncrease?.source === "Buchungen" ? "Indexmiete / Buchungsänderung" : latestIncrease ? "Anpassung aus Vermietungszeitraum" : "Aktive Mietstruktur",
+        tenantName: latestManualAdjustment?.tenant_name || "Mieterdaten aus Vermietungszeitraum",
+        lastAdjustmentDate: latestManualAdjustment?.effective_date ?? latestAdjustmentDate(latestIncrease),
+        adjustmentReason: latestManualAdjustment?.reason ?? (latestIncrease?.source === "Buchungen" ? "Indexmiete / Buchungsänderung" : latestIncrease ? "Anpassung aus Vermietungszeitraum" : "Aktive Mietstruktur"),
         lastActualAmount: lastActual?.actual ?? 0,
         lastActualMonthLabel: lastActual ? monthLabel(lastActual.year, lastActual.month, true) : null,
         previousExpected: previous.expected,
@@ -605,9 +725,10 @@ export default function Mietentwicklung() {
         quality,
         qualityText,
         adjustmentStatus,
+        manualAdjustments: manualForObject,
       };
     });
-  }, [appData.entries, appData.objects, currentMonth?.month, currentMonth?.year, months, portfolioProperties, portfolioRentals]);
+  }, [appData.entries, appData.objects, currentMonth?.month, currentMonth?.year, manualAdjustments, months, portfolioProperties, portfolioRentals]);
 
   const allChanges = useMemo(
     () =>
@@ -650,6 +771,107 @@ export default function Mietentwicklung() {
   }, [months.length, rows]);
 
   const loading = appData.loading || loadingRentals;
+  const selectedRow = selectedObjectId ? rows.find((row) => row.object.id === selectedObjectId) ?? null : null;
+
+  function openAdjustmentPlanner(row: DevelopmentRow) {
+    setActionMessage(null);
+    setGeneratedLetter(null);
+    setAdjustmentForm({
+      effectiveDate: toIso(new Date()),
+      reason: "Anpassung an ortsübliche Vergleichsmiete",
+      status: "planned",
+      oldColdRent: formatMoneyInput(row.netRent),
+      oldOperatingCosts: formatMoneyInput(row.utilitiesRent),
+      oldTotalRent: formatMoneyInput(row.warmRent),
+      newColdRent: formatMoneyInput(row.netRent),
+      newOperatingCosts: formatMoneyInput(row.utilitiesRent),
+      newTotalRent: formatMoneyInput(row.warmRent),
+      note: "",
+    });
+    setShowAdjustmentForm(true);
+  }
+
+  async function saveManualAdjustment(row: DevelopmentRow) {
+    setSavingAdjustment(true);
+    setActionMessage(null);
+    try {
+      const userRes = await supabase.auth.getUser();
+      const userId = userRes.data.user?.id;
+      if (userRes.error) throw userRes.error;
+      if (!userId) throw new Error("Bitte neu einloggen, damit die Mietanpassung gespeichert werden kann.");
+
+      const oldCold = parseMoneyInput(adjustmentForm.oldColdRent);
+      const oldNk = parseMoneyInput(adjustmentForm.oldOperatingCosts);
+      const oldTotal = parseMoneyInput(adjustmentForm.oldTotalRent) ?? money((oldCold ?? 0) + (oldNk ?? 0));
+      const newCold = parseMoneyInput(adjustmentForm.newColdRent);
+      const newNk = parseMoneyInput(adjustmentForm.newOperatingCosts);
+      const newTotal = parseMoneyInput(adjustmentForm.newTotalRent) ?? money((newCold ?? 0) + (newNk ?? 0));
+
+      const { error } = await supabase.from("rent_adjustments").insert({
+        user_id: userId,
+        property_id: row.object.id,
+        object_label: row.object.label,
+        tenant_name: row.tenantName,
+        effective_date: adjustmentForm.effectiveDate,
+        reason: adjustmentForm.reason,
+        status: adjustmentForm.status,
+        old_cold_rent: oldCold,
+        old_operating_costs: oldNk,
+        old_total_rent: oldTotal,
+        new_cold_rent: newCold,
+        new_operating_costs: newNk,
+        new_total_rent: newTotal,
+        note: adjustmentForm.note.trim() || null,
+      });
+      if (error) throw error;
+
+      setActionMessage("Mietanpassung wurde gespeichert und in die Historie übernommen.");
+      setShowAdjustmentForm(false);
+      setReloadVersion((version) => version + 1);
+      window.dispatchEvent(new Event("koenen:rent-adjustments-changed"));
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Mietanpassung konnte nicht gespeichert werden.");
+    } finally {
+      setSavingAdjustment(false);
+    }
+  }
+
+  function generateTenantLetter(row: DevelopmentRow) {
+    const newest = row.manualAdjustments[0];
+    const effectiveDate = newest?.effective_date ?? adjustmentForm.effectiveDate;
+    const reason = newest?.reason ?? adjustmentForm.reason;
+    const oldCold = newest?.old_cold_rent ?? parseMoneyInput(adjustmentForm.oldColdRent) ?? row.previousNetRent;
+    const newCold = newest?.new_cold_rent ?? parseMoneyInput(adjustmentForm.newColdRent) ?? row.netRent;
+    const oldNk = newest?.old_operating_costs ?? parseMoneyInput(adjustmentForm.oldOperatingCosts) ?? row.previousUtilitiesRent;
+    const newNk = newest?.new_operating_costs ?? parseMoneyInput(adjustmentForm.newOperatingCosts) ?? row.utilitiesRent;
+    const oldTotal = newest?.old_total_rent ?? parseMoneyInput(adjustmentForm.oldTotalRent) ?? money(oldCold + oldNk);
+    const newTotal = newest?.new_total_rent ?? parseMoneyInput(adjustmentForm.newTotalRent) ?? money(newCold + newNk);
+    const note = newest?.note ?? adjustmentForm.note;
+    const letter = [
+      "Mietanpassung",
+      "",
+      `Objekt / Einheit: ${row.object.label}`,
+      `Mieter: ${row.tenantName}`,
+      `Wirksam ab: ${formatDate(effectiveDate)}`,
+      `Grund der Anpassung: ${reason}`,
+      "",
+      "Vorher-Nachher-Vergleich",
+      `Nettokaltmiete bisher: ${formatCurrency(oldCold)}`,
+      `Nettokaltmiete neu: ${formatCurrency(newCold)}`,
+      `Nebenkosten bisher: ${formatCurrency(oldNk)}`,
+      `Nebenkosten neu: ${formatCurrency(newNk)}`,
+      `Warmmiete bisher: ${formatCurrency(oldTotal)}`,
+      `Warmmiete neu: ${formatCurrency(newTotal)}`,
+      `Differenz Warmmiete: ${formatCurrency(newTotal - oldTotal)}`,
+      "",
+      "Hinweis",
+      "Bitte prüfen Sie die gesetzlichen Voraussetzungen, insbesondere Kappungsgrenze und Jahressperrfrist, bevor dieses Schreiben versendet wird.",
+      note ? "" : null,
+      note ? `Notiz des Vermieters: ${note}` : null,
+    ].filter((line): line is string => line !== null).join("\n");
+    setGeneratedLetter(letter);
+    setActionMessage("Schreiben wurde als Entwurf generiert.");
+  }
 
   return (
     <div className="space-y-5">
@@ -724,7 +946,12 @@ export default function Mietentwicklung() {
               <button
                 key={row.object.id}
                 type="button"
-                onClick={() => setSelectedRow(row)}
+                onClick={() => {
+                  setSelectedObjectId(row.object.id);
+                  setShowAdjustmentForm(false);
+                  setActionMessage(null);
+                  setGeneratedLetter(null);
+                }}
                 className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] xl:items-center"
               >
                 <div>
@@ -784,7 +1011,7 @@ export default function Mietentwicklung() {
       </section>
 
       {selectedRow ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedRow(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedObjectId(null)}>
           <aside className="ml-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
               <div>
@@ -792,11 +1019,22 @@ export default function Mietentwicklung() {
                 <h2 className="mt-2 text-2xl font-black text-slate-950">Details zur Mietanpassung</h2>
                 <p className="mt-2 text-sm font-bold text-slate-600">Einheit: {selectedRow.object.label} | Mieter: {selectedRow.tenantName}</p>
               </div>
-              <button type="button" onClick={() => setSelectedRow(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Details schließen">
+              <button type="button" onClick={() => setSelectedObjectId(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Details schließen">
                 <X size={18} />
               </button>
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              {actionMessage ? (
+                <div className={[
+                  "rounded-2xl border p-4 text-sm font-black",
+                  actionMessage.includes("konnte") || actionMessage.includes("Bitte neu einloggen")
+                    ? "border-rose-200 bg-rose-50 text-rose-800"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-800",
+                ].join(" ")}>
+                  {actionMessage}
+                </div>
+              ) : null}
+
               <section className="rounded-[22px] border border-slate-200 bg-slate-50 p-5">
                 <h3 className="text-lg font-black text-slate-950">Aktuelle Anpassung</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -810,6 +1048,116 @@ export default function Mietentwicklung() {
                   </div>
                 </div>
               </section>
+
+              {showAdjustmentForm ? (
+                <section className="rounded-[22px] border border-blue-200 bg-blue-50 p-5">
+                  <div className="flex items-center gap-2">
+                    <Plus size={18} className="text-blue-700" />
+                    <h3 className="text-lg font-black text-slate-950">Neue oder alte Mietanpassung eintragen</h3>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                    Hier kannst du auch ältere Mietanpassungen nachtragen: alter Stand, neuer Stand und interne Notiz werden dauerhaft in der Historie gespeichert.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                      Wirksam seit / ab
+                      <input
+                        type="date"
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                        value={adjustmentForm.effectiveDate}
+                        onChange={(event) => setAdjustmentForm((form) => ({ ...form, effectiveDate: event.target.value }))}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                      Status
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                        value={adjustmentForm.status}
+                        onChange={(event) => setAdjustmentForm((form) => ({ ...form, status: event.target.value as ManualRentAdjustment["status"] }))}
+                      >
+                        <option value="planned">Geplant</option>
+                        <option value="active">Aktiv</option>
+                        <option value="consent_open">Offene Zustimmung</option>
+                        <option value="check">Prüfung empfohlen</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500 sm:col-span-2">
+                      Grund der Anpassung
+                      <select
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                        value={adjustmentForm.reason}
+                        onChange={(event) => setAdjustmentForm((form) => ({ ...form, reason: event.target.value }))}
+                      >
+                        <option>Anpassung an ortsübliche Vergleichsmiete</option>
+                        <option>Indexmiete</option>
+                        <option>Modernisierung</option>
+                        <option>Nebenkostenanpassung</option>
+                        <option>Sonstige Mietanpassung</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="grid grid-cols-4 gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                      <span>Kostenart</span>
+                      <span>Alter Stand</span>
+                      <span>Neuer Stand</span>
+                      <span>Differenz</span>
+                    </div>
+                    {[
+                      ["Nettokaltmiete", "oldColdRent", "newColdRent"],
+                      ["Nebenkosten", "oldOperatingCosts", "newOperatingCosts"],
+                      ["Warmmiete", "oldTotalRent", "newTotalRent"],
+                    ].map(([label, oldKey, newKey]) => {
+                      const oldValue = parseMoneyInput(adjustmentForm[oldKey as keyof RentAdjustmentForm]);
+                      const newValue = parseMoneyInput(adjustmentForm[newKey as keyof RentAdjustmentForm]);
+                      return (
+                        <div key={label} className="grid grid-cols-4 gap-3 border-t border-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
+                          <span className="font-black text-slate-950">{label}</span>
+                          <input
+                            className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-sm font-bold text-slate-950"
+                            value={adjustmentForm[oldKey as keyof RentAdjustmentForm]}
+                            onChange={(event) => setAdjustmentForm((form) => ({ ...form, [oldKey]: event.target.value }))}
+                          />
+                          <input
+                            className="min-w-0 rounded-xl border border-slate-200 px-2 py-2 text-sm font-bold text-slate-950"
+                            value={adjustmentForm[newKey as keyof RentAdjustmentForm]}
+                            onChange={(event) => setAdjustmentForm((form) => ({ ...form, [newKey]: event.target.value }))}
+                          />
+                          <span className="py-2 text-emerald-700">{oldValue !== null && newValue !== null ? formatCurrency(newValue - oldValue) : "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <label className="mt-4 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    Notiz des Vermieters
+                    <textarea
+                      className="min-h-24 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-slate-950"
+                      placeholder="z. B. Zustimmung erfolgt am 15.10.2024 ohne Einwände."
+                      value={adjustmentForm.note}
+                      onChange={(event) => setAdjustmentForm((form) => ({ ...form, note: event.target.value }))}
+                    />
+                  </label>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveManualAdjustment(selectedRow)}
+                      disabled={savingAdjustment}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm disabled:opacity-60"
+                    >
+                      <Save size={16} /> {savingAdjustment ? "Speichern..." : "Mietanpassung speichern"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdjustmentForm(false)}
+                      className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </section>
+              ) : null}
 
               <section className="rounded-[22px] border border-slate-200 bg-white p-5">
                 <h3 className="text-lg font-black text-slate-950">Mietentwicklung im Detail</h3>
@@ -839,6 +1187,31 @@ export default function Mietentwicklung() {
                 <h3 className="text-lg font-black text-slate-950">Historie aller Mietanpassungen</h3>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Lückenlose Dokumentation der bisherigen Erhöhungen und Begründungen für dieses Mietverhältnis.</p>
                 <div className="mt-4 grid gap-3">
+                  {selectedRow.manualAdjustments.map((adjustment) => (
+                    <div key={adjustment.id} className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-blue-700 ring-1 ring-blue-200">
+                        Manuell eingetragen · {statusLabel(adjustment.status)}
+                      </div>
+                      <div className="grid gap-2 text-sm font-bold text-slate-700">
+                        <span><strong>Datum:</strong> {formatDate(adjustment.effective_date)}</span>
+                        <span><strong>Art:</strong> {adjustment.reason}</span>
+                        <span>
+                          <strong>Änderung:</strong>{" "}
+                          Warmmiete {formatCurrency(adjustment.old_total_rent ?? 0)} auf {formatCurrency(adjustment.new_total_rent ?? 0)}
+                          {" "}({formatCurrency((adjustment.new_total_rent ?? 0) - (adjustment.old_total_rent ?? 0))})
+                        </span>
+                        <span>
+                          <strong>Details:</strong>{" "}
+                          Kaltmiete {formatCurrency(adjustment.old_cold_rent ?? 0)} auf {formatCurrency(adjustment.new_cold_rent ?? 0)},{" "}
+                          Nebenkosten {formatCurrency(adjustment.old_operating_costs ?? 0)} auf {formatCurrency(adjustment.new_operating_costs ?? 0)}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+                        <span className="inline-flex items-center gap-2"><FileText size={14} /> {adjustment.document_name || "Noch kein Dokument hinterlegt"}</span>
+                        <span>Notiz des Vermieters: {adjustment.note || "Keine Notiz hinterlegt."}</span>
+                      </div>
+                    </div>
+                  ))}
                   {(selectedRow.latestIncrease ? [selectedRow.latestIncrease] : allChanges.filter((change) => change.objectLabel === selectedRow.object.label).slice(0, 3)).map((change) => (
                     <div key={change.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <div className="grid gap-2 text-sm font-bold text-slate-700">
@@ -853,19 +1226,36 @@ export default function Mietentwicklung() {
                       </div>
                     </div>
                   ))}
-                  {!selectedRow.latestIncrease && !allChanges.some((change) => change.objectLabel === selectedRow.object.label) ? (
+                  {!selectedRow.manualAdjustments.length && !selectedRow.latestIncrease && !allChanges.some((change) => change.objectLabel === selectedRow.object.label) ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
                       Noch keine Mietanpassung für dieses Mietverhältnis erkannt.
                     </div>
                   ) : null}
                 </div>
               </section>
+              {generatedLetter ? (
+                <section className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-5">
+                  <h3 className="text-lg font-black text-slate-950">Schreiben für Mieter</h3>
+                  <textarea
+                    readOnly
+                    className="mt-4 min-h-64 w-full rounded-2xl border border-emerald-200 bg-white p-4 text-sm font-semibold leading-6 text-slate-800"
+                    value={generatedLetter}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => downloadTextFile(`Mietanpassung_${selectedRow.object.label.replace(/[^a-z0-9]+/gi, "_")}.txt`, generatedLetter)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-black text-white shadow-sm"
+                  >
+                    <Download size={16} /> Schreiben herunterladen
+                  </button>
+                </section>
+              ) : null}
             </div>
             <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2">
-              <button type="button" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
+              <button type="button" onClick={() => openAdjustmentPlanner(selectedRow)} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
                 Neue Mietanpassung planen
               </button>
-              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm">
+              <button type="button" onClick={() => generateTenantLetter(selectedRow)} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm">
                 Schreiben für Mieter generieren
               </button>
               <p className="sm:col-span-2 text-xs font-bold leading-5 text-slate-500">
