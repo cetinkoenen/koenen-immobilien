@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Mail, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
@@ -530,6 +530,7 @@ export default function Mietentwicklung() {
   const [generatedLetter, setGeneratedLetter] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
+  const adjustmentFormRef = useRef<HTMLElement | null>(null);
   const [adjustmentForm, setAdjustmentForm] = useState<RentAdjustmentForm>({
     effectiveDate: toIso(new Date()),
     reason: "Anpassung an ortsübliche Vergleichsmiete",
@@ -774,6 +775,13 @@ export default function Mietentwicklung() {
   const loading = appData.loading || loadingRentals;
   const selectedRow = selectedObjectId ? rows.find((row) => row.object.id === selectedObjectId) ?? null : null;
 
+  function showAndFocusAdjustmentForm() {
+    setShowAdjustmentForm(true);
+    window.setTimeout(() => {
+      adjustmentFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   function openAdjustmentPlanner(row: DevelopmentRow) {
     setActionMessage(null);
     setGeneratedLetter(null);
@@ -790,11 +798,11 @@ export default function Mietentwicklung() {
       newTotalRent: formatMoneyInput(row.warmRent),
       note: "",
     });
-    setShowAdjustmentForm(true);
+    showAndFocusAdjustmentForm();
   }
 
   function editManualAdjustment(adjustment: ManualRentAdjustment) {
-    setActionMessage(null);
+    setActionMessage("Historien-Eintrag ist im Bearbeitungsformular geöffnet.");
     setGeneratedLetter(null);
     setEditingAdjustmentId(adjustment.id);
     setAdjustmentForm({
@@ -809,11 +817,11 @@ export default function Mietentwicklung() {
       newTotalRent: formatMoneyInput(adjustment.new_total_rent ?? 0),
       note: adjustment.note ?? "",
     });
-    setShowAdjustmentForm(true);
+    showAndFocusAdjustmentForm();
   }
 
   function editDetectedAdjustment(change: RentChange) {
-    setActionMessage(null);
+    setActionMessage("Automatisch erkannter Eintrag wurde ins Bearbeitungsformular übernommen. Nach dem Speichern wird er als manuelle Historie geführt.");
     setGeneratedLetter(null);
     setEditingAdjustmentId(null);
     setAdjustmentForm({
@@ -828,7 +836,7 @@ export default function Mietentwicklung() {
       newTotalRent: formatMoneyInput(change.newAmount),
       note: "Aus automatisch erkannter Historie übernommen. Bitte Begründung, Notiz und Beträge prüfen.",
     });
-    setShowAdjustmentForm(true);
+    showAndFocusAdjustmentForm();
   }
 
   async function saveManualAdjustment(row: DevelopmentRow) {
@@ -1099,7 +1107,7 @@ export default function Mietentwicklung() {
               </section>
 
               {showAdjustmentForm ? (
-                <section className="rounded-[22px] border border-blue-200 bg-blue-50 p-5">
+                <section ref={adjustmentFormRef} className="rounded-[22px] border border-blue-200 bg-blue-50 p-5">
                   <div className="flex items-center gap-2">
                     <Plus size={18} className="text-blue-700" />
                     <h3 className="text-lg font-black text-slate-950">
