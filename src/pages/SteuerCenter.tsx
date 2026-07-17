@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Download, FileText, Printer, RefreshCw, Search } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
+import { canonicalizeFinanceCategory } from "../lib/financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { parseLocaleNumber } from "../utils/numberParser";
 
@@ -320,151 +321,50 @@ function normalize(value: string | null | undefined): string {
     .trim();
 }
 
-function includesAny(text: string, words: string[]): boolean {
-  return words.some((word) => text.includes(word));
-}
-
 function classifyEntryByRules(entry: EntryRow, objectLabel: string): ClassifiedEntry {
-  const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
+  const canonicalCategory = isHohenloherMietbestandteilNk(entry, objectLabel)
+    ? MIETBESTANDTEIL_NK_CATEGORY
+    : canonicalizeFinanceCategory(entry.category, entry.entry_type);
+  const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""}`);
+  const confirmedTax = entry.tax_relevant === true;
+  const relevance: ClassifiedEntry["relevance"] = confirmedTax ? "tax" : "check";
+  const confirmationHint = confirmedTax
+    ? "Automatisch aus Buchung mit St-Kennzeichen in Anlage V einsortiert."
+    : "Noch nicht als St steuerrelevant bestätigt.";
+
+  const build = (taxGroup: string, taxHint: string): ClassifiedEntry => ({
+    ...entry,
+    category: canonicalCategory || entry.category,
+    object_label: objectLabel,
+    tax_group: taxGroup,
+    tax_hint: confirmedTax ? `${taxHint} · ${confirmationHint}` : confirmationHint,
+    relevance,
+  });
 
   if (entry.entry_type === "income") {
-    if (isHohenloherMietbestandteilNk(entry, objectLabel)) {
-      return {
-        ...entry,
-        category: MIETBESTANDTEIL_NK_CATEGORY,
-        object_label: objectLabel,
-        tax_group: "Mieteinnahmen / Mietbestandteil-NK",
-        tax_hint: "Anlage V: Nebenkosten-Vorauszahlung als Bestandteil der Gesamtmiete",
-        relevance: "tax",
-      };
+    if (canonicalCategory === "Miete Garage" || text.includes("garage") || text.includes("stellplatz")) {
+      return build("Miete Garage (Einnahme)", "Anlage V: Einnahmen aus Garagen-/Stellplatzvermietung");
     }
 
-    if (includesAny(text, ["miete", "kaltmiete", "warmmiete", "pacht"])) {
-      return {
-        ...entry,
-        object_label: objectLabel,
-        tax_group: "Mieteinnahmen",
-        tax_hint: "Anlage V: Einnahmen aus Vermietung",
-        relevance: "tax",
-      };
-    }
-
-    if (includesAny(text, ["nebenkosten", "betriebskosten", "vorauszahlung", "nk"])) {
-      return {
-        ...entry,
-        object_label: objectLabel,
-        tax_group: "Nebenkosten-Vorauszahlungen",
-        tax_hint: "Anlage V: Einnahmen, gegen Ausgaben abstimmen",
-        relevance: "tax",
-      };
-    }
-
-    if (includesAny(text, ["kaution", "deposit"])) {
-      return {
-        ...entry,
-        object_label: objectLabel,
-        tax_group: "Kaution / nicht ertragswirksam pruefen",
-        tax_hint: "Meist nicht als Einnahme zu versteuern, bitte pruefen",
-        relevance: "check",
-      };
-    }
-
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Sonstige Einnahmen pruefen",
-      tax_hint: "Bitte steuerliche Zuordnung pruefen",
-      relevance: "check",
-    };
+    return build("Miete (Einnahme)", "Anlage V: Einnahmen aus Vermietung");
   }
 
-  if (includesAny(text, ["zins", "darlehenszins", "kredit"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Darlehenszinsen",
-      tax_hint: "Anlage V: Werbungskosten, Zinsanteil",
-      relevance: "tax",
-    };
-  }
-
-  if (includesAny(text, ["tilgung", "sondertilgung", "restschuld"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Tilgung / nicht abziehbar",
-      tax_hint: "Tilgung ist in der Regel nicht als Werbungskosten abziehbar",
-      relevance: "private",
-    };
-  }
-
-  if (includesAny(text, ["reparatur", "instandhaltung", "erhaltung", "wartung", "handwerker"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Reparatur / Erhaltungsaufwand",
-      tax_hint: "Anlage V: Werbungskosten, Beleg aufbewahren",
-      relevance: "tax",
-    };
-  }
-
-  if (includesAny(text, ["sanierung", "modernisierung", "capex", "umbau", "renovierung"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Modernisierung / Aktivierung pruefen",
-      tax_hint: "Sofortabzug vs. Herstellungskosten mit Steuerberater pruefen",
-      relevance: "check",
-    };
-  }
-
-  if (includesAny(text, ["grundsteuer", "steuer"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Grundsteuer",
-      tax_hint: "Anlage V: Werbungskosten",
-      relevance: "tax",
-    };
-  }
-
-  if (includesAny(text, ["versicherung", "gebaeudeversicherung", "haftpflicht"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Versicherungen",
-      tax_hint: "Anlage V: Werbungskosten",
-      relevance: "tax",
-    };
-  }
-
-  if (includesAny(text, ["hausgeld", "weg", "verwaltung", "verwalter"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Hausgeld / Verwaltung",
-      tax_hint: "Abziehbare Bestandteile getrennt pruefen",
-      relevance: "check",
-    };
-  }
-
-  if (includesAny(text, ["nebenkosten", "betriebskosten", "wasser", "strom", "heizung", "muell", "müll", "reinigung", "winterdienst", "garten"])) {
-    return {
-      ...entry,
-      object_label: objectLabel,
-      tax_group: "Betriebs- / Nebenkosten",
-      tax_hint: "Anlage V: Werbungskosten bzw. Umlage pruefen",
-      relevance: "tax",
-    };
-  }
-
-  return {
-    ...entry,
-    object_label: objectLabel,
-    tax_group: "Sonstige Ausgaben pruefen",
-    tax_hint: "Bitte steuerliche Zuordnung pruefen",
-    relevance: "check",
+  const expenseGroups: Record<string, string> = {
+    Kreditrate: "Kreditrate (Werbungskosten)",
+    Reparatur: "Reparatur (Werbungskosten)",
+    "Abfallgebühr": "Abfallgebühr (Werbungskosten)",
+    Schonsteinfeger: "Schonsteinfeger (Werbungskosten)",
+    Versicherung: "Versicherung (Werbungskosten)",
+    Wartung: "Wartung (Werbungskosten)",
+    Kontoführungsgebühr: "Kontoführungskosten (Werbungskosten)",
+    Verwaltungskosten: "Verwaltungskosten (Werbungskosten)",
+    Allgemein: "Allgemein / Sonstige Kosten (Werbungskosten)",
+    Fahrtkosten: "Fahrtkosten (Werbungskosten)",
+    Software: "Software (Werbungskosten)",
   };
+
+  const group = expenseGroups[canonicalCategory] ?? "Allgemein / Sonstige Kosten (Werbungskosten)";
+  return build(group, "Anlage V: Werbungskosten aus steuerrelevant markierter Buchung");
 }
 
 function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
@@ -480,11 +380,7 @@ function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
 
   const classified = classifyEntryByRules(entry, objectLabel);
   if (entry.tax_relevant === true) {
-    return {
-      ...classified,
-      relevance: "tax",
-      tax_hint: `${classified.tax_hint} · manuell bestätigt`,
-    };
+    return classified;
   }
 
   return classified;
@@ -607,7 +503,7 @@ function downloadAdvisorCsv(
 export default function SteuerCenter() {
   const [year, setYear] = useState(currentYear);
   const [objectCode, setObjectCode] = useState("ALL");
-  const [relevance, setRelevance] = useState<RelevanceFilter>("all");
+  const [relevance, setRelevance] = useState<RelevanceFilter>("tax");
   const [search, setSearch] = useState("");
   const [objects, setObjects] = useState<ObjectOption[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
@@ -809,7 +705,7 @@ export default function SteuerCenter() {
   const summary = useMemo(() => {
     const map = new Map<string, SummaryRow>();
 
-    for (const row of filteredRows) {
+    for (const row of filteredRows.filter((entry) => entry.relevance === "tax")) {
       const current = map.get(row.tax_group) ?? {
         group: row.tax_group,
         income: 0,
