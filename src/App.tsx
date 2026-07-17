@@ -288,7 +288,6 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
   { path: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", icon: PlusCircle },
   { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
-  { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Mietanpassungen", icon: TrendingUp },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
 ];
@@ -346,7 +345,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     tabs: [
       { label: "Mieterwechsel & Übergaben", description: "Auszugs-To-dos, Übergabeprotokolle, Einzugs-To-dos und Kautionsmanagement." },
       { label: "Rechtliche & gesetzliche Fristen", description: "Nebenkostenabrechnung, Sicherheit, Wartung und WEG-Fristen überwachen." },
-      { label: "Vertrags- & Mietanpassungen", description: "Indexmieten, Staffelmieten und befristete Verträge im Blick behalten." },
+      { label: "Vertrags- & Mietanpassungen", description: "Indexmieten, Mietanpassungen und befristete Verträge im Blick behalten." },
       { label: "Handwerker & Schadensabwicklung", description: "Angebotsfreigaben, Reparaturstatus und Rechnungsprüfung bündeln." },
       { label: "Organisation & Filter", description: "Zuständigkeit, Fälligkeit und Status-Tracker für die tägliche Arbeit." },
     ],
@@ -462,7 +461,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     tabs: [
       { label: "Vertragsdetails", description: "Laufzeiten, Kündigungsfristen und Verlängerungen." },
       { label: "Mietzins-Struktur", description: "Kaltmiete, Nebenkosten, Stellplatzmiete und Vertragsbestandteile." },
-      { label: "Mietanpassungs-Planer", description: "Indexklauseln, Staffelmieten und Termine." },
+      { label: "Mietanpassungs-Planer", description: "Indexklauseln, Anpassungstermine und Mieterkommunikation." },
       { label: "Kautions-Status", description: "Beträge, Bürgschaften, Verpfändungen und Kautionsbuchungen." },
     ],
   },
@@ -554,15 +553,15 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
   },
   buchhaltungSoll: {
     eyebrow: "4. Modul | Buchhaltung & Finanzen",
-    title: "Mietanpassungen & Staffelmieten",
-    description: "Hier sehen Sie die aktuellen Mietzusammensetzungen aller Ihrer Objekte. Klicken Sie auf eine Zeile, um Details, Vorher-Nachher-Vergleich und Historie in der Seitenleiste zu öffnen.",
+    title: "Mietanpassungen",
+    description: "Die Mietanpassungen werden über die bestehende Seite Mietentwicklung geführt. Dort sehen Sie Sollmieten, Buchungen und erkannte Änderungen je Immobilie.",
     basePath: "/buchhaltung",
     source: "Vermietungszeiträume, Buchhaltung, Mieteingang",
     subpages: buchhaltungSubpages,
     tabs: [
       { label: "Mietzusammensetzung", description: "Nettokaltmiete, Nebenkosten und Warmmiete pro Objekt prüfen." },
       { label: "Vorher-Nachher", description: "Letzte Anpassung und Differenz je Kostenart nachvollziehen." },
-      { label: "Historie", description: "Alle erkannten Mietanpassungen aus Verträgen und Buchungen bündeln." },
+      { label: "Historie", description: "Alle erkannten Mietanpassungen aus Vermietungszeiträumen und Buchungen bündeln." },
       { label: "Schreiben", description: "Vorbereitete Mieteranschreiben für geplante Anpassungen erstellen." },
     ],
   },
@@ -1368,233 +1367,6 @@ function ReportsExportsPage() {
   );
 }
 
-type RentAdjustmentRow = {
-  id: string;
-  objectLabel: string;
-  tenant: string;
-  latestDate: string | null;
-  previousDate: string | null;
-  netRent: number;
-  utilities: number;
-  warmRent: number;
-  previousWarmRent: number;
-  status: "Aktiv" | "Prüfen" | "Zukünftig";
-  history: FinanceEntry[];
-};
-
-function RentAdjustmentsPage() {
-  const { objects, getEntriesForProperty } = useAppData();
-  const [objectFilter, setObjectFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedRow, setSelectedRow] = useState<RentAdjustmentRow | null>(null);
-
-  const rows = useMemo<RentAdjustmentRow[]>(() => {
-    return objects.map((object) => {
-      const rentEntries = getEntriesForProperty(object.id)
-        .filter((entry) => isRentLikeEntry(entry))
-        .sort((a, b) => String(b.booking_date ?? "").localeCompare(String(a.booking_date ?? "")));
-      const latest = rentEntries[0];
-      const previous = rentEntries.find((entry) => Math.abs((entry.amount ?? 0) - (latest?.amount ?? 0)) > 0.01);
-      const warmRent = Math.max(0, latest?.amount ?? 0);
-      const previousWarmRent = Math.max(0, previous?.amount ?? warmRent);
-      const utilities = warmRent > 0 ? Math.round(warmRent * 0.18 * 100) / 100 : 0;
-      const netRent = Math.max(0, warmRent - utilities);
-      const status: RentAdjustmentRow["status"] = !latest ? "Prüfen" : previous && Math.abs(warmRent - previousWarmRent) > 1 ? "Prüfen" : "Aktiv";
-
-      return {
-        id: object.id,
-        objectLabel: object.label,
-        tenant: "Mieterdaten aus Vermietungszeitraum",
-        latestDate: latest?.booking_date ?? null,
-        previousDate: previous?.booking_date ?? null,
-        netRent,
-        utilities,
-        warmRent,
-        previousWarmRent,
-        status,
-        history: rentEntries.slice(0, 6),
-      };
-    });
-  }, [getEntriesForProperty, objects]);
-
-  const filteredRows = rows.filter((row) => {
-    if (objectFilter !== "all" && row.id !== objectFilter) return false;
-    if (statusFilter === "action" && row.status !== "Prüfen") return false;
-    if (statusFilter === "future" && row.status !== "Zukünftig") return false;
-    return true;
-  });
-
-  const totalWarmRent = filteredRows.reduce((sum, row) => sum + row.warmRent, 0);
-  const rowsToCheck = filteredRows.filter((row) => row.status === "Prüfen").length;
-  const adjustedRows = filteredRows.filter((row) => row.previousDate).length;
-
-  return (
-    <div className="space-y-5">
-      <section className="grid gap-4 md:grid-cols-3">
-        <KpiCard label="Warmmiete aktuell" value={formatCurrency(totalWarmRent)} detail={`${filteredRows.length} Objekte`} icon={WalletCards} tone="green" />
-        <KpiCard label="Handlungsbedarf" value={rowsToCheck} detail="Soll/Ist oder Stammdaten prüfen" icon={ShieldCheck} tone={rowsToCheck ? "amber" : "green"} />
-        <KpiCard label="Erhöhungen erkannt" value={adjustedRows} detail="Aus Buchungen abgeleitet" icon={TrendingUp} tone="blue" />
-      </section>
-
-      <SectionPanel
-        eyebrow="Filter"
-        title="Mietzusammensetzung prüfen"
-        description="Die Übersicht nutzt Mietbuchungen und vorhandene Objektstruktur. Details öffnen Sie per Klick auf eine Zeile."
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="grid gap-2 text-sm font-black text-slate-700">
-            Immobilie
-            <select
-              value={objectFilter}
-              onChange={(event) => setObjectFilter(event.target.value)}
-              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
-            >
-              <option value="all">Alle Immobilien</option>
-              {objects.map((object) => (
-                <option key={object.id} value={object.id}>{object.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-black text-slate-700">
-            Status
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
-            >
-              <option value="all">Alle</option>
-              <option value="action">Nur Handlungsbedarf</option>
-              <option value="future">Zukünftige Anpassungen</option>
-            </select>
-          </label>
-        </div>
-      </SectionPanel>
-
-      <section className="overflow-hidden rounded-[24px] border border-white/70 bg-white/84 shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur">
-        <div className="hidden grid-cols-[1.2fr_1fr_150px_150px_150px_150px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-500 xl:grid">
-          <span>Objekt & Einheit</span>
-          <span>Mieter</span>
-          <span>Letzte Anpassung</span>
-          <span>Nettokaltmiete</span>
-          <span>Nebenkosten</span>
-          <span>Warmmiete</span>
-          <span>Status</span>
-        </div>
-        {filteredRows.length ? (
-          filteredRows.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => setSelectedRow(row)}
-              className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.2fr_1fr_150px_150px_150px_150px_130px]"
-            >
-              <div>
-                <p className="text-base font-black text-slate-950">{row.objectLabel}</p>
-                <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">Aktive Einheit</p>
-              </div>
-              <div className="text-sm font-bold text-slate-600">{row.tenant}</div>
-              <div className="text-sm font-black text-slate-950">{formatDate(row.latestDate)}</div>
-              <div className="text-sm font-black text-slate-950">{formatCurrency(row.netRent)}</div>
-              <div className="text-sm font-black text-slate-950">{formatCurrency(row.utilities)}</div>
-              <div className="text-sm font-black text-emerald-700">{formatCurrency(row.warmRent)}</div>
-              <div>
-                <span className={[
-                  "inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
-                  row.status === "Prüfen" ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200" : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
-                ].join(" ")}>
-                  {row.status}
-                </span>
-              </div>
-            </button>
-          ))
-        ) : (
-          <div className="p-5">
-            <EmptyState
-              title="Keine Mietanpassungen gefunden"
-              description="Für die ausgewählten Filter liegen aktuell keine Anpassungen oder prüfbaren Mietbuchungen vor."
-            />
-          </div>
-        )}
-      </section>
-
-      {selectedRow ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedRow(null)}>
-          <aside
-            className="ml-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Details zur Mietanpassung</p>
-                <h2 className="mt-2 text-2xl font-black text-slate-950">{selectedRow.objectLabel}</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedRow(null)}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700"
-                aria-label="Details schließen"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 space-y-5 overflow-y-auto p-5">
-              <InfoList
-                items={[
-                  { label: "Wirksam seit", value: formatDate(selectedRow.latestDate), tone: "blue" },
-                  { label: "Grund", value: selectedRow.previousDate ? "Buchungsänderung erkannt" : "Aktive Mietstruktur", tone: "slate" },
-                  { label: "Aktuelle Warmmiete", value: formatCurrency(selectedRow.warmRent), tone: "green" },
-                ]}
-              />
-
-              <SectionPanel title="Mietentwicklung im Detail" description="Vorher-Nachher-Vergleich aus zuletzt erkannten Mietbuchungen.">
-                <div className="overflow-hidden rounded-2xl border border-slate-200">
-                  {[
-                    ["Nettokaltmiete", selectedRow.previousWarmRent * 0.82, selectedRow.netRent],
-                    ["Nebenkosten", selectedRow.previousWarmRent * 0.18, selectedRow.utilities],
-                    ["Warmmiete", selectedRow.previousWarmRent, selectedRow.warmRent],
-                  ].map(([label, oldValue, newValue]) => (
-                    <div key={String(label)} className="grid gap-2 border-b border-slate-100 p-4 last:border-b-0 sm:grid-cols-4">
-                      <span className="text-sm font-black text-slate-950">{label}</span>
-                      <span className="text-sm font-bold text-slate-600">Alt: {formatCurrency(Number(oldValue))}</span>
-                      <span className="text-sm font-bold text-slate-600">Neu: {formatCurrency(Number(newValue))}</span>
-                      <span className="text-sm font-black text-[#255f6f]">Differenz: {formatCurrency(Number(newValue) - Number(oldValue))}</span>
-                    </div>
-                  ))}
-                </div>
-              </SectionPanel>
-
-              <SectionPanel title="Historie aller Mietanpassungen" description="Die letzten erkannten Mietbuchungen dieser Immobilie.">
-                {selectedRow.history.length ? (
-                  <div className="grid gap-2">
-                    {selectedRow.history.map((entry) => (
-                      <div key={`${entry.id ?? entry.booking_date}-${entry.amount}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="text-sm font-black text-slate-950">{formatDate(entry.booking_date)}</span>
-                          <span className="text-sm font-black text-emerald-700">{formatCurrency(entry.amount)}</span>
-                        </div>
-                        <p className="mt-1 text-xs font-bold text-slate-500">{entry.category || "Miete"} {entry.note ? `- ${entry.note}` : ""}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState title="Noch keine Historie" description="Für diese Immobilie wurden keine Mietbuchungen erkannt." />
-                )}
-              </SectionPanel>
-            </div>
-            <div className="grid gap-2 border-t border-slate-200 p-5 sm:grid-cols-2">
-              <ReportActionLink to="/kontakte/aktive-mietvertraege" label="Neue Mietanpassung planen" primary />
-              <ReportActionLink to="/berichte" label="Schreiben für Mieter generieren" />
-              <p className="sm:col-span-2 text-xs font-bold leading-5 text-slate-500">
-                Hinweis: Kappungsgrenze, Jahressperrfrist und vertragliche Grundlage bitte vor Versand prüfen.
-              </p>
-            </div>
-          </aside>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 type MaintenanceTask = {
   id: string;
   title: string;
@@ -1904,7 +1676,7 @@ function AppShell() {
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
       { to: "/buchhaltung/buchungen", label: "Buchungen", group: "Buchhaltung", icon: WalletCards },
       { to: "/buchhaltung/steuer-center-berater", label: "Steuer", group: "Buchhaltung", icon: Euro },
-      { to: "/buchhaltung/berichte-exporte", label: "Auswertungen", group: "Buchhaltung", icon: BarChart3 },
+      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "Buchhaltung", icon: BarChart3 },
       { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
       { to: "/nebenkosten", label: "Übersicht", group: "Nebenkosten", icon: ClipboardList },
       { to: "/nebenkosten/wohnungen", label: "Wohnungen", group: "Nebenkosten", icon: Building2 },
@@ -2286,7 +2058,7 @@ export default function App() {
         />
         <Route
           path="/buchhaltung/sollstellungen-mietanpassungen"
-          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSoll}><RentAdjustmentsPage /></ModuleWorkspacePage>}
+          element={<Navigate to="/immobilien/mietentwicklung" replace />}
         />
         <Route
           path="/buchhaltung/nebenkostenabrechnung"
@@ -2324,8 +2096,9 @@ export default function App() {
         <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
         <Route path="/buchhaltung/kautionen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
         <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/buchhaltung/nebenkostenabrechnung" replace />} />
-        <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
-        <Route path="/mietanpassungen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
+        <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/immobilien/mietentwicklung" replace />} />
+        <Route path="/mietanpassungen" element={<Navigate to="/immobilien/mietentwicklung" replace />} />
+        <Route path="/berichte-exporte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/steuer" element={<SteuerCenter />} />
