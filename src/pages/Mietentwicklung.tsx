@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, BarChart3, Building2, CalendarDays, TrendingUp, WalletCards } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CalendarDays, FileText, Mail, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -48,6 +47,15 @@ type DevelopmentRow = {
   object: AppObject;
   currentExpected: number;
   currentActual: number;
+  netRent: number;
+  utilitiesRent: number;
+  warmRent: number;
+  previousNetRent: number;
+  previousUtilitiesRent: number;
+  previousWarmRent: number;
+  tenantName: string;
+  lastAdjustmentDate: string | null;
+  adjustmentReason: string;
   lastActualAmount: number;
   lastActualMonthLabel: string | null;
   previousExpected: number;
@@ -59,6 +67,7 @@ type DevelopmentRow = {
   monthPoints: MonthPoint[];
   quality: "ok" | "check" | "missing";
   qualityText: string;
+  adjustmentStatus: "Aktiv" | "Prüfung empfohlen" | "Geplant" | "Offene Zustimmung";
 };
 
 const START_YEAR = 2024;
@@ -112,8 +121,11 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
 }
 
-function formatPercent(value: number) {
-  return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1, minimumFractionDigits: 0 }).format(value);
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("de-DE");
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -352,6 +364,24 @@ function actualRentForMonth(entries: FinanceEntry[], object: AppObject, candidat
   }, 0);
 }
 
+function actualRentPartForMonth(entries: FinanceEntry[], object: AppObject, candidateIds: Set<string>, year: number, month: number, mode: "utilities" | "base") {
+  return entries.reduce((sum, entry) => {
+    if (!isRentBookingForObject(entry, object, candidateIds)) return sum;
+    const effective = effectiveRentMonthForObject(entry, object);
+    if (!effective || effective.year !== year || effective.month !== month) return sum;
+    const text = normalizeText(bookingReference(entry));
+    const isUtilities = text.includes("mietbestandteil nk") || text.includes("nebenkosten") || text.includes("hausgeld");
+    if (mode === "utilities" && isUtilities) return sum + money(entry.amount);
+    if (mode === "base" && !isUtilities) return sum + money(entry.amount);
+    return sum;
+  }, 0);
+}
+
+function latestAdjustmentDate(change: RentChange | null) {
+  if (!change) return null;
+  return `${change.sortKey}-01`;
+}
+
 function candidateIdsForObject(object: AppObject, portfolioProperties: PortfolioPropertyRow[]) {
   const ids = new Set<string>([object.id, ...(object.aliases ?? [])].filter(Boolean));
   const label = normalizeText(object.label);
@@ -421,22 +451,6 @@ function rentChangesForObject(
   return changes;
 }
 
-function Sparkline({ points }: { points: MonthPoint[] }) {
-  const visible = points.slice(-18);
-  const max = Math.max(1, ...visible.map((point) => Math.max(point.expected, point.actual)));
-
-  return (
-    <div className="flex h-20 items-end gap-1" aria-label="Mietentwicklung der letzten 18 Monate">
-      {visible.map((point) => (
-        <div key={point.key} className="flex flex-1 items-end justify-center gap-[2px]" title={`${point.label}: Soll ${formatCurrency(point.expected)}, Ist ${formatCurrency(point.actual)}`}>
-          <span className="w-1.5 rounded-t bg-indigo-300" style={{ height: `${Math.max(3, (point.expected / max) * 72)}px` }} />
-          <span className="w-1.5 rounded-t bg-emerald-400" style={{ height: `${Math.max(3, (point.actual / max) * 72)}px` }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function Mietentwicklung() {
   const appData = useAppData();
   const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
@@ -444,8 +458,8 @@ export default function Mietentwicklung() {
   const [loadingRentals, setLoadingRentals] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [objectFilter, setObjectFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "wohnung" | "garage">("all");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "changes" | "checks">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "action" | "future">("all");
+  const [selectedRow, setSelectedRow] = useState<DevelopmentRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -519,6 +533,7 @@ export default function Mietentwicklung() {
       const previous = monthPoints[monthPoints.length - 2] ?? { expected: 0, actual: 0 };
       const lastActual = [...monthPoints].reverse().find((point) => point.actual > 0);
       const activeRentals = selectActiveRentalsForMonth(portfolioRentals, candidateIds, currentMonth.year, currentMonth.month);
+      const previousRentals = selectActiveRentalsForMonth(portfolioRentals, candidateIds, previous.year, previous.month);
       const activeUnitBreakdown = completeKnownUnitBreakdown(object, activeRentals.map((rental, index) => ({
         key: rental.id,
         label: friendlyUnitLabel(object, rental, index),
@@ -531,6 +546,20 @@ export default function Mietentwicklung() {
       });
       const changes = rentChangesForObject(object, appData.entries, portfolioRentals, candidateIds, monthPoints);
       const latestIncrease = [...changes].reverse()[0] ?? null;
+      const currentUtilitiesFromBookings = actualRentPartForMonth(appData.entries, object, candidateIds, currentMonth.year, currentMonth.month, "utilities");
+      const previousUtilitiesFromBookings = actualRentPartForMonth(appData.entries, object, candidateIds, previous.year, previous.month, "utilities");
+      const rentalUtilities = activeRentals
+        .filter((rental) => normalizeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`).includes("nk") || normalizeText(rental.rent_type).includes("nebenkosten"))
+        .reduce((sum, rental) => sum + money(rental.rent_monthly), 0);
+      const previousRentalUtilities = previousRentals
+        .filter((rental) => normalizeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`).includes("nk") || normalizeText(rental.rent_type).includes("nebenkosten"))
+        .reduce((sum, rental) => sum + money(rental.rent_monthly), 0);
+      const utilitiesRent = money(rentalUtilities || currentUtilitiesFromBookings);
+      const previousUtilitiesRent = money(previousRentalUtilities || previousUtilitiesFromBookings);
+      const warmRent = money(current.expected || current.actual);
+      const previousWarmRent = money(previous.expected || previous.actual || warmRent);
+      const netRent = Math.max(0, money(warmRent - utilitiesRent));
+      const previousNetRent = Math.max(0, money(previousWarmRent - previousUtilitiesRent));
       const hasRentals = activeRentals.length > 0;
       const hasActual = current.actual > 0;
       const quality: DevelopmentRow["quality"] = hasRentals && Math.abs(current.expected - current.actual) <= 1
@@ -543,11 +572,27 @@ export default function Mietentwicklung() {
         : quality === "check"
           ? "Soll/Ist oder Stammdaten prüfen."
           : "Keine aktuelle Miete erkennbar.";
+      const adjustmentStatus: DevelopmentRow["adjustmentStatus"] = quality === "check"
+        ? "Prüfung empfohlen"
+        : latestIncrease
+          ? "Aktiv"
+          : hasRentals
+            ? "Aktiv"
+            : "Offene Zustimmung";
 
       return {
         object,
         currentExpected: current.expected,
         currentActual: current.actual,
+        netRent,
+        utilitiesRent,
+        warmRent,
+        previousNetRent,
+        previousUtilitiesRent,
+        previousWarmRent,
+        tenantName: "Mieterdaten aus Vermietungszeitraum",
+        lastAdjustmentDate: latestAdjustmentDate(latestIncrease),
+        adjustmentReason: latestIncrease?.source === "Buchungen" ? "Indexmiete / Buchungsänderung" : latestIncrease ? "Anpassung aus Vermietungszeitraum" : "Aktive Mietstruktur",
         lastActualAmount: lastActual?.actual ?? 0,
         lastActualMonthLabel: lastActual ? monthLabel(lastActual.year, lastActual.month, true) : null,
         previousExpected: previous.expected,
@@ -559,6 +604,7 @@ export default function Mietentwicklung() {
         monthPoints,
         quality,
         qualityText,
+        adjustmentStatus,
       };
     });
   }, [appData.entries, appData.objects, currentMonth?.month, currentMonth?.year, months, portfolioProperties, portfolioRentals]);
@@ -578,17 +624,13 @@ export default function Mietentwicklung() {
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const objectMatch = !objectFilter || row.object.id === objectFilter;
-      const typeMatch =
-        typeFilter === "all" ||
-        (typeFilter === "garage" && row.hasGarageUnit) ||
-        (typeFilter === "wohnung" && !row.hasGarageUnit);
-      const sourceMatch =
-        sourceFilter === "all" ||
-        (sourceFilter === "changes" && row.latestIncrease) ||
-        (sourceFilter === "checks" && row.quality !== "ok");
-      return objectMatch && typeMatch && sourceMatch;
+      const statusMatch =
+        statusFilter === "all" ||
+        (statusFilter === "action" && row.adjustmentStatus === "Prüfung empfohlen") ||
+        (statusFilter === "future" && row.adjustmentStatus === "Geplant");
+      return objectMatch && statusMatch;
     });
-  }, [objectFilter, rows, sourceFilter, typeFilter]);
+  }, [objectFilter, rows, statusFilter]);
 
   const stats = useMemo(() => {
     const currentExpected = rows.reduce((sum, row) => sum + row.currentExpected, 0);
@@ -612,87 +654,44 @@ export default function Mietentwicklung() {
   return (
     <div className="space-y-5">
       <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
-        <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
-              <TrendingUp size={16} />
-              Mietentwicklung
-            </div>
-            <h1 className="mt-4 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-              Mieten, Erhöhungen und Buchungen auf einen Blick
-            </h1>
-            <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
-              Sollmieten kommen aus Portfolio → Vermietungszeiträume. Tatsächliche Erhöhungen werden zusätzlich aus Buchungen erkannt, wenn ab einem Monat höhere Miete oder {MIETBESTANDTEIL_NK_CATEGORY} eingeht.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">Soll aktuell</span>
-              <strong className="mt-2 block text-xl font-black text-emerald-800">{formatCurrency(stats.currentExpected)}</strong>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist aktueller Monat</span>
-              <strong className="mt-2 block text-xl font-black text-slate-950">{formatCurrency(stats.currentActual)}</strong>
-            </div>
-            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-indigo-700">Jahres-Soll</span>
-              <strong className="mt-2 block text-xl font-black text-indigo-900">{formatCurrency(stats.annualRunRate)}</strong>
-            </div>
-          </div>
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
+          <TrendingUp size={16} />
+          Mietanpassungen
         </div>
-      </section>
+        <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+          Mietanpassungen
+        </h1>
+        <p className="mt-3 max-w-5xl text-sm font-semibold leading-6 text-slate-600">
+          Hier sehen Sie die aktuellen Mietzusammensetzungen aller Ihrer Objekte. Klicken Sie auf eine Zeile, um die Details, den Vorher-Nachher-Vergleich und die Historie in der Seitenleiste zu öffnen.
+        </p>
 
-      <section className="grid gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Änderung ggü. Vorjahr</span>
-          <strong className="mt-2 block text-xl font-black text-slate-950">{formatPercent(stats.changePct)} %</strong>
-        </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">Objekte prüfen</span>
-          <strong className="mt-2 block text-xl font-black text-amber-800">{stats.checks}</strong>
-        </div>
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-700">Erhöhungen erkannt</span>
-          <strong className="mt-2 block text-xl font-black text-blue-900">{stats.changes}</strong>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Zeitraum</span>
-          <strong className="mt-2 block text-xl font-black text-slate-950">01/2024 bis heute</strong>
-        </div>
-      </section>
-
-      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
           <label className="grid gap-1 text-sm font-black text-slate-600">
-            Objekt
+            Immobilien
             <select className="h-12 rounded-2xl border border-slate-200 bg-white px-3 text-base font-bold text-slate-950" value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)}>
-              <option value="">Alle Objekte</option>
+              <option value="">Alle Immobilien</option>
               {appData.objects.map((object) => (
                 <option key={object.id} value={object.id}>{object.label}</option>
               ))}
             </select>
           </label>
           <label className="grid gap-1 text-sm font-black text-slate-600">
-            Typ
-            <select className="h-12 rounded-2xl border border-slate-200 bg-white px-3 text-base font-bold text-slate-950" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}>
-              <option value="all">Alle Einheiten</option>
-              <option value="wohnung">Wohnung / Haus</option>
-              <option value="garage">Garage / Stellplatz</option>
+            Status
+            <select className="h-12 rounded-2xl border border-slate-200 bg-white px-3 text-base font-bold text-slate-950" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+              <option value="all">Status: Alle</option>
+              <option value="action">Nur Handlungsbedarf</option>
+              <option value="future">Zukünftige Anpassungen</option>
             </select>
           </label>
-          <label className="grid gap-1 text-sm font-black text-slate-600">
-            Ansicht
-            <select className="h-12 rounded-2xl border border-slate-200 bg-white px-3 text-base font-bold text-slate-950" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}>
-              <option value="all">Alle anzeigen</option>
-              <option value="changes">Nur Erhöhungen</option>
-              <option value="checks">Nur Prüfbedarf</option>
-            </select>
-          </label>
-          <div className="flex items-end">
-            <Link to="/mieter/mieteingang" className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-900 no-underline shadow-sm">
-              Zum Mieteingang
-              <ArrowRight size={16} />
-            </Link>
+          <div className="grid grid-cols-2 gap-2 md:min-w-[260px]">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+              <span className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">Warmmiete</span>
+              <strong className="mt-1 block text-lg font-black text-emerald-800">{formatCurrency(stats.currentExpected)}</strong>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+              <span className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">Prüfen</span>
+              <strong className="mt-1 block text-lg font-black text-amber-800">{stats.checks}</strong>
+            </div>
           </div>
         </div>
       </section>
@@ -710,134 +709,171 @@ export default function Mietentwicklung() {
       ) : null}
 
       {!loading ? (
-        <section className="grid gap-4 xl:grid-cols-[1fr_380px]">
-          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 p-5">
-              <h2 className="text-2xl font-black text-slate-950">Alle Immobilien</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Grün = Buchungen passen zur Sollmiete. Gelb = Prüfung sinnvoll. Blau/Grün-Balken = Soll/Ist der letzten Monate.</p>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {filteredRows.map((row) => (
-                <article key={row.object.id} className="grid gap-4 p-5 lg:grid-cols-[minmax(220px,1fr)_170px_170px_170px_240px_150px] lg:items-center">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={[
-                        "inline-flex items-center rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.08em]",
-                        row.quality === "ok" ? "bg-emerald-50 text-emerald-700" : row.quality === "check" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-500",
-                      ].join(" ")}>
-                        {row.quality === "ok" ? "OK" : row.quality === "check" ? "Prüfen" : "Keine Miete"}
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">{row.qualityText}</span>
-                    </div>
-                    <h3 className="mt-2 text-xl font-black text-slate-950">{row.object.label}</h3>
-                    <p className="mt-1 text-xs font-bold text-slate-500">Quelle: Vermietungszeiträume + Buchungen</p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">Einheiten / Soll: {row.activeUnitSummary}</p>
-                    {row.activeUnitBreakdown.length > 1 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {row.activeUnitBreakdown.map((unit) => (
-                          <span key={unit.key} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
-                            {unit.label}: {formatCurrency(unit.amount)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Soll aktuell</span>
-                    <strong className="mt-1 block text-xl font-black text-slate-950">{formatCurrency(row.currentExpected)}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Ist Monat</span>
-                    <strong className="mt-1 block text-xl font-black text-emerald-700">{formatCurrency(row.currentActual)}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Letzter Eingang</span>
-                    <strong className="mt-1 block text-lg font-black text-slate-950">{row.lastActualAmount ? formatCurrency(row.lastActualAmount) : "—"}</strong>
-                    <span className="text-xs font-bold text-slate-500">{row.lastActualMonthLabel ?? "Keine Buchung"}</span>
-                  </div>
-                  <Sparkline points={row.monthPoints} />
-                  <div className="grid gap-2">
-                    {row.latestIncrease ? (
-                      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3">
-                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">Letzte Erhöhung</span>
-                        <strong className="mt-1 block text-sm font-black text-blue-950">{row.latestIncrease.monthLabel}</strong>
-                        <span className="text-xs font-bold text-blue-800">+{formatCurrency(row.latestIncrease.delta)}</span>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">
-                        Keine Erhöhung erkannt
-                      </div>
-                    )}
-                    <Link to={`/immobilien/${row.object.id}/vermietung`} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-900 no-underline">
-                      Details
-                      <ArrowRight size={14} />
-                    </Link>
-                  </div>
-                </article>
-              ))}
-              {!filteredRows.length ? (
-                <div className="p-6 text-sm font-black text-slate-500">Keine Ergebnisse für diesen Filter.</div>
-              ) : null}
-            </div>
+        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <div className="hidden grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.13em] text-slate-500 xl:grid">
+            <span>Objekt & Einheit</span>
+            <span>Mieter</span>
+            <span>Letzte Anpassung</span>
+            <span>Nettokaltmiete</span>
+            <span>Nebenkosten</span>
+            <span>Warmmiete</span>
+            <span>Status</span>
           </div>
-
-          <aside className="space-y-4">
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="text-blue-700" size={20} />
-                <h2 className="text-xl font-black text-slate-950">Letzte Erhöhungen</h2>
-              </div>
-              <div className="mt-4 grid gap-3">
-                {allChanges.map((change) => (
-                  <div key={change.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <strong className="block text-sm font-black text-slate-950">{change.objectLabel}</strong>
-                        <span className="text-xs font-bold text-slate-500">{change.monthLabel} · {change.source}</span>
-                      </div>
-                      <span className="rounded-full bg-white px-2 py-1 text-xs font-black text-emerald-700">+{formatCurrency(change.delta)}</span>
-                    </div>
-                    <p className="mt-2 text-xs font-bold text-slate-600">
-                      {formatCurrency(change.previousAmount)} → {formatCurrency(change.newAmount)}
-                    </p>
-                  </div>
-                ))}
-                {!allChanges.length ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                    Seit Januar 2024 wurde keine eindeutige Mieterhöhung erkannt.
-                  </div>
-                ) : null}
-              </div>
+          {filteredRows.length ? (
+            filteredRows.map((row) => (
+              <button
+                key={row.object.id}
+                type="button"
+                onClick={() => setSelectedRow(row)}
+                className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] xl:items-center"
+              >
+                <div>
+                  <h2 className="text-base font-black text-slate-950">{row.object.label}</h2>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{row.activeUnitSummary}</p>
+                </div>
+                <div className="text-sm font-bold text-slate-700">{row.tenantName}</div>
+                <div className="text-sm font-black text-slate-950">{formatDate(row.lastAdjustmentDate)}</div>
+                <div className="text-sm font-black text-slate-950">{formatCurrency(row.netRent)}</div>
+                <div className="text-sm font-black text-slate-950">{formatCurrency(row.utilitiesRent)}</div>
+                <div className="text-sm font-black text-emerald-700">{formatCurrency(row.warmRent)}</div>
+                <div>
+                  <span className={[
+                    "inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.08em]",
+                    row.adjustmentStatus === "Aktiv" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" :
+                      row.adjustmentStatus === "Prüfung empfohlen" ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200" :
+                        row.adjustmentStatus === "Geplant" ? "bg-blue-50 text-blue-800 ring-1 ring-blue-200" :
+                          "bg-rose-50 text-rose-800 ring-1 ring-rose-200",
+                  ].join(" ")}>
+                    {row.adjustmentStatus}
+                  </span>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="p-6 text-sm font-black text-slate-500">
+              {rows.length ? "Keine Objekte oder Einheiten mit diesen Filtereinstellungen gefunden." : "Sie haben noch keine Mietverhältnisse angelegt. Sobald Sie Ihren ersten Mietvertrag mit Mietstruktur hinterlegen, erscheint hier Ihre dynamische Übersicht."}
             </div>
+          )}
+        </section>
+      ) : null}
 
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="text-amber-700" size={20} />
-                <h2 className="text-xl font-black text-amber-950">Datenqualität</h2>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="text-blue-700" size={20} />
+            <h2 className="text-lg font-black text-slate-950">Letzte Erhöhungen</h2>
+          </div>
+          <p className="mt-2 text-sm font-bold text-slate-500">{stats.changes} erkannte Änderungen seit Januar 2024</p>
+        </div>
+        <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="text-amber-700" size={20} />
+            <h2 className="text-lg font-black text-amber-950">Datenqualität</h2>
+          </div>
+          <p className="mt-2 text-sm font-bold leading-6 text-amber-900">
+            {MIETBESTANDTEIL_NK_CATEGORY} wird als Mietbestandteil mitgezählt.
+          </p>
+        </div>
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="grid gap-2 text-sm font-black text-slate-700">
+            <span><Building2 size={16} className="mr-2 inline text-slate-500" />Objekte: {rows.length}</span>
+            <span><WalletCards size={16} className="mr-2 inline text-slate-500" />Buchungen: {appData.entries.length}</span>
+            <span><BarChart3 size={16} className="mr-2 inline text-slate-500" />Vermietungszeiträume: {portfolioRentals.length}</span>
+          </div>
+        </div>
+      </section>
+
+      {selectedRow ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedRow(null)}>
+          <aside className="ml-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Details zur Mietanpassung</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">Details zur Mietanpassung</h2>
+                <p className="mt-2 text-sm font-bold text-slate-600">Einheit: {selectedRow.object.label} | Mieter: {selectedRow.tenantName}</p>
               </div>
-              <p className="mt-3 text-sm font-bold leading-6 text-amber-900">
-                Wenn Sollmiete und Buchung auseinanderlaufen, prüfe zuerst Portfolio → Vermietungszeiträume und danach die Buchungskategorie. {MIETBESTANDTEIL_NK_CATEGORY} wird als Mietbestandteil mitgezählt.
+              <button type="button" onClick={() => setSelectedRow(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Details schließen">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <section className="rounded-[22px] border border-slate-200 bg-slate-50 p-5">
+                <h3 className="text-lg font-black text-slate-950">Aktuelle Anpassung</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Wirksam seit / ab</span>
+                    <strong className="mt-2 block text-base font-black text-slate-950">{formatDate(selectedRow.lastAdjustmentDate)}</strong>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Grund der Anpassung</span>
+                    <strong className="mt-2 block text-base font-black text-slate-950">{selectedRow.adjustmentReason}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[22px] border border-slate-200 bg-white p-5">
+                <h3 className="text-lg font-black text-slate-950">Mietentwicklung im Detail</h3>
+                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+                  <div className="grid grid-cols-4 gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    <span>Kostenart</span>
+                    <span>Alter Stand</span>
+                    <span>Neuer Stand</span>
+                    <span>Differenz</span>
+                  </div>
+                  {[
+                    ["Nettokaltmiete", selectedRow.previousNetRent, selectedRow.netRent],
+                    ["Nebenkosten", selectedRow.previousUtilitiesRent, selectedRow.utilitiesRent],
+                    ["Warmmiete", selectedRow.previousWarmRent, selectedRow.warmRent],
+                  ].map(([label, oldValue, newValue]) => (
+                    <div key={String(label)} className="grid grid-cols-4 gap-3 border-t border-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
+                      <span className="font-black text-slate-950">{label}</span>
+                      <span>{formatCurrency(Number(oldValue))}</span>
+                      <span>{formatCurrency(Number(newValue))}</span>
+                      <span className="text-emerald-700">{formatCurrency(Number(newValue) - Number(oldValue))}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-[22px] border border-slate-200 bg-white p-5">
+                <h3 className="text-lg font-black text-slate-950">Historie aller Mietanpassungen</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Lückenlose Dokumentation der bisherigen Erhöhungen und Begründungen für dieses Mietverhältnis.</p>
+                <div className="mt-4 grid gap-3">
+                  {(selectedRow.latestIncrease ? [selectedRow.latestIncrease] : allChanges.filter((change) => change.objectLabel === selectedRow.object.label).slice(0, 3)).map((change) => (
+                    <div key={change.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="grid gap-2 text-sm font-bold text-slate-700">
+                        <span><strong>Datum:</strong> {change.monthLabel}</span>
+                        <span><strong>Art:</strong> {change.source === "Buchungen" ? "Erhöhung aus Mietbuchung" : "Anpassung im Vermietungszeitraum"}</span>
+                        <span><strong>Änderung:</strong> Kaltmiete erhöht um {formatCurrency(change.delta)} (von {formatCurrency(change.previousAmount)} auf {formatCurrency(change.newAmount)})</span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+                        <span className="inline-flex items-center gap-2"><FileText size={14} /> Ankündigungsschreiben_Mietanpassung.pdf (Download-Link)</span>
+                        <span className="inline-flex items-center gap-2"><Mail size={14} /> Zustimmung_Mieter_E-Mail.pdf (Download-Link)</span>
+                        <span>Notiz des Vermieters: Zustimmung und Begründung bitte bei Bedarf ergänzen.</span>
+                      </div>
+                    </div>
+                  ))}
+                  {!selectedRow.latestIncrease && !allChanges.some((change) => change.objectLabel === selectedRow.object.label) ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                      Noch keine Mietanpassung für dieses Mietverhältnis erkannt.
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+            <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2">
+              <button type="button" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
+                Neue Mietanpassung planen
+              </button>
+              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm">
+                Schreiben für Mieter generieren
+              </button>
+              <p className="sm:col-span-2 text-xs font-bold leading-5 text-slate-500">
+                Rechtlicher Hinweis: Beachten Sie bei Erhöhungen auf die ortsübliche Vergleichsmiete die gesetzliche Kappungsgrenze sowie die Jahressperrfrist von 12 Monaten seit der letzten Anpassung.
               </p>
             </div>
-
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="grid gap-3">
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <Building2 size={18} className="text-slate-500" />
-                  <span className="text-sm font-black text-slate-700">Objekte: {rows.length}</span>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <WalletCards size={18} className="text-slate-500" />
-                  <span className="text-sm font-black text-slate-700">Buchungen: {appData.entries.length}</span>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <BarChart3 size={18} className="text-slate-500" />
-                  <span className="text-sm font-black text-slate-700">Vermietungszeiträume: {portfolioRentals.length}</span>
-                </div>
-              </div>
-            </div>
           </aside>
-        </section>
+        </div>
       ) : null}
     </div>
   );
