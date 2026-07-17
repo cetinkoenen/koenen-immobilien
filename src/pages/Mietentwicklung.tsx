@@ -77,6 +77,7 @@ type ManualRentAdjustment = {
   object_label: string;
   tenant_name: string | null;
   effective_date: string;
+  effective_end_date: string | null;
   reason: string;
   status: "active" | "planned" | "consent_open" | "check";
   old_cold_rent: number | null;
@@ -92,6 +93,7 @@ type ManualRentAdjustment = {
 
 type RentAdjustmentForm = {
   effectiveDate: string;
+  effectiveEndDate: string;
   reason: string;
   status: ManualRentAdjustment["status"];
   oldColdRent: string;
@@ -533,6 +535,7 @@ export default function Mietentwicklung() {
   const adjustmentFormRef = useRef<HTMLElement | null>(null);
   const [adjustmentForm, setAdjustmentForm] = useState<RentAdjustmentForm>({
     effectiveDate: toIso(new Date()),
+    effectiveEndDate: "",
     reason: "Anpassung an ortsübliche Vergleichsmiete",
     status: "planned",
     oldColdRent: "",
@@ -559,7 +562,7 @@ export default function Mietentwicklung() {
             .order("start_date", { ascending: true }),
           supabase
             .from("rent_adjustments")
-            .select("id,property_id,object_label,tenant_name,effective_date,reason,status,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,document_name,created_at")
+            .select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,reason,status,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,document_name,created_at")
             .eq("is_deleted", false)
             .order("effective_date", { ascending: false }),
         ]);
@@ -590,6 +593,7 @@ export default function Mietentwicklung() {
           object_label: row.object_label ?? "",
           tenant_name: row.tenant_name ?? null,
           effective_date: row.effective_date,
+          effective_end_date: row.effective_end_date ?? null,
           reason: row.reason,
           status: row.status,
           old_cold_rent: row.old_cold_rent == null ? null : Number(row.old_cold_rent),
@@ -788,6 +792,7 @@ export default function Mietentwicklung() {
     setEditingAdjustmentId(null);
     setAdjustmentForm({
       effectiveDate: toIso(new Date()),
+      effectiveEndDate: "",
       reason: "Anpassung an ortsübliche Vergleichsmiete",
       status: "planned",
       oldColdRent: formatMoneyInput(row.netRent),
@@ -807,6 +812,7 @@ export default function Mietentwicklung() {
     setEditingAdjustmentId(adjustment.id);
     setAdjustmentForm({
       effectiveDate: adjustment.effective_date,
+      effectiveEndDate: adjustment.effective_end_date ?? "",
       reason: adjustment.reason,
       status: adjustment.status,
       oldColdRent: formatMoneyInput(adjustment.old_cold_rent ?? 0),
@@ -826,6 +832,7 @@ export default function Mietentwicklung() {
     setEditingAdjustmentId(null);
     setAdjustmentForm({
       effectiveDate: `${change.sortKey}-01`,
+      effectiveEndDate: "",
       reason: change.source === "Buchungen" ? "Indexmiete" : "Anpassung an ortsübliche Vergleichsmiete",
       status: "check",
       oldColdRent: formatMoneyInput(change.previousAmount),
@@ -857,6 +864,7 @@ export default function Mietentwicklung() {
 
       const payload = {
         effective_date: adjustmentForm.effectiveDate,
+        effective_end_date: adjustmentForm.effectiveEndDate || null,
         reason: adjustmentForm.reason,
         status: adjustmentForm.status,
         old_cold_rent: oldCold,
@@ -896,6 +904,7 @@ export default function Mietentwicklung() {
   function generateTenantLetter(row: DevelopmentRow) {
     const newest = row.manualAdjustments[0];
     const effectiveDate = newest?.effective_date ?? adjustmentForm.effectiveDate;
+    const effectiveEndDate = newest?.effective_end_date ?? adjustmentForm.effectiveEndDate;
     const reason = newest?.reason ?? adjustmentForm.reason;
     const oldCold = newest?.old_cold_rent ?? parseMoneyInput(adjustmentForm.oldColdRent) ?? row.previousNetRent;
     const newCold = newest?.new_cold_rent ?? parseMoneyInput(adjustmentForm.newColdRent) ?? row.netRent;
@@ -910,6 +919,7 @@ export default function Mietentwicklung() {
       `Objekt / Einheit: ${row.object.label}`,
       `Mieter: ${row.tenantName}`,
       `Wirksam ab: ${formatDate(effectiveDate)}`,
+      effectiveEndDate ? `Gültig bis: ${formatDate(effectiveEndDate)}` : "Gültig bis: laufend / offen",
       `Grund der Anpassung: ${reason}`,
       "",
       "Vorher-Nachher-Vergleich",
@@ -1128,6 +1138,16 @@ export default function Mietentwicklung() {
                       />
                     </label>
                     <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                      Gültig bis
+                      <input
+                        type="date"
+                        className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                        value={adjustmentForm.effectiveEndDate}
+                        onChange={(event) => setAdjustmentForm((form) => ({ ...form, effectiveEndDate: event.target.value }))}
+                      />
+                      <span className="text-[11px] font-bold normal-case leading-4 tracking-normal text-slate-500">Leer lassen, wenn die Anpassung aktuell/laufend gilt.</span>
+                    </label>
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
                       Status
                       <select
                         className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
@@ -1265,7 +1285,10 @@ export default function Mietentwicklung() {
                         </button>
                       </div>
                       <div className="grid gap-2 text-sm font-bold text-slate-700">
-                        <span><strong>Datum:</strong> {formatDate(adjustment.effective_date)}</span>
+                        <span>
+                          <strong>Zeitraum:</strong> {formatDate(adjustment.effective_date)}
+                          {" "}bis {adjustment.effective_end_date ? formatDate(adjustment.effective_end_date) : "laufend / offen"}
+                        </span>
                         <span><strong>Art:</strong> {adjustment.reason}</span>
                         <span>
                           <strong>Änderung:</strong>{" "}
