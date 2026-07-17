@@ -139,6 +139,38 @@ async function resolveCanonicalPortfolioProperty(
   // 1) Direktfall: Route ist bereits portfolio_properties.id
   const direct = await fetchPortfolioPropertyById(safeRouteId);
   if (direct) {
+    if (!direct.core_property_id) {
+      const { data } = await supabase
+        .from("vw_property_loan_dashboard_portfolio_v2")
+        .select("property_id, portfolio_property_id, property_name")
+        .eq("portfolio_property_id", direct.id)
+        .limit(1)
+        .maybeSingle<PortfolioResolverRow>();
+
+      const resolvedCoreId = normalizeUuid(String(data?.property_id ?? "").trim());
+      if (resolvedCoreId) {
+        return {
+          ...direct,
+          name: direct.name ?? cleanDisplayName(data?.property_name ?? null, "Objektakte"),
+          core_property_id: resolvedCoreId,
+        };
+      }
+
+      const { data: propertyBySameId } = await supabase
+        .from("properties")
+        .select("id")
+        .eq("id", direct.id)
+        .maybeSingle();
+
+      const sameIdCoreId = normalizeUuid(String(propertyBySameId?.id ?? "").trim());
+      if (sameIdCoreId) {
+        return {
+          ...direct,
+          core_property_id: sameIdCoreId,
+        };
+      }
+    }
+
     return direct;
   }
 
