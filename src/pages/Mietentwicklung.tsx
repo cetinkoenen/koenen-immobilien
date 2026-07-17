@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Mail, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Mail, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -529,6 +529,7 @@ export default function Mietentwicklung() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [generatedLetter, setGeneratedLetter] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [adjustmentForm, setAdjustmentForm] = useState<RentAdjustmentForm>({
     effectiveDate: toIso(new Date()),
     reason: "Anpassung an ortsübliche Vergleichsmiete",
@@ -776,6 +777,7 @@ export default function Mietentwicklung() {
   function openAdjustmentPlanner(row: DevelopmentRow) {
     setActionMessage(null);
     setGeneratedLetter(null);
+    setEditingAdjustmentId(null);
     setAdjustmentForm({
       effectiveDate: toIso(new Date()),
       reason: "Anpassung an ortsübliche Vergleichsmiete",
@@ -787,6 +789,25 @@ export default function Mietentwicklung() {
       newOperatingCosts: formatMoneyInput(row.utilitiesRent),
       newTotalRent: formatMoneyInput(row.warmRent),
       note: "",
+    });
+    setShowAdjustmentForm(true);
+  }
+
+  function editManualAdjustment(adjustment: ManualRentAdjustment) {
+    setActionMessage(null);
+    setGeneratedLetter(null);
+    setEditingAdjustmentId(adjustment.id);
+    setAdjustmentForm({
+      effectiveDate: adjustment.effective_date,
+      reason: adjustment.reason,
+      status: adjustment.status,
+      oldColdRent: formatMoneyInput(adjustment.old_cold_rent ?? 0),
+      oldOperatingCosts: formatMoneyInput(adjustment.old_operating_costs ?? 0),
+      oldTotalRent: formatMoneyInput(adjustment.old_total_rent ?? 0),
+      newColdRent: formatMoneyInput(adjustment.new_cold_rent ?? 0),
+      newOperatingCosts: formatMoneyInput(adjustment.new_operating_costs ?? 0),
+      newTotalRent: formatMoneyInput(adjustment.new_total_rent ?? 0),
+      note: adjustment.note ?? "",
     });
     setShowAdjustmentForm(true);
   }
@@ -807,11 +828,7 @@ export default function Mietentwicklung() {
       const newNk = parseMoneyInput(adjustmentForm.newOperatingCosts);
       const newTotal = parseMoneyInput(adjustmentForm.newTotalRent) ?? money((newCold ?? 0) + (newNk ?? 0));
 
-      const { error } = await supabase.from("rent_adjustments").insert({
-        user_id: userId,
-        property_id: row.object.id,
-        object_label: row.object.label,
-        tenant_name: row.tenantName,
+      const payload = {
         effective_date: adjustmentForm.effectiveDate,
         reason: adjustmentForm.reason,
         status: adjustmentForm.status,
@@ -822,10 +839,23 @@ export default function Mietentwicklung() {
         new_operating_costs: newNk,
         new_total_rent: newTotal,
         note: adjustmentForm.note.trim() || null,
-      });
+      };
+      const { error } = editingAdjustmentId
+        ? await supabase
+          .from("rent_adjustments")
+          .update(payload)
+          .eq("id", editingAdjustmentId)
+        : await supabase.from("rent_adjustments").insert({
+          user_id: userId,
+          property_id: row.object.id,
+          object_label: row.object.label,
+          tenant_name: row.tenantName,
+          ...payload,
+        });
       if (error) throw error;
 
-      setActionMessage("Mietanpassung wurde gespeichert und in die Historie übernommen.");
+      setActionMessage(editingAdjustmentId ? "Mietanpassung wurde aktualisiert." : "Mietanpassung wurde gespeichert und in die Historie übernommen.");
+      setEditingAdjustmentId(null);
       setShowAdjustmentForm(false);
       setReloadVersion((version) => version + 1);
       window.dispatchEvent(new Event("koenen:rent-adjustments-changed"));
@@ -1053,7 +1083,9 @@ export default function Mietentwicklung() {
                 <section className="rounded-[22px] border border-blue-200 bg-blue-50 p-5">
                   <div className="flex items-center gap-2">
                     <Plus size={18} className="text-blue-700" />
-                    <h3 className="text-lg font-black text-slate-950">Neue oder alte Mietanpassung eintragen</h3>
+                    <h3 className="text-lg font-black text-slate-950">
+                      {editingAdjustmentId ? "Mietanpassung bearbeiten" : "Neue oder alte Mietanpassung eintragen"}
+                    </h3>
                   </div>
                   <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
                     Hier kannst du auch ältere Mietanpassungen nachtragen: alter Stand, neuer Stand und interne Notiz werden dauerhaft in der Historie gespeichert.
@@ -1090,6 +1122,7 @@ export default function Mietentwicklung() {
                       >
                         <option>Anpassung an ortsübliche Vergleichsmiete</option>
                         <option>Indexmiete</option>
+                        <option>Staffelmiete</option>
                         <option>Modernisierung</option>
                         <option>Nebenkostenanpassung</option>
                         <option>Sonstige Mietanpassung</option>
@@ -1146,11 +1179,14 @@ export default function Mietentwicklung() {
                       disabled={savingAdjustment}
                       className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm disabled:opacity-60"
                     >
-                      <Save size={16} /> {savingAdjustment ? "Speichern..." : "Mietanpassung speichern"}
+                      <Save size={16} /> {savingAdjustment ? "Speichern..." : editingAdjustmentId ? "Änderungen speichern" : "Mietanpassung speichern"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowAdjustmentForm(false)}
+                      onClick={() => {
+                        setEditingAdjustmentId(null);
+                        setShowAdjustmentForm(false);
+                      }}
                       className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm"
                     >
                       Abbrechen
@@ -1189,8 +1225,17 @@ export default function Mietentwicklung() {
                 <div className="mt-4 grid gap-3">
                   {selectedRow.manualAdjustments.map((adjustment) => (
                     <div key={adjustment.id} className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                      <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-blue-700 ring-1 ring-blue-200">
-                        Manuell eingetragen · {statusLabel(adjustment.status)}
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-blue-700 ring-1 ring-blue-200">
+                          Manuell eingetragen · {statusLabel(adjustment.status)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => editManualAdjustment(adjustment)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-800 shadow-sm"
+                        >
+                          <Pencil size={14} /> Bearbeiten
+                        </button>
                       </div>
                       <div className="grid gap-2 text-sm font-bold text-slate-700">
                         <span><strong>Datum:</strong> {formatDate(adjustment.effective_date)}</span>
