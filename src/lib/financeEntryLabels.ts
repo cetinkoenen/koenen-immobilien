@@ -1,3 +1,5 @@
+import { canonicalizeFinanceCategory, normalizeFinanceCategoryText } from "./financeCategories";
+
 export const MIETBESTANDTEIL_NK_CATEGORY = "Mietbestandteil-NK";
 
 type FinanceEntryLike = {
@@ -9,14 +11,7 @@ type FinanceEntryLike = {
 };
 
 function normalize(value: string | null | undefined): string {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ß", "ss")
-    .replace(/[ä]/g, "ae")
-    .replace(/[ö]/g, "oe")
-    .replace(/[ü]/g, "ue")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+  return normalizeFinanceCategoryText(value);
 }
 
 export function isHohenloherMietbestandteilNk(entry: FinanceEntryLike, objectLabel?: string | null): boolean {
@@ -38,5 +33,5 @@ export function isHohenloherMietbestandteilNk(entry: FinanceEntryLike, objectLab
 
 export function displayFinanceCategory(entry: FinanceEntryLike, objectLabel?: string | null): string {
   if (isHohenloherMietbestandteilNk(entry, objectLabel)) return MIETBESTANDTEIL_NK_CATEGORY;
-  return entry.category?.trim() || "Ohne Kategorie";
+  return canonicalizeFinanceCategory(entry.category, entry.entry_type === "income" || entry.entry_type === "expense" ? entry.entry_type : null) || "Ohne Kategorie";
 }

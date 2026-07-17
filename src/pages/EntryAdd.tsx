@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
+import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type DropdownRow = {
@@ -74,6 +75,7 @@ export default function EntryAdd() {
   const [bookingDate, setBookingDate] = useState<string>(() => toISODate(new Date()));
   const [amount, setAmount] = useState<string>("");
   const [category, setCategory] = useState<string>("");
+  const [customCategory, setCustomCategory] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [taxRelevant, setTaxRelevant] = useState<boolean>(true);
   const [nkRelevant, setNkRelevant] = useState<boolean>(false);
@@ -83,6 +85,11 @@ export default function EntryAdd() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const amountNumber = useMemo(() => parseNumberInput(amount), [amount]);
+  const categoryOptions = useMemo(() => getFinanceCategoryOptions(kind), [kind]);
+  const resolvedCategory = useMemo(() => {
+    const selected = category === "__NEW__" ? customCategory : category;
+    return canonicalizeFinanceCategory(selected, kind);
+  }, [category, customCategory, kind]);
 
   useEffect(() => {
     let alive = true;
@@ -143,6 +150,7 @@ export default function EntryAdd() {
   function resetForm() {
     setAmount("");
     setCategory("");
+    setCustomCategory("");
     setNote("");
     setTaxRelevant(true);
     setNkRelevant(false);
@@ -167,6 +175,11 @@ export default function EntryAdd() {
       return;
     }
 
+    if (!resolvedCategory) {
+      setMsg("❌ Bitte eine Kategorie auswählen oder eine neue Kategorie eintragen.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -176,7 +189,7 @@ export default function EntryAdd() {
         entry_type: kind,
         booking_date: bookingDate,
         amount: amountNumber,
-        category: category.trim() || null,
+        category: resolvedCategory || null,
         note: note.trim() || null,
         tax_relevant: taxRelevant,
         nk_relevant: nkRelevant,
@@ -193,6 +206,7 @@ export default function EntryAdd() {
       setMsg("✅ Buchung erfolgreich gespeichert. Mieteingang und Auswertungen werden aktualisiert.");
       setAmount("");
       setCategory("");
+      setCustomCategory("");
       setNote("");
       setTaxRelevant(true);
       setNkRelevant(false);
@@ -343,13 +357,32 @@ export default function EntryAdd() {
 
           <label style={fieldLabelStyle()}>
             Kategorie
-            <input
+            <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="z. B. Miete / Strom / Reparatur"
               style={inputStyle()}
-            />
+            >
+              <option value="">Kategorie auswählen</option>
+              {categoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value="__NEW__">Neue Kategorie…</option>
+            </select>
           </label>
+
+          {category === "__NEW__" && (
+            <label style={fieldLabelStyle()}>
+              Neue Kategorie
+              <input
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="Neue Kategorie eingeben"
+                style={inputStyle()}
+              />
+            </label>
+          )}
 
           <label style={fieldLabelStyle()}>
             Notiz

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
+import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { displayFinanceCategory } from "../lib/financeEntryLabels";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
@@ -433,12 +434,15 @@ export default function Monate() {
   }, [objektCode, year, month, periodMode]);
 
   const categories = useMemo(() => {
+    const rowCategories = rows
+      .map((r) => displayFinanceCategory(r, objectLabelMap.get(r.objekt_code ?? "") ?? r.objekt_code))
+      .filter(Boolean);
+
     return Array.from(
-      new Set(
-        rows
-          .map((r) => displayFinanceCategory(r, objectLabelMap.get(r.objekt_code ?? "") ?? r.objekt_code))
-          .filter(Boolean)
-      )
+      new Set([
+        ...getFinanceCategoryOptions("income", rowCategories),
+        ...getFinanceCategoryOptions("expense", rowCategories),
+      ])
     ).sort((a, b) => a.localeCompare(b, "de"));
   }, [rows, objectLabelMap]);
 
@@ -791,10 +795,10 @@ export default function Monate() {
 
     const resolvedCategory =
       editCategoryMode === "new"
-        ? editCategoryCustom.trim()
+        ? canonicalizeFinanceCategory(editCategoryCustom.trim(), editType)
         : editCategorySelect === "Ohne Kategorie"
         ? ""
-        : editCategorySelect.trim();
+        : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
 
     setEditSaving(true);
 

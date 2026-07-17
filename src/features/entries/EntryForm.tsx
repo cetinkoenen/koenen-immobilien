@@ -1,6 +1,7 @@
 // src/features/entries/EntryForm.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../../lib/financeCategories";
 import { emitFinanceEntryChanged, useAppData } from "../../state/AppDataContext";
 
 type EntryType = "income" | "expense";
@@ -92,7 +93,9 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
         return;
       }
 
-      const cats = (res.data ?? []).map((r: any) => (r.category ?? "").trim()).filter(Boolean);
+      const cats = (res.data ?? [])
+        .map((r: any) => canonicalizeFinanceCategory((r.category ?? "").trim()))
+        .filter(Boolean);
       setCategoryOptions(Array.from(new Set(cats)));
     }
 
@@ -107,6 +110,8 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
     // Fallback (falls objects noch lädt)
     return objectId ? [{ id: objectId, code: "Objekt", street: null }] : [];
   }, [objects, objectId]);
+
+  const mergedCategoryOptions = useMemo(() => getFinanceCategoryOptions(entryType, categoryOptions), [entryType, categoryOptions]);
 
   const validate = () => {
     if (!objectId) return "Bitte Objekt wählen.";
@@ -133,13 +138,15 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
 
     setLoading(true);
 
+    const resolvedCategory = canonicalizeFinanceCategory(category.trim(), entryType);
+
     const { error } = await supabase.from("finance_entry").insert({
       object_id: objectId,                // ✅ neu (richtig)
       objekt_code: objektCodeBackup,      // ✅ optional (für Übergang/Debug)
       booking_date: bookingDate,
       entry_type: entryType,
       amount: Number(amount),
-      category: category.trim(),
+      category: resolvedCategory,
     });
 
     setLoading(false);
@@ -152,7 +159,7 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
     setAmount("");
     setSuccess("Gespeichert ✅");
 
-    const cat = category.trim();
+    const cat = canonicalizeFinanceCategory(category.trim(), entryType);
     if (cat && !categoryOptions.includes(cat)) {
       setCategoryOptions((prev) => Array.from(new Set([...prev, cat])).sort());
     }
@@ -216,7 +223,7 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
         {useCategoryDropdown ? (
           <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={loading}>
             <option value="">— Kategorie wählen —</option>
-            {categoryOptions.map((c) => (
+            {mergedCategoryOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
