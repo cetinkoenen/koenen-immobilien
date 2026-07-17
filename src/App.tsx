@@ -1720,17 +1720,17 @@ function TaskMonthCalendar({
   ];
 
   return (
-    <article className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#1f667a] px-5 py-4 text-white">
+    <article className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 rounded-t-[22px] border-b border-slate-100 bg-[#1f667a] px-4 py-3 text-white">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/70">Kalender</p>
-          <h3 className="mt-1 text-xl font-black capitalize">{monthLabel}</h3>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Kalender</p>
+          <h3 className="mt-0.5 text-base font-black capitalize">{monthLabel}</h3>
         </div>
-        <CalendarCheck size={24} />
+        <CalendarCheck size={19} />
       </div>
-      <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-center text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+      <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-center text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
         {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => (
-          <div key={day} className="px-2 py-3">{day}</div>
+          <div key={day} className="px-1 py-2">{day}</div>
         ))}
       </div>
       <div className="grid grid-cols-7">
@@ -1738,37 +1738,49 @@ function TaskMonthCalendar({
           const isToday = cell.iso === todayIso;
           const hasOverdue = cell.tasks.some((task) => task.dueDate < todayIso && task.status !== "Erledigt");
           return (
-            <div key={cell.key} className={["min-h-[92px] border-b border-r border-slate-100 p-2 last:border-r-0", !cell.day ? "bg-slate-50/60" : "bg-white"].join(" ")}>
+            <div key={cell.key} className={["relative min-h-[50px] border-b border-r border-slate-100 p-1.5 last:border-r-0", !cell.day ? "bg-slate-50/60" : "bg-white"].join(" ")}>
               {cell.day ? (
                 <>
                   <div className={[
-                    "mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-black",
+                    "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black",
                     isToday ? "bg-[#1f667a] text-white" : hasOverdue ? "bg-rose-100 text-rose-800" : "text-slate-600",
                   ].join(" ")}>
                     {cell.day}
                   </div>
-                  <div className="space-y-1">
-                    {cell.tasks.slice(0, 2).map((task) => (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {cell.tasks.slice(0, 3).map((task) => {
+                      const isOverdue = task.dueDate < todayIso && task.status !== "Erledigt";
+                      const markerClass = task.status === "Erledigt"
+                        ? "bg-emerald-500 ring-emerald-100"
+                        : isOverdue
+                          ? "bg-rose-500 ring-rose-100"
+                          : task.priority === "Hoch"
+                            ? "bg-amber-500 ring-amber-100"
+                            : "bg-blue-500 ring-blue-100";
+                      return (
                       <button
                         key={task.id}
                         type="button"
                         onClick={() => onSelectTask(task)}
                         className={[
-                          "block w-full rounded-lg px-2 py-1 text-left text-[11px] font-black leading-4",
-                          task.status === "Erledigt"
-                            ? "bg-emerald-50 text-emerald-800"
-                            : task.dueDate < todayIso
-                              ? "bg-rose-50 text-rose-800"
-                              : task.priority === "Hoch"
-                                ? "bg-amber-50 text-amber-800"
-                                : "bg-blue-50 text-blue-800",
+                          "group/task relative h-3.5 w-3.5 rounded-full ring-2 transition hover:scale-110 focus-visible:outline-none focus-visible:ring-4",
+                          markerClass,
                         ].join(" ")}
                         title={task.title}
                       >
-                        {task.title}
+                        <span className="sr-only">{task.title}</span>
+                        <span className="pointer-events-none absolute left-1/2 top-5 z-50 hidden w-72 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left text-sm leading-5 text-slate-700 shadow-2xl group-hover/task:block group-focus-visible/task:block">
+                          <span className="block text-base font-black text-slate-950">{task.title}</span>
+                          <span className="mt-1 block text-xs font-bold text-slate-500">{task.objectLabel}</span>
+                          <span className="mt-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                            {new Date(`${task.dueDate}T00:00:00`).toLocaleDateString("de-DE")} · {task.status}{isOverdue ? " · überfällig" : ""}
+                          </span>
+                          {task.note ? <span className="mt-2 block text-sm font-semibold text-slate-700">{task.note}</span> : null}
+                        </span>
                       </button>
-                    ))}
-                    {cell.tasks.length > 2 ? <div className="text-[11px] font-black text-slate-500">+{cell.tasks.length - 2} weitere</div> : null}
+                      );
+                    })}
+                    {cell.tasks.length > 3 ? <div className="text-[10px] font-black leading-4 text-slate-500">+{cell.tasks.length - 3}</div> : null}
                   </div>
                 </>
               ) : null}
