@@ -812,6 +812,25 @@ export default function Mietentwicklung() {
     setShowAdjustmentForm(true);
   }
 
+  function editDetectedAdjustment(change: RentChange) {
+    setActionMessage(null);
+    setGeneratedLetter(null);
+    setEditingAdjustmentId(null);
+    setAdjustmentForm({
+      effectiveDate: `${change.sortKey}-01`,
+      reason: change.source === "Buchungen" ? "Indexmiete" : "Anpassung an ortsübliche Vergleichsmiete",
+      status: "check",
+      oldColdRent: formatMoneyInput(change.previousAmount),
+      oldOperatingCosts: "0,00",
+      oldTotalRent: formatMoneyInput(change.previousAmount),
+      newColdRent: formatMoneyInput(change.newAmount),
+      newOperatingCosts: "0,00",
+      newTotalRent: formatMoneyInput(change.newAmount),
+      note: "Aus automatisch erkannter Historie übernommen. Bitte Begründung, Notiz und Beträge prüfen.",
+    });
+    setShowAdjustmentForm(true);
+  }
+
   async function saveManualAdjustment(row: DevelopmentRow) {
     setSavingAdjustment(true);
     setActionMessage(null);
@@ -1259,6 +1278,18 @@ export default function Mietentwicklung() {
                   ))}
                   {(selectedRow.latestIncrease ? [selectedRow.latestIncrease] : allChanges.filter((change) => change.objectLabel === selectedRow.object.label).slice(0, 3)).map((change) => (
                     <div key={change.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-slate-600 ring-1 ring-slate-200">
+                          Automatisch erkannt
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => editDetectedAdjustment(change)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-800 shadow-sm"
+                        >
+                          <Pencil size={14} /> Bearbeiten
+                        </button>
+                      </div>
                       <div className="grid gap-2 text-sm font-bold text-slate-700">
                         <span><strong>Datum:</strong> {change.monthLabel}</span>
                         <span><strong>Art:</strong> {change.source === "Buchungen" ? "Erhöhung aus Mietbuchung" : "Anpassung im Vermietungszeitraum"}</span>
