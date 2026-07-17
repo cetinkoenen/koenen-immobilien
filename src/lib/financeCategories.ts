@@ -7,69 +7,74 @@ export type FinanceCategoryOption = {
 
 export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Miete", type: "income" },
+  { value: "Miete Garage", type: "income" },
+  { value: "Kaution", type: "both" },
   { value: "Mietbestandteil-NK", type: "income" },
-  { value: "Nebenkostenvorauszahlung", type: "income" },
-  { value: "Kaution erhalten", type: "income" },
-  { value: "Erstattung / Rückzahlung", type: "income" },
-  { value: "Sonstige Einnahmen", type: "income" },
 
-  { value: "Hausgeld / WEG", type: "expense" },
-  { value: "Instandhaltung / Reparatur", type: "expense" },
-  { value: "Modernisierung / Sanierung", type: "expense" },
+  { value: "Abfallgebühr", type: "expense" },
+  { value: "Allgemein", type: "both" },
   { value: "Verwaltungskosten", type: "expense" },
-  { value: "Grundsteuer", type: "expense" },
+  { value: "Fahrtkosten", type: "expense" },
+  { value: "Kontoführungsgebühr", type: "expense" },
+  { value: "Kreditrate", type: "expense" },
+  { value: "Schonsteinfeger", type: "expense" },
+  { value: "Software", type: "expense" },
+  { value: "Steuer", type: "expense" },
+  { value: "Reparatur", type: "expense" },
   { value: "Versicherung", type: "expense" },
-  { value: "Wasser / Abwasser", type: "expense" },
-  { value: "Heizung / Energie", type: "expense" },
-  { value: "Strom Allgemein", type: "expense" },
-  { value: "Müllgebühren", type: "expense" },
-  { value: "Darlehenszinsen", type: "expense" },
-  { value: "Darlehen Tilgung", type: "expense" },
-  { value: "Bankgebühren", type: "expense" },
-  { value: "Steuerberatung", type: "expense" },
-  { value: "Kaution zurückgezahlt", type: "expense" },
-  { value: "Sonstige Ausgaben", type: "expense" },
+  { value: "Wartung", type: "expense" },
 ];
 
 const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
-  ["nk", "Nebenkostenvorauszahlung"],
-  ["nebenkosten", "Nebenkostenvorauszahlung"],
-  ["betriebskosten", "Nebenkostenvorauszahlung"],
+  ["nebenkosten", "Mietbestandteil-NK"],
+  ["betriebskosten", "Mietbestandteil-NK"],
   ["mietbestandteil nk", "Mietbestandteil-NK"],
-  ["hausverwaltung", "Hausgeld / WEG"],
-  ["hausgeld", "Hausgeld / WEG"],
-  ["weg", "Hausgeld / WEG"],
-  ["weg hausgeld", "Hausgeld / WEG"],
+  ["hausverwaltung", "Verwaltungskosten"],
+  ["hausgeld", "Verwaltungskosten"],
+  ["weg", "Verwaltungskosten"],
+  ["weg hausgeld", "Verwaltungskosten"],
   ["verwaltung", "Verwaltungskosten"],
   ["verwaltungskosten", "Verwaltungskosten"],
-  ["reparatur", "Instandhaltung / Reparatur"],
-  ["handwerker", "Instandhaltung / Reparatur"],
-  ["instandhaltung", "Instandhaltung / Reparatur"],
-  ["sanierung", "Modernisierung / Sanierung"],
-  ["modernisierung", "Modernisierung / Sanierung"],
-  ["grundsteuer", "Grundsteuer"],
+  ["reparatur", "Reparatur"],
+  ["handwerker", "Reparatur"],
+  ["instandhaltung", "Reparatur"],
+  ["sanierung", "Reparatur"],
+  ["modernisierung", "Reparatur"],
   ["versicherung", "Versicherung"],
-  ["wasser", "Wasser / Abwasser"],
-  ["abwasser", "Wasser / Abwasser"],
-  ["kanal", "Wasser / Abwasser"],
-  ["heizung", "Heizung / Energie"],
-  ["energie", "Heizung / Energie"],
-  ["strom", "Strom Allgemein"],
-  ["muell", "Müllgebühren"],
-  ["müll", "Müllgebühren"],
-  ["darlehenszinsen", "Darlehenszinsen"],
-  ["zinsen", "Darlehenszinsen"],
-  ["tilgung", "Darlehen Tilgung"],
-  ["bank", "Bankgebühren"],
-  ["bankgebuehren", "Bankgebühren"],
-  ["bankgebühren", "Bankgebühren"],
-  ["steuerberater", "Steuerberatung"],
-  ["steuerberatung", "Steuerberatung"],
-  ["kaution", "Kaution erhalten"],
+  ["wartung", "Wartung"],
+  ["abfall", "Abfallgebühr"],
+  ["abfallgebuehr", "Abfallgebühr"],
+  ["abfallgebühr", "Abfallgebühr"],
+  ["muell", "Abfallgebühr"],
+  ["müll", "Abfallgebühr"],
+  ["müllgebühren", "Abfallgebühr"],
+  ["kontofuehrungsgebuehr", "Kontoführungsgebühr"],
+  ["kontoführungsgebühr", "Kontoführungsgebühr"],
+  ["kontofuehrung", "Kontoführungsgebühr"],
+  ["kontoführung", "Kontoführungsgebühr"],
+  ["bankgebuehren", "Kontoführungsgebühr"],
+  ["bankgebühren", "Kontoführungsgebühr"],
+  ["monatsrate", "Kreditrate"],
+  ["kreditrate", "Kreditrate"],
+  ["darlehensrate", "Kreditrate"],
+  ["darlehen", "Kreditrate"],
+  ["tilgung", "Kreditrate"],
+  ["schonsteinfeger", "Schonsteinfeger"],
+  ["schornsteinfeger", "Schonsteinfeger"],
+  ["software", "Software"],
+  ["steuer", "Steuer"],
+  ["steuerberater", "Steuer"],
+  ["steuerberatung", "Steuer"],
+  ["fahrtkosten", "Fahrtkosten"],
+  ["fahrt", "Fahrtkosten"],
+  ["kaution", "Kaution"],
   ["miete", "Miete"],
   ["kaltmiete", "Miete"],
   ["warmmiete", "Miete"],
-  ["garage", "Miete"],
+  ["miete garage", "Miete Garage"],
+  ["garage", "Miete Garage"],
+  ["stellplatz", "Miete Garage"],
+  ["allgemein", "Allgemein"],
 ];
 
 export function normalizeFinanceCategoryText(value: string | null | undefined): string {
@@ -83,16 +88,13 @@ export function normalizeFinanceCategoryText(value: string | null | undefined): 
     .trim();
 }
 
-export function canonicalizeFinanceCategory(value: string | null | undefined, entryType?: FinanceEntryType | null): string {
+export function canonicalizeFinanceCategory(value: string | null | undefined, _entryType?: FinanceEntryType | null): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
 
   const normalized = normalizeFinanceCategoryText(raw);
   const exactOption = FINANCE_CATEGORY_OPTIONS.find((option) => normalizeFinanceCategoryText(option.value) === normalized);
   if (exactOption) return exactOption.value;
-
-  if (normalized === "kaution" && entryType === "expense") return "Kaution zurückgezahlt";
-  if (normalized === "kaution" && entryType === "income") return "Kaution erhalten";
 
   const alias = CATEGORY_ALIAS_PAIRS.find(([source]) => normalized === normalizeFinanceCategoryText(source));
   return alias?.[1] ?? raw;
