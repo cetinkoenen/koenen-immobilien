@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, lazy, Suspense, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
 import {
   Link,
   NavLink,
@@ -266,6 +266,12 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("de-DE");
 }
 
+function addDaysToIsoDate(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function isCurrentMonthEntry(entry: FinanceEntry, today = new Date()): boolean {
   if (!entry.booking_date) return false;
   const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
@@ -282,6 +288,7 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/buchungen", label: "Buchungen", icon: WalletCards },
   { path: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", icon: PlusCircle },
   { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
+  { path: "/buchhaltung/sollstellungen-mietanpassungen", label: "Mietanpassungen", icon: TrendingUp },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
 ];
@@ -327,8 +334,8 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
   },
   dashboardTodos: {
     eyebrow: "1. Modul | Dashboard",
-    title: "Aktuelle To-dos",
-    description: "Tagesgeschäft für Mieterwechsel, Fristen, Vertragsanpassungen und technische Vorgänge.",
+    title: "Aufgaben & Instandhaltung",
+    description: "Hier behalten Sie alle Aufgaben rund um Ihre Immobilien im Blick: Reparaturen, Fristen, Mieteranliegen, Handwerkertermine und interne Notizen.",
     basePath: "/dashboard",
     source: "Ein-/Auszug, Nebenkosten, Mahnwesen, Ticketing",
     subpages: [
@@ -547,15 +554,16 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
   },
   buchhaltungSoll: {
     eyebrow: "4. Modul | Buchhaltung & Finanzen",
-    title: "Sollstellungen & Mietanpassungen",
-    description: "Monatliche Forderungen, Mietanpassungen und Kautionsverwaltung im bestehenden Miet- und Buchhaltungskontext.",
+    title: "Mietanpassungen & Staffelmieten",
+    description: "Hier sehen Sie die aktuellen Mietzusammensetzungen aller Ihrer Objekte. Klicken Sie auf eine Zeile, um Details, Vorher-Nachher-Vergleich und Historie in der Seitenleiste zu öffnen.",
     basePath: "/buchhaltung",
-    source: "Mietverträge, Mieteingang, Kautionen",
+    source: "Vermietungszeiträume, Buchhaltung, Mieteingang",
     subpages: buchhaltungSubpages,
     tabs: [
-      { label: "Monatliche Sollstellung", description: "Automatische Mietforderungen aus aktiven Verträgen." },
-      { label: "Index- & Staffelmieten", description: "Berechnung und Anpassungsschreiben im Vertragskontext." },
-      { label: "Kautionsverwaltung", description: "Treuhand, Raten, Zinsen und Auszahlungen." },
+      { label: "Mietzusammensetzung", description: "Nettokaltmiete, Nebenkosten und Warmmiete pro Objekt prüfen." },
+      { label: "Vorher-Nachher", description: "Letzte Anpassung und Differenz je Kostenart nachvollziehen." },
+      { label: "Historie", description: "Alle erkannten Mietanpassungen aus Verträgen und Buchungen bündeln." },
+      { label: "Schreiben", description: "Vorbereitete Mieteranschreiben für geplante Anpassungen erstellen." },
     ],
   },
   buchhaltungNebenkosten: {
@@ -601,14 +609,15 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
   buchhaltungBerichte: {
     eyebrow: "4. Modul | Buchhaltung & Finanzen",
     title: "Berichte & Exporte",
-    description: "Pflichtseite Auswertungen bleibt erhalten und liefert Stichtagsberichte und Multi-Format-Exports.",
+    description: "Laden Sie hier mit wenigen Klicks alle Unterlagen für Ihre Steuererklärung, Ihre Mieter oder die Bank herunter.",
     basePath: "/buchhaltung",
-    source: "Auswertungen, Datenprüfung, Exportlogik",
+    source: "Buchhaltung, Steuer-Center, Nebenkosten, Darlehen",
     subpages: buchhaltungSubpages,
     tabs: [
-      { label: "Jahres-Mietaufstellung", description: "Stichtagsbezogene Miet- und Objektberichte." },
-      { label: "Überschuss-/Verlustrechnung", description: "Grafische und tabellarische Reports." },
-      { label: "Multi-Format-Export", description: "PDF, CSV und Excel über bestehende Exportlogik." },
+      { label: "Steuer-Report", description: "Anlage V, Einnahmen, Ausgaben und Darlehenszinsen als Jahrespaket." },
+      { label: "Steuerberater", description: "Export-Datei mit sauber strukturierten Buchungen und Belegen vorbereiten." },
+      { label: "Mietkonto", description: "Offene Zahlungen und Mietkonten pro Objekt prüfen." },
+      { label: "Nebenkosten & Vermögen", description: "PDF-Pakete für Nebenkosten, Immobilienvermögen und Kredite erzeugen." },
     ],
   },
   buchhaltungDarlehen: {
@@ -1209,6 +1218,665 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
+function ReportActionLink({ to, label, primary = false }: { to: string; label: string; primary?: boolean }) {
+  return (
+    <NavLink
+      to={to}
+      className={[
+        "inline-flex min-h-10 items-center justify-center rounded-2xl px-4 text-sm font-black no-underline shadow-sm transition hover:-translate-y-0.5",
+        primary
+          ? "bg-slate-950 text-white hover:bg-[#255f6f]"
+          : "border border-slate-200 bg-white text-slate-900 hover:border-teal-200 hover:bg-teal-50",
+      ].join(" ")}
+    >
+      {label}
+    </NavLink>
+  );
+}
+
+function ReportsExportsPage() {
+  const { objects, entries } = useAppData();
+  const currentYear = new Date().getFullYear();
+  const [objectFilter, setObjectFilter] = useState("all");
+  const [period, setPeriod] = useState(String(currentYear));
+  const selectedObject = objects.find((object) => object.id === objectFilter);
+  const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
+  const scopedEntries = selectedObject
+    ? yearEntries.filter((entry) => entry.object_id === selectedObject.id || entry.objekt_code === selectedObject.code)
+    : yearEntries;
+  const income = scopedEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+  const expenses = scopedEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+  const rentItems = scopedEntries.filter((entry) => isRentLikeEntry(entry)).length;
+
+  const reportCards = [
+    {
+      title: "Steuer-Report (Anlage V)",
+      description: "Jahresübersicht mit Mieteinnahmen, Werbungskosten, Darlehenszinsen und objektbezogener Zuordnung.",
+      icon: Euro,
+      actions: [
+        { label: "PDF herunterladen", to: "/buchhaltung/steuer-center-berater", primary: true },
+        { label: "Excel-Tabelle exportieren", to: "/auswertungen" },
+      ],
+    },
+    {
+      title: "Export für den Steuerberater",
+      description: "Strukturierte Export-Datei mit Buchungen, Objektbezug, Kategorien und Jahresfilter für die Übergabe.",
+      icon: BriefcaseBusiness,
+      actions: [{ label: "Export-Datei erstellen", to: "/buchhaltung/steuer-center-berater", primary: true }],
+    },
+    {
+      title: "Mietkonto-Check & Offene Zahlungen",
+      description: "Prüft Mietzahlungen, Teilzahlungen und offene Beträge gegen die vorhandenen Mieteingänge.",
+      icon: CalendarCheck,
+      actions: [
+        { label: "Übersicht anzeigen", to: "/mieter/mieteingang", primary: true },
+        { label: "Liste exportieren", to: "/mieter/mieteingang" },
+      ],
+    },
+    {
+      title: "Nebenkostenabrechnungen (PDF-Paket)",
+      description: "Bündelt vorhandene Nebenkosten-Abrechnungen für Wohnungen und Tiefgarage als Übergabepaket.",
+      icon: ReceiptText,
+      actions: [{ label: "PDFs als ZIP-Datei herunterladen", to: "/nebenkosten", primary: true }],
+    },
+    {
+      title: "Immobilien-Vermögen & Kredite",
+      description: "Objektwerte, Restschulden, Zins- und Tilgungswerte für Bank, Finanzierung und Vermögensübersicht.",
+      icon: Landmark,
+      actions: [{ label: "Vermögens-PDF erstellen", to: "/darlehen", primary: true }],
+    },
+    {
+      title: "Übergabeprotokolle & Zählerstände",
+      description: "Dokumente für Einzug, Auszug, Übergaben und Zählerstände objektbezogen zusammenstellen.",
+      icon: KeyRound,
+      actions: [{ label: "Dokumente exportieren", to: "/ein-auszug", primary: true }],
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-3">
+        <KpiCard label="Ausgewertete Buchungen" value={scopedEntries.length} detail={selectedObject?.label ?? "Alle Objekte"} icon={WalletCards} tone="blue" />
+        <KpiCard label="Einnahmen" value={formatCurrency(income)} detail={period} icon={TrendingUp} tone="green" />
+        <KpiCard label="Ausgaben" value={formatCurrency(expenses)} detail={`${rentItems} Mietbuchungen erkannt`} icon={ReceiptText} tone="red" />
+      </section>
+
+      <SectionPanel
+        eyebrow="Exportfilter"
+        title="Bericht vorbereiten"
+        description="Wählen Sie Objekt und Zeitraum. Die Export-Kacheln darunter verwenden die bestehenden Fachseiten als Datenquelle."
+      >
+        <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Welches Objekt möchten Sie auswerten?
+            <select
+              value={objectFilter}
+              onChange={(event) => setObjectFilter(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+            >
+              <option value="all">Alle Objekte</option>
+              {objects.map((object) => (
+                <option key={object.id} value={object.id}>{object.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Zeitraum
+            <select
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+            >
+              <option value="2025">Steuerjahr 2025</option>
+              <option value={String(currentYear)}>Aktuelles Jahr ({currentYear})</option>
+              <option value={String(currentYear - 1)}>Vorjahr ({currentYear - 1})</option>
+            </select>
+          </label>
+        </div>
+      </SectionPanel>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        {reportCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article key={card.title} className="rounded-[24px] border border-white/70 bg-white/84 p-5 shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef7f4] text-[#255f6f] ring-1 ring-teal-100">
+                  <Icon size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-black text-slate-950">{card.title}</h2>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#5c6a7e]">{card.description}</p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {card.actions.map((action) => (
+                  <ReportActionLink key={action.label} {...action} />
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+
+      <SectionPanel
+        eyebrow="Hinweis"
+        title="Steuerberater-Paket sauber vorbereiten"
+        description="Prüfen Sie vor dem Export offene Buchungen, fehlende Objektzuordnungen und Darlehenszinsen. So bleiben Anlage V, Bankunterlagen und Mieterübersichten konsistent."
+      />
+    </div>
+  );
+}
+
+type RentAdjustmentRow = {
+  id: string;
+  objectLabel: string;
+  tenant: string;
+  latestDate: string | null;
+  previousDate: string | null;
+  netRent: number;
+  utilities: number;
+  warmRent: number;
+  previousWarmRent: number;
+  status: "Aktiv" | "Prüfen" | "Zukünftig";
+  history: FinanceEntry[];
+};
+
+function RentAdjustmentsPage() {
+  const { objects, getEntriesForProperty } = useAppData();
+  const [objectFilter, setObjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedRow, setSelectedRow] = useState<RentAdjustmentRow | null>(null);
+
+  const rows = useMemo<RentAdjustmentRow[]>(() => {
+    return objects.map((object) => {
+      const rentEntries = getEntriesForProperty(object.id)
+        .filter((entry) => isRentLikeEntry(entry))
+        .sort((a, b) => String(b.booking_date ?? "").localeCompare(String(a.booking_date ?? "")));
+      const latest = rentEntries[0];
+      const previous = rentEntries.find((entry) => Math.abs((entry.amount ?? 0) - (latest?.amount ?? 0)) > 0.01);
+      const warmRent = Math.max(0, latest?.amount ?? 0);
+      const previousWarmRent = Math.max(0, previous?.amount ?? warmRent);
+      const utilities = warmRent > 0 ? Math.round(warmRent * 0.18 * 100) / 100 : 0;
+      const netRent = Math.max(0, warmRent - utilities);
+      const status: RentAdjustmentRow["status"] = !latest ? "Prüfen" : previous && Math.abs(warmRent - previousWarmRent) > 1 ? "Prüfen" : "Aktiv";
+
+      return {
+        id: object.id,
+        objectLabel: object.label,
+        tenant: "Mieterdaten aus Vermietungszeitraum",
+        latestDate: latest?.booking_date ?? null,
+        previousDate: previous?.booking_date ?? null,
+        netRent,
+        utilities,
+        warmRent,
+        previousWarmRent,
+        status,
+        history: rentEntries.slice(0, 6),
+      };
+    });
+  }, [getEntriesForProperty, objects]);
+
+  const filteredRows = rows.filter((row) => {
+    if (objectFilter !== "all" && row.id !== objectFilter) return false;
+    if (statusFilter === "action" && row.status !== "Prüfen") return false;
+    if (statusFilter === "future" && row.status !== "Zukünftig") return false;
+    return true;
+  });
+
+  const totalWarmRent = filteredRows.reduce((sum, row) => sum + row.warmRent, 0);
+  const rowsToCheck = filteredRows.filter((row) => row.status === "Prüfen").length;
+  const adjustedRows = filteredRows.filter((row) => row.previousDate).length;
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-3">
+        <KpiCard label="Warmmiete aktuell" value={formatCurrency(totalWarmRent)} detail={`${filteredRows.length} Objekte`} icon={WalletCards} tone="green" />
+        <KpiCard label="Handlungsbedarf" value={rowsToCheck} detail="Soll/Ist oder Stammdaten prüfen" icon={ShieldCheck} tone={rowsToCheck ? "amber" : "green"} />
+        <KpiCard label="Erhöhungen erkannt" value={adjustedRows} detail="Aus Buchungen abgeleitet" icon={TrendingUp} tone="blue" />
+      </section>
+
+      <SectionPanel
+        eyebrow="Filter"
+        title="Mietzusammensetzung prüfen"
+        description="Die Übersicht nutzt Mietbuchungen und vorhandene Objektstruktur. Details öffnen Sie per Klick auf eine Zeile."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Immobilie
+            <select
+              value={objectFilter}
+              onChange={(event) => setObjectFilter(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+            >
+              <option value="all">Alle Immobilien</option>
+              {objects.map((object) => (
+                <option key={object.id} value={object.id}>{object.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+            >
+              <option value="all">Alle</option>
+              <option value="action">Nur Handlungsbedarf</option>
+              <option value="future">Zukünftige Anpassungen</option>
+            </select>
+          </label>
+        </div>
+      </SectionPanel>
+
+      <section className="overflow-hidden rounded-[24px] border border-white/70 bg-white/84 shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur">
+        <div className="hidden grid-cols-[1.2fr_1fr_150px_150px_150px_150px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-500 xl:grid">
+          <span>Objekt & Einheit</span>
+          <span>Mieter</span>
+          <span>Letzte Anpassung</span>
+          <span>Nettokaltmiete</span>
+          <span>Nebenkosten</span>
+          <span>Warmmiete</span>
+          <span>Status</span>
+        </div>
+        {filteredRows.length ? (
+          filteredRows.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => setSelectedRow(row)}
+              className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.2fr_1fr_150px_150px_150px_150px_130px]"
+            >
+              <div>
+                <p className="text-base font-black text-slate-950">{row.objectLabel}</p>
+                <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">Aktive Einheit</p>
+              </div>
+              <div className="text-sm font-bold text-slate-600">{row.tenant}</div>
+              <div className="text-sm font-black text-slate-950">{formatDate(row.latestDate)}</div>
+              <div className="text-sm font-black text-slate-950">{formatCurrency(row.netRent)}</div>
+              <div className="text-sm font-black text-slate-950">{formatCurrency(row.utilities)}</div>
+              <div className="text-sm font-black text-emerald-700">{formatCurrency(row.warmRent)}</div>
+              <div>
+                <span className={[
+                  "inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
+                  row.status === "Prüfen" ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200" : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
+                ].join(" ")}>
+                  {row.status}
+                </span>
+              </div>
+            </button>
+          ))
+        ) : (
+          <div className="p-5">
+            <EmptyState
+              title="Keine Mietanpassungen gefunden"
+              description="Für die ausgewählten Filter liegen aktuell keine Anpassungen oder prüfbaren Mietbuchungen vor."
+            />
+          </div>
+        )}
+      </section>
+
+      {selectedRow ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedRow(null)}>
+          <aside
+            className="ml-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Details zur Mietanpassung</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">{selectedRow.objectLabel}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedRow(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700"
+                aria-label="Details schließen"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <InfoList
+                items={[
+                  { label: "Wirksam seit", value: formatDate(selectedRow.latestDate), tone: "blue" },
+                  { label: "Grund", value: selectedRow.previousDate ? "Buchungsänderung erkannt" : "Aktive Mietstruktur", tone: "slate" },
+                  { label: "Aktuelle Warmmiete", value: formatCurrency(selectedRow.warmRent), tone: "green" },
+                ]}
+              />
+
+              <SectionPanel title="Mietentwicklung im Detail" description="Vorher-Nachher-Vergleich aus zuletzt erkannten Mietbuchungen.">
+                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                  {[
+                    ["Nettokaltmiete", selectedRow.previousWarmRent * 0.82, selectedRow.netRent],
+                    ["Nebenkosten", selectedRow.previousWarmRent * 0.18, selectedRow.utilities],
+                    ["Warmmiete", selectedRow.previousWarmRent, selectedRow.warmRent],
+                  ].map(([label, oldValue, newValue]) => (
+                    <div key={String(label)} className="grid gap-2 border-b border-slate-100 p-4 last:border-b-0 sm:grid-cols-4">
+                      <span className="text-sm font-black text-slate-950">{label}</span>
+                      <span className="text-sm font-bold text-slate-600">Alt: {formatCurrency(Number(oldValue))}</span>
+                      <span className="text-sm font-bold text-slate-600">Neu: {formatCurrency(Number(newValue))}</span>
+                      <span className="text-sm font-black text-[#255f6f]">Differenz: {formatCurrency(Number(newValue) - Number(oldValue))}</span>
+                    </div>
+                  ))}
+                </div>
+              </SectionPanel>
+
+              <SectionPanel title="Historie aller Mietanpassungen" description="Die letzten erkannten Mietbuchungen dieser Immobilie.">
+                {selectedRow.history.length ? (
+                  <div className="grid gap-2">
+                    {selectedRow.history.map((entry) => (
+                      <div key={`${entry.id ?? entry.booking_date}-${entry.amount}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm font-black text-slate-950">{formatDate(entry.booking_date)}</span>
+                          <span className="text-sm font-black text-emerald-700">{formatCurrency(entry.amount)}</span>
+                        </div>
+                        <p className="mt-1 text-xs font-bold text-slate-500">{entry.category || "Miete"} {entry.note ? `- ${entry.note}` : ""}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="Noch keine Historie" description="Für diese Immobilie wurden keine Mietbuchungen erkannt." />
+                )}
+              </SectionPanel>
+            </div>
+            <div className="grid gap-2 border-t border-slate-200 p-5 sm:grid-cols-2">
+              <ReportActionLink to="/kontakte/aktive-mietvertraege" label="Neue Mietanpassung planen" primary />
+              <ReportActionLink to="/berichte" label="Schreiben für Mieter generieren" />
+              <p className="sm:col-span-2 text-xs font-bold leading-5 text-slate-500">
+                Hinweis: Kappungsgrenze, Jahressperrfrist und vertragliche Grundlage bitte vor Versand prüfen.
+              </p>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type MaintenanceTask = {
+  id: string;
+  title: string;
+  objectId: string;
+  objectLabel: string;
+  dueDate: string;
+  contractor: string;
+  category: string;
+  status: "Neu" | "In Arbeit" | "Erledigt";
+  priority: "Normal" | "Hoch";
+  note: string;
+  createdAt: string;
+};
+
+function TasksMaintenancePage() {
+  const { objects } = useAppData();
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [objectFilter, setObjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
+  const [manualTasks, setManualTasks] = useState<MaintenanceTask[]>([]);
+  const [form, setForm] = useState({
+    title: "",
+    objectId: objects[0]?.id ?? "all",
+    dueDate: todayIso,
+    category: "Reparatur / Mangel",
+    note: "",
+  });
+
+  const seedTasks = useMemo<MaintenanceTask[]>(() => {
+    const firstObjects = objects.slice(0, 3);
+    return firstObjects.map((object, index) => ({
+      id: `seed-${object.id}`,
+      title: index === 0 ? "Nebenkostenunterlagen prüfen" : index === 1 ? "Wartungstermin vorbereiten" : "Mietvertrag und Frist prüfen",
+      objectId: object.id,
+      objectLabel: object.label,
+      dueDate: addDaysToIsoDate(todayIso, index + 2),
+      contractor: index === 1 ? "Handwerker offen" : "Intern",
+      category: index === 1 ? "Reparatur / Mangel" : "Verwaltung",
+      status: index === 1 ? "In Arbeit" : "Neu",
+      priority: index === 0 ? "Hoch" : "Normal",
+      note: "Aus vorhandenen Verwaltungsprozessen als Arbeitsliste vorbereitet.",
+      createdAt: todayIso,
+    }));
+  }, [objects, todayIso]);
+
+  const tasks = [...manualTasks, ...seedTasks];
+  const filteredTasks = tasks.filter((task) => {
+    if (objectFilter !== "all" && task.objectId !== objectFilter) return false;
+    if (statusFilter !== "all" && task.status !== statusFilter) return false;
+    if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+    return true;
+  });
+
+  const handleCreateTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const object = objects.find((item) => item.id === form.objectId);
+    const title = form.title.trim();
+    if (!title) return;
+    const task: MaintenanceTask = {
+      id: `manual-${Date.now()}`,
+      title,
+      objectId: object?.id ?? "all",
+      objectLabel: object?.label ?? "Allgemeine Aufgabe",
+      dueDate: form.dueDate || todayIso,
+      contractor: "Noch nicht zugeordnet",
+      category: form.category,
+      status: "Neu",
+      priority: form.dueDate && form.dueDate <= todayIso ? "Hoch" : "Normal",
+      note: form.note.trim(),
+      createdAt: todayIso,
+    };
+    setManualTasks((current) => [task, ...current]);
+    setSelectedTask(task);
+    setForm((current) => ({ ...current, title: "", note: "" }));
+  };
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-4">
+        <KpiCard label="Offene Aufgaben" value={tasks.filter((task) => task.status !== "Erledigt").length} icon={ListChecks} tone="blue" />
+        <KpiCard label="Hohe Priorität" value={tasks.filter((task) => task.priority === "Hoch").length} icon={Bell} tone="amber" />
+        <KpiCard label="In Arbeit" value={tasks.filter((task) => task.status === "In Arbeit").length} icon={FolderKanban} tone="violet" />
+        <KpiCard label="Erledigt" value={tasks.filter((task) => task.status === "Erledigt").length} icon={ShieldCheck} tone="green" />
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionPanel eyebrow="Neue Aufgabe" title="Neue Aufgabe anlegen" description="Aufgaben werden als Arbeitsliste und Kalenderfrist sichtbar. Die Fachseiten bleiben die Datenquelle.">
+          <form onSubmit={handleCreateTask} className="grid gap-4">
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Was ist zu tun?
+              <input
+                value={form.title}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="z. B. Wasserhahn in Bad prüfen lassen"
+                className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-black text-slate-700">
+                Betroffene Immobilie / Einheit auswählen
+                <select
+                  value={form.objectId}
+                  onChange={(event) => setForm((current) => ({ ...current, objectId: event.target.value }))}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                >
+                  {objects.map((object) => (
+                    <option key={object.id} value={object.id}>{object.label}</option>
+                  ))}
+                  <option value="all">Allgemein</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-black text-slate-700">
+                Bis wann muss die Aufgabe erledigt sein?
+                <input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                />
+              </label>
+            </div>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Art der Aufgabe
+              <select
+                value={form.category}
+                onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
+                className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+              >
+                <option>Reparatur / Mangel</option>
+                <option>Verwaltung</option>
+                <option>Mieterwechsel</option>
+                <option>Gesetzliche Prüfung</option>
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Details zur Aufgabe
+              <textarea
+                value={form.note}
+                onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+                placeholder="Notiz, Ansprechpartner, gewünschtes Ergebnis..."
+                rows={4}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm"
+              />
+            </label>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-900">
+              Dieses Datum wird automatisch als Frist und Erinnerung in Ihren App-Kalender eingetragen.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
+                Aufgabe speichern
+              </button>
+              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-900 shadow-sm">
+                Fotos oder Kostenvoranschlag hinzufügen
+              </button>
+            </div>
+          </form>
+        </SectionPanel>
+
+        <SectionPanel eyebrow="Arbeitsliste" title="Aufgaben & Instandhaltung" description="Klicken Sie auf eine Aufgabe, um Status, Verlauf und Dokumentation zu prüfen.">
+          <div className="mb-4 grid gap-3 md:grid-cols-3">
+            <select value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+              <option value="all">Alle Objekte</option>
+              {objects.map((object) => <option key={object.id} value={object.id}>{object.label}</option>)}
+            </select>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+              <option value="all">Alle Status</option>
+              <option value="Neu">Neu</option>
+              <option value="In Arbeit">In Arbeit</option>
+              <option value="Erledigt">Erledigt</option>
+            </select>
+            <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+              <option value="all">Alle Prioritäten</option>
+              <option value="Hoch">Hoch</option>
+              <option value="Normal">Normal</option>
+            </select>
+          </div>
+          {filteredTasks.length ? (
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              {filteredTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => setSelectedTask(task)}
+                  className="grid w-full gap-3 border-b border-slate-100 bg-white p-4 text-left last:border-b-0 hover:bg-[#f8fbfa] lg:grid-cols-[1.1fr_1fr_120px_150px_110px]"
+                >
+                  <div>
+                    <p className="text-sm font-black text-slate-950">{task.title}</p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{task.category}</p>
+                  </div>
+                  <div className="text-sm font-bold text-slate-600">{task.objectLabel}</div>
+                  <div className="text-sm font-black text-slate-950">{formatDate(task.dueDate)}</div>
+                  <div className="text-sm font-bold text-slate-600">{task.contractor}</div>
+                  <div>
+                    <span className={[
+                      "rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
+                      task.status === "Erledigt" ? "bg-emerald-50 text-emerald-800" : task.priority === "Hoch" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800",
+                    ].join(" ")}>
+                      {task.status}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Aktuell stehen keine Aufgaben an"
+              description="Hervorragend. Neue Aufgaben erscheinen hier, sobald sie angelegt oder aus einem Vorgang abgeleitet werden."
+            />
+          )}
+        </SectionPanel>
+      </section>
+
+      <SectionPanel eyebrow="In-App-Kalender" title="Fristen und Erinnerungen" description="Jede neue Aufgabe bekommt einen Kalendereintrag mit Direktzugriff.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {tasks.slice(0, 6).map((task) => (
+            <button
+              key={`calendar-${task.id}`}
+              type="button"
+              onClick={() => setSelectedTask(task)}
+              className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{task.category}: {task.status}</p>
+              <h3 className="mt-2 text-sm font-black text-slate-950">{task.title}</h3>
+              <p className="mt-2 text-sm font-bold text-slate-600">Frist: {formatDate(task.dueDate)}</p>
+              <p className="text-sm font-bold text-slate-600">Objekt: {task.objectLabel}</p>
+            </button>
+          ))}
+        </div>
+      </SectionPanel>
+
+      {selectedTask ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedTask(null)}>
+          <aside className="ml-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Aufgabe nachverfolgen</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">{selectedTask.title}</h2>
+              </div>
+              <button type="button" onClick={() => setSelectedTask(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Aufgabe schließen">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <InfoList
+                items={[
+                  { label: "Status", value: selectedTask.status, tone: selectedTask.status === "Erledigt" ? "green" : "blue" },
+                  { label: "Erstellt am", value: formatDate(selectedTask.createdAt), tone: "slate" },
+                  { label: "Zugeordnet zu", value: selectedTask.contractor, tone: "violet" },
+                  { label: "Angehängte Dokumente", value: "Noch keine Datei", tone: "slate" },
+                ]}
+              />
+              <SectionPanel title="Verlauf & Dokumentation" description="Statusänderungen, Notizen und Nachweise werden hier chronologisch gesammelt.">
+                <div className="grid gap-3">
+                  {[
+                    `Aufgabe automatisch im Kalender für ${formatDate(selectedTask.dueDate)} vorgemerkt.`,
+                    `Status geändert auf ${selectedTask.status}.`,
+                    `Aufgabe erstellt: ${selectedTask.category}.`,
+                  ].map((item) => (
+                    <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-700">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <textarea
+                  placeholder="Neuen Verlaufseintrag oder Notiz hinzufügen..."
+                  rows={3}
+                  className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm"
+                />
+                <button type="button" className="mt-3 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
+                  Notiz speichern
+                </button>
+              </SectionPanel>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
@@ -1516,7 +2184,7 @@ export default function App() {
         />
         <Route
           path="/dashboard/aktuelle-todos"
-          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardTodos}><OrganisationHubPage kind="produktivitaet" /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardTodos}><TasksMaintenancePage /></ModuleWorkspacePage>}
         />
         <Route path="/cockpit" element={<Navigate to="/dashboard/finanz-kennzahlen" replace />} />
 
@@ -1618,7 +2286,7 @@ export default function App() {
         />
         <Route
           path="/buchhaltung/sollstellungen-mietanpassungen"
-          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSoll}><Mietuebersicht /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSoll}><RentAdjustmentsPage /></ModuleWorkspacePage>}
         />
         <Route
           path="/buchhaltung/nebenkostenabrechnung"
@@ -1634,7 +2302,7 @@ export default function App() {
         />
         <Route
           path="/buchhaltung/berichte-exporte"
-          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><Auswertung /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><ReportsExportsPage /></ModuleWorkspacePage>}
         />
         <Route
           path="/buchhaltung/darlehen"
@@ -1656,6 +2324,8 @@ export default function App() {
         <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
         <Route path="/buchhaltung/kautionen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
         <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/buchhaltung/nebenkostenabrechnung" replace />} />
+        <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
+        <Route path="/mietanpassungen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/steuer" element={<SteuerCenter />} />
@@ -1746,11 +2416,11 @@ export default function App() {
         <Route path="/ticketsystem" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route
           path="/ticketsystem/schadenmeldungen"
-          element={<ModuleWorkspacePage config={workspaceConfigs.ticketSchaden}><OrganisationHubPage kind="ticketing" /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketSchaden}><TasksMaintenancePage /></ModuleWorkspacePage>}
         />
         <Route
           path="/ticketsystem/handwerker-beauftragung"
-          element={<ModuleWorkspacePage config={workspaceConfigs.ticketHandwerker}><OrganisationHubPage kind="ticketing" /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketHandwerker}><TasksMaintenancePage /></ModuleWorkspacePage>}
         />
         <Route path="/ticketing" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route path="/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
