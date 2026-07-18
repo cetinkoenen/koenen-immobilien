@@ -406,6 +406,30 @@ function labelsReferToSameUnit(a: string, b: string) {
   return false;
 }
 
+function adjustmentBelongsToUnit(adjustment: ManualRentAdjustment, object: AppObject, unitLabel: string) {
+  if (labelsReferToSameUnit(adjustment.object_label, `${object.label} ${unitLabel}`)) return true;
+
+  const adjustmentLabel = normalizeText(adjustment.object_label);
+  const objectLabel = normalizeText(object.label);
+  const isObjectLevelAdjustment = adjustmentLabel === objectLabel;
+
+  if (!isObjectLevelAdjustment) return false;
+
+  const unitIsGarage = isGarageLikeText(unitLabel);
+  if (isFuertherObject(object)) return !unitIsGarage;
+  if (isRosensteinObject(object)) return false;
+  return true;
+}
+
+function activeManualAdjustmentForUnit(adjustments: ManualRentAdjustment[], object: AppObject, unitLabel: string) {
+  const today = toIso(new Date());
+  return adjustments.find((adjustment) => {
+    if (!adjustmentBelongsToUnit(adjustment, object, unitLabel)) return false;
+    if (adjustment.effective_date > today) return false;
+    return !adjustment.effective_end_date || adjustment.effective_end_date >= today;
+  }) ?? null;
+}
+
 function unitRentPartForMonth(
   entries: FinanceEntry[],
   object: AppObject,
@@ -803,8 +827,8 @@ export default function Mietentwicklung() {
         .filter((unit) => unit.amount > 0 || isRosensteinObject(object) || isFuertherObject(object))
         .map((unit): DevelopmentRow => {
           const unitLabel = `${object.label} ${unit.label}`;
-          const unitManual = manualForObject.filter((adjustment) => labelsReferToSameUnit(adjustment.object_label, unitLabel));
-          const activeManual = activeManualAdjustmentForLabel(unitManual, unitLabel);
+          const unitManual = manualForObject.filter((adjustment) => adjustmentBelongsToUnit(adjustment, object, unit.label));
+          const activeManual = activeManualAdjustmentForUnit(unitManual, object, unit.label);
           const unitActual = unitRentPartForMonth(appData.entries, object, candidateIds, currentMonth.year, currentMonth.month, unit.label);
           const unitPreviousActual = unitRentPartForMonth(appData.entries, object, candidateIds, previous.year, previous.month, unit.label);
           const isGarageUnit = isGarageLikeText(unit.label);
