@@ -245,6 +245,11 @@ function contractObjectKey(contract: ContractRow): string {
   return `${contract.property_id ?? ""}::${normalize(contract.object_code)}`;
 }
 
+function parkingCode(value: string | null | undefined): string | null {
+  const match = compact(value).match(/p25[034]/);
+  return match?.[0] ?? null;
+}
+
 function bookingMatchesContract(row: FinanceRow, contract: ContractRow, requiresUnitMatch: boolean): boolean {
   const objectMatches = bookingHasContractObject(row, contract);
   if (!objectMatches) return false;
@@ -261,6 +266,13 @@ function vacancyMatchesContract(vacancy: UnitVacancy, contract: ContractRow): bo
   const vacancyUnit = compact(vacancy.unit_label);
   const contractUnit = compact(contract.unit_label);
   if (!vacancyUnit || !contractUnit) return true;
+
+  const vacancyParkingCode = parkingCode(vacancy.unit_label);
+  const contractParkingCode = parkingCode(contract.unit_label);
+  if (vacancyParkingCode || contractParkingCode) {
+    return Boolean(vacancyParkingCode && contractParkingCode && vacancyParkingCode === contractParkingCode);
+  }
+
   return vacancyUnit.includes(contractUnit) || contractUnit.includes(vacancyUnit);
 }
 
@@ -577,9 +589,16 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   const expectedTotal = openPosts.reduce((sum, row) => sum + (row.status === "vacant" ? 0 : row.expectedAmount), 0);
   const paidTotal = openPosts.reduce((sum, row) => sum + row.paidAmount, 0);
   const openTotal = openPosts.reduce((sum, row) => sum + row.openAmount, 0);
-  const activeVacancyCount = vacancyRows.filter((vacancy) =>
+  const activeVacancies = vacancyRows.filter((vacancy) =>
     isVacancyEffectivelyActiveInRange(vacancy, period.start, period.end),
-  ).length;
+  );
+  const activeVacancyIds = new Set(activeVacancies.map((vacancy) => vacancy.id));
+  const taskRows = taskRes.error
+    ? []
+    : ((taskRes.data ?? []) as TaskRow[]).filter((task) => {
+        if (task.meta?.source !== "unit_vacancies" || !task.meta.vacancy_id) return true;
+        return activeVacancyIds.has(task.meta.vacancy_id);
+      });
 
   return {
     periodLabel: period.label,
@@ -592,11 +611,11 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     paidCount: openPosts.filter((row) => row.status === "paid").length,
     partialCount: openPosts.filter((row) => row.status === "partial").length,
     missingCount: openPosts.filter((row) => row.status === "missing").length,
-    vacantCount: activeVacancyCount,
+    vacantCount: activeVacancies.length,
     openPosts: openPosts.sort((a, b) => b.openAmount - a.openAmount),
     tasks: taskRes.error
       ? []
-      : uniqueTasks(((taskRes.data ?? []) as TaskRow[]).map((task) => ({
+      : uniqueTasks(taskRows.map((task) => ({
           id: String(task.id),
           title: String(task.title ?? "Aufgabe"),
           category: String(task.category ?? "allgemein"),

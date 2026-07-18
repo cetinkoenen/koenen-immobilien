@@ -98,7 +98,7 @@ export function isEndedTenancyVacancySignal(vacancy: Pick<UnitVacancy, "end_date
 }
 
 export function effectiveVacancyStartDate(vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status" | "vacancy_type" | "reason" | "notes">): string {
-  if (vacancy.status === "ended" && isEndedTenancyVacancySignal(vacancy)) {
+  if (vacancy.status !== "ended" && isEndedTenancyVacancySignal(vacancy)) {
     return addDays(vacancy.end_date!, 1);
   }
   return vacancy.start_date;
@@ -109,7 +109,8 @@ export function isVacancyEffectivelyActiveInRange(
   start: string,
   end: string,
 ): boolean {
-  if (vacancy.status === "ended" && isEndedTenancyVacancySignal(vacancy)) {
+  if (vacancy.status === "ended") return false;
+  if (isEndedTenancyVacancySignal(vacancy)) {
     return effectiveVacancyStartDate(vacancy) <= end;
   }
   return isVacancyActiveInRange(vacancy, start, end);
