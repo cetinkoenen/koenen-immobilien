@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -554,26 +553,6 @@ function buildRentChartData(row: DevelopmentRow): RentChartPoint[] {
   return Array.from(points.values()).filter((point) => point.coldRent > 0 || point.operatingCosts > 0 || point.totalRent > 0);
 }
 
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name?: string; value?: number; color?: string }>; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 text-sm shadow-xl backdrop-blur">
-      <div className="mb-2 font-black text-slate-950">{label}</div>
-      <div className="grid gap-1">
-        {payload.map((item) => (
-          <div key={item.name} className="flex items-center justify-between gap-5 font-bold text-slate-700">
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />
-              {item.name}
-            </span>
-            <strong className="text-slate-950">{formatCurrency(Number(item.value ?? 0))}</strong>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function MiniRentChartIcon({ data }: { data: RentChartPoint[] }) {
   const recent = data.slice(-4);
   const maxValue = Math.max(1, ...recent.map((point) => point.totalRent));
@@ -603,9 +582,37 @@ function MiniRentChartIcon({ data }: { data: RentChartPoint[] }) {
   );
 }
 
+function buildSvgPolyline(data: RentChartPoint[], key: keyof Pick<RentChartPoint, "coldRent" | "operatingCosts" | "totalRent">, maxValue: number, width: number, height: number, padding: { top: number; right: number; bottom: number; left: number }) {
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const divisor = Math.max(1, data.length - 1);
+  return data
+    .map((point, index) => {
+      const x = padding.left + (index / divisor) * innerWidth;
+      const y = padding.top + innerHeight - (Math.max(0, point[key]) / maxValue) * innerHeight;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 function RentDevelopmentChart({ row }: { row: DevelopmentRow }) {
   const data = buildRentChartData(row);
   const hasData = data.length > 0;
+  const width = 920;
+  const height = 360;
+  const padding = { top: 30, right: 28, bottom: 72, left: 88 };
+  const maxValue = Math.max(1, ...data.flatMap((point) => [point.coldRent, point.operatingCosts, point.totalRent]));
+  const roundedMax = Math.ceil(maxValue / 100) * 100;
+  const axisMax = Math.max(100, roundedMax);
+  const yTicks = [0, axisMax / 2, axisMax];
+  const divisor = Math.max(1, data.length - 1);
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const series = [
+    { key: "coldRent" as const, label: "Kaltmiete", color: "#315f72", width: 4, dash: undefined },
+    { key: "operatingCosts" as const, label: "Nebenkosten", color: "#14b8a6", width: 4, dash: undefined },
+    { key: "totalRent" as const, label: "Warmmiete", color: "#6366f1", width: 3, dash: "10 8" },
+  ];
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -624,18 +631,65 @@ function RentDevelopmentChart({ row }: { row: DevelopmentRow }) {
       </div>
       <div className="h-[360px] rounded-[22px] border border-slate-200 bg-white p-3 sm:p-5">
         {hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 18, right: 28, left: 10, bottom: 12 }}>
-              <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "#64748b", fontWeight: 800, fontSize: 12 }} axisLine={{ stroke: "#cbd5e1" }} tickLine={false} />
-              <YAxis tickFormatter={(value) => `${Number(value).toLocaleString("de-DE")} €`} tick={{ fill: "#64748b", fontWeight: 800, fontSize: 12 }} axisLine={false} tickLine={false} width={86} />
-              <Tooltip content={<ChartTooltip />} />
-              <Legend wrapperStyle={{ fontWeight: 900, fontSize: 13 }} />
-              <Line name="Kaltmiete" type="monotone" dataKey="coldRent" stroke="#315f72" strokeWidth={3} dot={{ r: 4, fill: "#315f72", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 7 }} />
-              <Line name="Nebenkosten" type="monotone" dataKey="operatingCosts" stroke="#14b8a6" strokeWidth={3} dot={{ r: 4, fill: "#14b8a6", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 7 }} />
-              <Line name="Warmmiete" type="monotone" dataKey="totalRent" stroke="#6366f1" strokeWidth={2.5} strokeDasharray="6 5" dot={{ r: 3, fill: "#6366f1", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <svg className="h-full w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Mietentwicklung für ${row.displayLabel}`}>
+            <rect x="0" y="0" width={width} height={height} rx="18" fill="#ffffff" />
+            {yTicks.map((tick) => {
+              const y = padding.top + innerHeight - (tick / axisMax) * innerHeight;
+              return (
+                <g key={tick}>
+                  <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#e2e8f0" strokeDasharray="5 6" />
+                  <text x={padding.left - 14} y={y + 4} textAnchor="end" fontSize="14" fontWeight="800" fill="#64748b">
+                    {Math.round(tick).toLocaleString("de-DE")} EUR
+                  </text>
+                </g>
+              );
+            })}
+            <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" strokeWidth="2" />
+            <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" strokeWidth="2" />
+            {series.map((item) => (
+              <polyline
+                key={item.key}
+                points={buildSvgPolyline(data, item.key, axisMax, width, height, padding)}
+                fill="none"
+                stroke={item.color}
+                strokeWidth={item.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={item.dash}
+              />
+            ))}
+            {data.map((point, index) => {
+              const x = padding.left + (index / divisor) * innerWidth;
+              return (
+                <g key={point.key}>
+                  {series.map((item) => {
+                    const y = padding.top + innerHeight - (Math.max(0, point[item.key]) / axisMax) * innerHeight;
+                    return (
+                      <g key={item.key}>
+                        <circle cx={x} cy={y} r="6" fill={item.color} stroke="#ffffff" strokeWidth="3" />
+                        {index === data.length - 1 ? (
+                          <text x={x + 10} y={y - 10} fontSize="13" fontWeight="900" fill={item.color}>
+                            {formatCurrency(point[item.key])}
+                          </text>
+                        ) : null}
+                      </g>
+                    );
+                  })}
+                  <text x={x} y={height - padding.bottom + 28} textAnchor="middle" fontSize="13" fontWeight="900" fill="#475569">
+                    {point.label}
+                  </text>
+                </g>
+              );
+            })}
+            <g transform={`translate(${padding.left}, ${height - 24})`}>
+              {series.map((item, index) => (
+                <g key={item.key} transform={`translate(${index * 170}, 0)`}>
+                  <line x1="0" y1="-5" x2="34" y2="-5" stroke={item.color} strokeWidth={item.width} strokeDasharray={item.dash} strokeLinecap="round" />
+                  <text x="44" y="0" fontSize="14" fontWeight="900" fill="#334155">{item.label}</text>
+                </g>
+              ))}
+            </g>
+          </svg>
         ) : (
           <div className="flex h-full items-center justify-center text-center text-sm font-black text-slate-500">
             Noch keine Mietwerte für ein Diagramm vorhanden.

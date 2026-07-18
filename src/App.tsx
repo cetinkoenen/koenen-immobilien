@@ -60,6 +60,7 @@ import "./App.css";
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
+  resetKey?: string;
 };
 
 type AppErrorBoundaryState = {
@@ -82,6 +83,12 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error("App route crashed:", error, info.componentStack);
+  }
+
+  componentDidUpdate(prevProps: AppErrorBoundaryProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, message: "" });
+    }
   }
 
   handleReload = () => {
@@ -770,9 +777,13 @@ function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boole
 }
 
 function ProtectedAppShell() {
+  const location = useLocation();
+  const { user } = useAuth();
+  const resetKey = `${user?.email ?? "anonymous"}:${location.pathname}:${location.search}`;
+
   return (
     <RequireAuthMFA>
-      <AppErrorBoundary>
+      <AppErrorBoundary resetKey={resetKey}>
         <AppDataProvider>
           <AppShell />
         </AppDataProvider>
