@@ -1289,8 +1289,46 @@ function createSimplePdf(title: string, lines: string[]): Blob {
     "",
     ...lines,
   ].flatMap((line) => wrapPdfLine(line));
-  const contentLines = ["BT", "/F1 10 Tf", "50 790 Td", "14 TL"];
-  normalizedLines.slice(0, 52).forEach((line) => {
+  const contentLines = [
+    "0.267 0.447 0.769 rg",
+    "42 778 78 42 re f",
+    "0.267 0.447 0.769 RG",
+    "1.2 w",
+    "42 754 m 553 754 l S",
+    "0 0 0 rg",
+    "BT",
+    "/F2 8 Tf",
+    "50 804 Td",
+    "(KOENEN) Tj",
+    "0 -10 Td",
+    "(IMMOBILIEN) Tj",
+    "ET",
+    "0.267 0.447 0.769 rg",
+    "BT",
+    "/F1 9 Tf",
+    "205 32 Td",
+    "(Cetin Koenen  |  Hohenloher Str. 78/1, 74243 Langenbrettach  |  info.koenen@gmail.com) Tj",
+    "ET",
+    "0 0 0 rg",
+    "42 48 470 1 re f",
+    "0 0 0 rg",
+    "42 24 26 18 re f",
+    "1 1 1 rg",
+    "BT",
+    "/F2 10 Tf",
+    "51 29 Td",
+    "(1) Tj",
+    "ET",
+    "0 0 0 rg",
+    "BT",
+    "/F1 10 Tf",
+    "50 730 Td",
+    "14 TL",
+  ];
+  normalizedLines.slice(0, 46).forEach((line, index) => {
+    if (index === 0) contentLines.push("/F2 16 Tf");
+    if (index === 1) contentLines.push("/F1 9 Tf");
+    if (index === 3) contentLines.push("/F1 10 Tf");
     contentLines.push(`(${escapePdfText(line)}) Tj`, "T*");
   });
   contentLines.push("ET");
@@ -1298,8 +1336,9 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
     `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
   ];
   let pdf = "%PDF-1.4\n";

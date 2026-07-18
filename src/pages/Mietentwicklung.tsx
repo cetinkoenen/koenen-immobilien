@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Mail, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -44,7 +44,10 @@ type RentChange = {
 };
 
 type DevelopmentRow = {
+  rowKey: string;
   object: AppObject;
+  displayLabel: string;
+  unitName: string;
   currentExpected: number;
   currentActual: number;
   netRent: number;
@@ -98,10 +101,8 @@ type RentAdjustmentForm = {
   status: ManualRentAdjustment["status"];
   oldColdRent: string;
   oldOperatingCosts: string;
-  oldTotalRent: string;
   newColdRent: string;
   newOperatingCosts: string;
-  newTotalRent: string;
   note: string;
 };
 
@@ -350,9 +351,9 @@ function unitKeyFromRental(rental: PortfolioRentalRow) {
 function unitLabelFromRental(rental: PortfolioRentalRow) {
   const raw = `${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`;
   const normalized = normalizeText(raw);
-  if (normalized.includes("p250")) return "Garage 1";
-  if (normalized.includes("p253")) return "Garage 2";
-  if (normalized.includes("p254")) return "Garage 3";
+  if (normalized.includes("p250")) return "P250 - E008440000121";
+  if (normalized.includes("p253")) return "P253 - E008440000122";
+  if (normalized.includes("p254")) return "P254 - E008440000123";
   if (rental.unit_id?.trim()) return rental.unit_id.trim();
   const type = rental.rent_type?.trim();
   const normalizedType = normalizeText(type);
@@ -365,7 +366,12 @@ function friendlyUnitLabel(object: AppObject, rental: PortfolioRentalRow, index:
   const compactLabel = compactText(rawLabel);
   const looksTechnicalId = /^[0-9a-f]{16,}$/i.test(compactLabel) || compactLabel.length >= 24;
 
-  if (isRosensteinObject(object)) return `Garage ${index + 1}`;
+  if (isRosensteinObject(object)) {
+    if (rawLabel.includes("P250")) return "P250 - E008440000121";
+    if (rawLabel.includes("P253")) return "P253 - E008440000122";
+    if (rawLabel.includes("P254")) return "P254 - E008440000123";
+    return `Garage ${index + 1}`;
+  }
   if (isFuertherObject(object)) {
     if (money(rental.rent_monthly) <= 100 || isGarageLikeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`)) return "Garage";
     return "Wohnung";
@@ -381,11 +387,64 @@ function completeKnownUnitBreakdown(
   if (!isRosensteinObject(object)) return units;
 
   const byLabel = new Map(units.map((unit) => [unit.label, unit]));
-  return ["Garage 1", "Garage 2", "Garage 3"].map((label) => byLabel.get(label) ?? {
+  return ["P250 - E008440000121", "P253 - E008440000122", "P254 - E008440000123"].map((label) => byLabel.get(label) ?? {
     key: `${object.id}-${label}`,
     label,
     amount: 0,
   });
+}
+
+function labelsReferToSameUnit(a: string, b: string) {
+  const left = normalizeText(a);
+  const right = normalizeText(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if ((left.includes("p250") || right.includes("p250")) && left.includes("p250") && right.includes("p250")) return true;
+  if ((left.includes("p253") || right.includes("p253")) && left.includes("p253") && right.includes("p253")) return true;
+  if ((left.includes("p254") || right.includes("p254")) && left.includes("p254") && right.includes("p254")) return true;
+  if (left.includes("garage") && right.includes("garage") && left.replace(/\D/g, "") === right.replace(/\D/g, "")) return true;
+  return false;
+}
+
+function unitRentPartForMonth(
+  entries: FinanceEntry[],
+  object: AppObject,
+  candidateIds: Set<string>,
+  year: number,
+  month: number,
+  unitLabel: string,
+) {
+  const normalizedUnit = normalizeText(unitLabel);
+  const unitAmount = entries.reduce((sum, entry) => {
+    if (!isRentBookingForObject(entry, object, candidateIds)) return sum;
+    const effective = effectiveRentMonthForObject(entry, object);
+    if (!effective || effective.year !== year || effective.month !== month) return sum;
+    const reference = normalizeText(bookingReference(entry));
+    if (reference.includes(normalizedUnit)) return sum + money(entry.amount);
+    if (normalizedUnit.includes("p250") && reference.includes("p250")) return sum + money(entry.amount);
+    if (normalizedUnit.includes("p253") && reference.includes("p253")) return sum + money(entry.amount);
+    if (normalizedUnit.includes("p254") && reference.includes("p254")) return sum + money(entry.amount);
+    if (normalizedUnit.includes("garage") && isGarageLikeText(reference)) return sum + money(entry.amount);
+    return sum;
+  }, 0);
+  return unitAmount;
+}
+
+function activeManualAdjustmentForLabel(adjustments: ManualRentAdjustment[], label: string) {
+  const today = toIso(new Date());
+  return adjustments.find((adjustment) => {
+    if (!labelsReferToSameUnit(adjustment.object_label, label)) return false;
+    if (adjustment.effective_date > today) return false;
+    return !adjustment.effective_end_date || adjustment.effective_end_date >= today;
+  }) ?? null;
+}
+
+function manualOldTotal(adjustment: ManualRentAdjustment) {
+  return money((adjustment.old_cold_rent ?? 0) + (adjustment.old_operating_costs ?? 0));
+}
+
+function manualNewTotal(adjustment: ManualRentAdjustment) {
+  return money((adjustment.new_cold_rent ?? 0) + (adjustment.new_operating_costs ?? 0));
 }
 
 function selectActiveRentalsForMonth(rentals: PortfolioRentalRow[], candidateIds: Set<string>, year: number, month: number) {
@@ -525,7 +584,7 @@ export default function Mietentwicklung() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [objectFilter, setObjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "action" | "future">("all");
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
   const [savingAdjustment, setSavingAdjustment] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -540,10 +599,8 @@ export default function Mietentwicklung() {
     status: "planned",
     oldColdRent: "",
     oldOperatingCosts: "",
-    oldTotalRent: "",
     newColdRent: "",
     newOperatingCosts: "",
-    newTotalRent: "",
     note: "",
   });
 
@@ -634,11 +691,13 @@ export default function Mietentwicklung() {
   const currentMonth = months[months.length - 1];
 
   const rows = useMemo<DevelopmentRow[]>(() => {
-    return appData.objects.map((object) => {
+    return appData.objects.flatMap((object) => {
       const candidateIds = candidateIdsForObject(object, portfolioProperties);
       const manualForObject = manualAdjustments.filter((adjustment) => {
         if (adjustment.property_id && candidateIds.has(String(adjustment.property_id))) return true;
-        return normalizeText(adjustment.object_label) === normalizeText(object.label);
+        const manualLabel = normalizeText(adjustment.object_label);
+        const objectLabel = normalizeText(object.label);
+        return manualLabel === objectLabel || manualLabel.startsWith(`${objectLabel} `);
       });
       const latestManualAdjustment = manualForObject[0] ?? null;
       const monthPoints = months.map((month) => ({
@@ -671,12 +730,13 @@ export default function Mietentwicklung() {
       const previousRentalUtilities = previousRentals
         .filter((rental) => normalizeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`).includes("nk") || normalizeText(rental.rent_type).includes("nebenkosten"))
         .reduce((sum, rental) => sum + money(rental.rent_monthly), 0);
-      const utilitiesRent = money(rentalUtilities || currentUtilitiesFromBookings);
-      const previousUtilitiesRent = money(previousRentalUtilities || previousUtilitiesFromBookings);
-      const warmRent = money(current.expected || current.actual);
-      const previousWarmRent = money(previous.expected || previous.actual || warmRent);
-      const netRent = Math.max(0, money(warmRent - utilitiesRent));
-      const previousNetRent = Math.max(0, money(previousWarmRent - previousUtilitiesRent));
+      const activeManualForObject = activeManualAdjustmentForLabel(manualForObject, object.label);
+      const utilitiesRent = money(activeManualForObject?.new_operating_costs ?? (rentalUtilities || currentUtilitiesFromBookings));
+      const previousUtilitiesRent = money(activeManualForObject?.old_operating_costs ?? (previousRentalUtilities || previousUtilitiesFromBookings));
+      const warmRent = money(activeManualForObject ? manualNewTotal(activeManualForObject) : (current.expected || current.actual));
+      const previousWarmRent = money(activeManualForObject ? manualOldTotal(activeManualForObject) : (previous.expected || previous.actual || warmRent));
+      const netRent = money(activeManualForObject?.new_cold_rent ?? Math.max(0, money(warmRent - utilitiesRent)));
+      const previousNetRent = money(activeManualForObject?.old_cold_rent ?? Math.max(0, money(previousWarmRent - previousUtilitiesRent)));
       const hasRentals = activeRentals.length > 0;
       const hasActual = current.actual > 0;
       const quality: DevelopmentRow["quality"] = hasRentals && Math.abs(current.expected - current.actual) <= 1
@@ -706,8 +766,11 @@ export default function Mietentwicklung() {
             ? "Aktiv"
             : "Offene Zustimmung");
 
-      return {
+      const baseRow: DevelopmentRow = {
+        rowKey: object.id,
         object,
+        displayLabel: object.label,
+        unitName: "Wohnung / Objekt",
         currentExpected: current.expected,
         currentActual: current.actual,
         netRent,
@@ -733,20 +796,73 @@ export default function Mietentwicklung() {
         adjustmentStatus,
         manualAdjustments: manualForObject,
       };
+
+      if (!isFuertherObject(object) && !isRosensteinObject(object)) return [baseRow];
+
+      const unitRows = activeUnitBreakdown
+        .filter((unit) => unit.amount > 0 || isRosensteinObject(object) || isFuertherObject(object))
+        .map((unit): DevelopmentRow => {
+          const unitLabel = `${object.label} ${unit.label}`;
+          const unitManual = manualForObject.filter((adjustment) => labelsReferToSameUnit(adjustment.object_label, unitLabel));
+          const activeManual = activeManualAdjustmentForLabel(unitManual, unitLabel);
+          const unitActual = unitRentPartForMonth(appData.entries, object, candidateIds, currentMonth.year, currentMonth.month, unit.label);
+          const unitPreviousActual = unitRentPartForMonth(appData.entries, object, candidateIds, previous.year, previous.month, unit.label);
+          const isGarageUnit = isGarageLikeText(unit.label);
+          const unitUtilities = money(activeManual?.new_operating_costs ?? 0);
+          const unitPreviousUtilities = money(activeManual?.old_operating_costs ?? 0);
+          const unitWarm = money(activeManual ? manualNewTotal(activeManual) : (unit.amount || unitActual));
+          const unitPreviousWarm = money(activeManual ? manualOldTotal(activeManual) : (unitPreviousActual || unitWarm));
+          const unitNet = money(activeManual?.new_cold_rent ?? Math.max(0, unitWarm - unitUtilities));
+          const unitPreviousNet = money(activeManual?.old_cold_rent ?? Math.max(0, unitPreviousWarm - unitPreviousUtilities));
+          const unitHasRentals = unit.amount > 0;
+          const unitHasActual = unitActual > 0;
+          const unitQuality: DevelopmentRow["quality"] = unitHasRentals && (unitActual === 0 || Math.abs(unit.amount - unitActual) <= 1)
+            ? "ok"
+            : unitHasRentals || unitHasActual
+              ? "check"
+              : "missing";
+          const unitStatus: DevelopmentRow["adjustmentStatus"] = activeManual?.status === "planned"
+            ? "Geplant"
+            : activeManual?.status === "consent_open"
+              ? "Offene Zustimmung"
+              : activeManual?.status === "check"
+                ? "Prüfung empfohlen"
+                : "Aktiv";
+
+          return {
+            ...baseRow,
+            rowKey: `${object.id}-${unit.key}`,
+            displayLabel: unitLabel,
+            unitName: unit.label,
+            currentExpected: unit.amount,
+            currentActual: unitActual,
+            netRent: unitNet,
+            utilitiesRent: unitUtilities,
+            warmRent: unitWarm,
+            previousNetRent: unitPreviousNet,
+            previousUtilitiesRent: unitPreviousUtilities,
+            previousWarmRent: unitPreviousWarm,
+            tenantName: unitManual[0]?.tenant_name || baseRow.tenantName,
+            lastAdjustmentDate: unitManual[0]?.effective_date ?? baseRow.lastAdjustmentDate,
+            adjustmentReason: unitManual[0]?.reason ?? (isGarageUnit ? "Garagenmiete separat dokumentiert" : baseRow.adjustmentReason),
+            lastActualAmount: unitActual,
+            lastActualMonthLabel: unitActual > 0 ? monthLabel(currentMonth.year, currentMonth.month, true) : baseRow.lastActualMonthLabel,
+            previousExpected: unitPreviousWarm,
+            deltaExpected: unitWarm - unitPreviousWarm,
+            latestIncrease: null,
+            activeUnitSummary: `${unit.label} ${formatCurrency(unitWarm)}`,
+            activeUnitBreakdown: [unit],
+            hasGarageUnit: isGarageUnit,
+            quality: unitQuality,
+            qualityText: unitQuality === "ok" ? "Einheit ist separat dokumentiert." : unitQuality === "check" ? "Soll/Ist oder Stammdaten prüfen." : "Keine aktuelle Miete erkennbar.",
+            adjustmentStatus: unitStatus,
+            manualAdjustments: unitManual,
+          };
+        });
+
+      return unitRows.length ? unitRows : [baseRow];
     });
   }, [appData.entries, appData.objects, currentMonth?.month, currentMonth?.year, manualAdjustments, months, portfolioProperties, portfolioRentals]);
-
-  const allChanges = useMemo(
-    () =>
-      rows
-        .flatMap((row) => {
-          const candidateIds = candidateIdsForObject(row.object, portfolioProperties);
-          return rentChangesForObject(row.object, appData.entries, portfolioRentals, candidateIds, row.monthPoints);
-        })
-        .sort((a, b) => b.sortKey.localeCompare(a.sortKey))
-        .slice(0, 12),
-    [appData.entries, portfolioProperties, portfolioRentals, rows],
-  );
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -777,7 +893,7 @@ export default function Mietentwicklung() {
   }, [months.length, rows]);
 
   const loading = appData.loading || loadingRentals;
-  const selectedRow = selectedObjectId ? rows.find((row) => row.object.id === selectedObjectId) ?? null : null;
+  const selectedRow = selectedRowKey ? rows.find((row) => row.rowKey === selectedRowKey) ?? null : null;
 
   function showAndFocusAdjustmentForm() {
     setShowAdjustmentForm(true);
@@ -797,10 +913,8 @@ export default function Mietentwicklung() {
       status: "planned",
       oldColdRent: formatMoneyInput(row.netRent),
       oldOperatingCosts: formatMoneyInput(row.utilitiesRent),
-      oldTotalRent: formatMoneyInput(row.warmRent),
       newColdRent: formatMoneyInput(row.netRent),
       newOperatingCosts: formatMoneyInput(row.utilitiesRent),
-      newTotalRent: formatMoneyInput(row.warmRent),
       note: "",
     });
     showAndFocusAdjustmentForm();
@@ -817,31 +931,9 @@ export default function Mietentwicklung() {
       status: adjustment.status,
       oldColdRent: formatMoneyInput(adjustment.old_cold_rent ?? 0),
       oldOperatingCosts: formatMoneyInput(adjustment.old_operating_costs ?? 0),
-      oldTotalRent: formatMoneyInput(adjustment.old_total_rent ?? 0),
       newColdRent: formatMoneyInput(adjustment.new_cold_rent ?? 0),
       newOperatingCosts: formatMoneyInput(adjustment.new_operating_costs ?? 0),
-      newTotalRent: formatMoneyInput(adjustment.new_total_rent ?? 0),
       note: adjustment.note ?? "",
-    });
-    showAndFocusAdjustmentForm();
-  }
-
-  function editDetectedAdjustment(change: RentChange) {
-    setActionMessage("Automatisch erkannter Eintrag wurde ins Bearbeitungsformular übernommen. Nach dem Speichern wird er als manuelle Historie geführt.");
-    setGeneratedLetter(null);
-    setEditingAdjustmentId(null);
-    setAdjustmentForm({
-      effectiveDate: `${change.sortKey}-01`,
-      effectiveEndDate: "",
-      reason: change.source === "Buchungen" ? "Indexmiete" : "Anpassung an ortsübliche Vergleichsmiete",
-      status: "check",
-      oldColdRent: formatMoneyInput(change.previousAmount),
-      oldOperatingCosts: "0,00",
-      oldTotalRent: formatMoneyInput(change.previousAmount),
-      newColdRent: formatMoneyInput(change.newAmount),
-      newOperatingCosts: "0,00",
-      newTotalRent: formatMoneyInput(change.newAmount),
-      note: "Aus automatisch erkannter Historie übernommen. Bitte Begründung, Notiz und Beträge prüfen.",
     });
     showAndFocusAdjustmentForm();
   }
@@ -857,10 +949,10 @@ export default function Mietentwicklung() {
 
       const oldCold = parseMoneyInput(adjustmentForm.oldColdRent);
       const oldNk = parseMoneyInput(adjustmentForm.oldOperatingCosts);
-      const oldTotal = parseMoneyInput(adjustmentForm.oldTotalRent) ?? money((oldCold ?? 0) + (oldNk ?? 0));
+      const oldTotal = money((oldCold ?? 0) + (oldNk ?? 0));
       const newCold = parseMoneyInput(adjustmentForm.newColdRent);
       const newNk = parseMoneyInput(adjustmentForm.newOperatingCosts);
-      const newTotal = parseMoneyInput(adjustmentForm.newTotalRent) ?? money((newCold ?? 0) + (newNk ?? 0));
+      const newTotal = money((newCold ?? 0) + (newNk ?? 0));
 
       const payload = {
         effective_date: adjustmentForm.effectiveDate,
@@ -883,7 +975,7 @@ export default function Mietentwicklung() {
         : await supabase.from("rent_adjustments").insert({
           user_id: userId,
           property_id: row.object.id,
-          object_label: row.object.label,
+          object_label: row.displayLabel,
           tenant_name: row.tenantName,
           ...payload,
         });
@@ -910,13 +1002,13 @@ export default function Mietentwicklung() {
     const newCold = newest?.new_cold_rent ?? parseMoneyInput(adjustmentForm.newColdRent) ?? row.netRent;
     const oldNk = newest?.old_operating_costs ?? parseMoneyInput(adjustmentForm.oldOperatingCosts) ?? row.previousUtilitiesRent;
     const newNk = newest?.new_operating_costs ?? parseMoneyInput(adjustmentForm.newOperatingCosts) ?? row.utilitiesRent;
-    const oldTotal = newest?.old_total_rent ?? parseMoneyInput(adjustmentForm.oldTotalRent) ?? money(oldCold + oldNk);
-    const newTotal = newest?.new_total_rent ?? parseMoneyInput(adjustmentForm.newTotalRent) ?? money(newCold + newNk);
+    const oldTotal = money(oldCold + oldNk);
+    const newTotal = money(newCold + newNk);
     const note = newest?.note ?? adjustmentForm.note;
     const letter = [
       "Mietanpassung",
       "",
-      `Objekt / Einheit: ${row.object.label}`,
+      `Objekt / Einheit: ${row.displayLabel}`,
       `Mieter: ${row.tenantName}`,
       `Wirksam ab: ${formatDate(effectiveDate)}`,
       effectiveEndDate ? `Gültig bis: ${formatDate(effectiveEndDate)}` : "Gültig bis: laufend / offen",
@@ -1011,10 +1103,10 @@ export default function Mietentwicklung() {
           {filteredRows.length ? (
             filteredRows.map((row) => (
               <button
-                key={row.object.id}
+                key={row.rowKey}
                 type="button"
                 onClick={() => {
-                  setSelectedObjectId(row.object.id);
+                  setSelectedRowKey(row.rowKey);
                   setShowAdjustmentForm(false);
                   setActionMessage(null);
                   setGeneratedLetter(null);
@@ -1022,8 +1114,8 @@ export default function Mietentwicklung() {
                 className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] xl:items-center"
               >
                 <div>
-                  <h2 className="text-base font-black text-slate-950">{row.object.label}</h2>
-                  <p className="mt-1 text-xs font-bold text-slate-500">{row.activeUnitSummary}</p>
+                  <h2 className="text-base font-black text-slate-950">{row.displayLabel}</h2>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{row.unitName} · {row.activeUnitSummary}</p>
                 </div>
                 <div className="text-sm font-bold text-slate-700">{row.tenantName}</div>
                 <div className="text-sm font-black text-slate-950">{formatDate(row.lastAdjustmentDate)}</div>
@@ -1078,15 +1170,15 @@ export default function Mietentwicklung() {
       </section>
 
       {selectedRow ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedObjectId(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-950/35 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedRowKey(null)}>
           <aside className="ml-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Details zur Mietanpassung</p>
                 <h2 className="mt-2 text-2xl font-black text-slate-950">Details zur Mietanpassung</h2>
-                <p className="mt-2 text-sm font-bold text-slate-600">Einheit: {selectedRow.object.label} | Mieter: {selectedRow.tenantName}</p>
+                <p className="mt-2 text-sm font-bold text-slate-600">Einheit: {selectedRow.displayLabel} | Mieter: {selectedRow.tenantName}</p>
               </div>
-              <button type="button" onClick={() => setSelectedObjectId(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Details schließen">
+              <button type="button" onClick={() => setSelectedRowKey(null)} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700" aria-label="Details schließen">
                 <X size={18} />
               </button>
             </div>
@@ -1187,7 +1279,6 @@ export default function Mietentwicklung() {
                     {[
                       ["Nettokaltmiete", "oldColdRent", "newColdRent"],
                       ["Nebenkosten", "oldOperatingCosts", "newOperatingCosts"],
-                      ["Warmmiete", "oldTotalRent", "newTotalRent"],
                     ].map(([label, oldKey, newKey]) => {
                       const oldValue = parseMoneyInput(adjustmentForm[oldKey as keyof RentAdjustmentForm]);
                       const newValue = parseMoneyInput(adjustmentForm[newKey as keyof RentAdjustmentForm]);
@@ -1208,6 +1299,22 @@ export default function Mietentwicklung() {
                         </div>
                       );
                     })}
+                    {(() => {
+                      const oldCold = parseMoneyInput(adjustmentForm.oldColdRent) ?? 0;
+                      const oldNk = parseMoneyInput(adjustmentForm.oldOperatingCosts) ?? 0;
+                      const newCold = parseMoneyInput(adjustmentForm.newColdRent) ?? 0;
+                      const newNk = parseMoneyInput(adjustmentForm.newOperatingCosts) ?? 0;
+                      const oldTotal = money(oldCold + oldNk);
+                      const newTotal = money(newCold + newNk);
+                      return (
+                        <div className="grid grid-cols-4 gap-3 border-t border-slate-100 bg-emerald-50/60 px-4 py-3 text-sm font-black text-slate-800">
+                          <span>Warmmiete</span>
+                          <span>{formatCurrency(oldTotal)}</span>
+                          <span>{formatCurrency(newTotal)}</span>
+                          <span className="text-emerald-700">{formatCurrency(newTotal - oldTotal)}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <label className="mt-4 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
@@ -1292,8 +1399,8 @@ export default function Mietentwicklung() {
                         <span><strong>Art:</strong> {adjustment.reason}</span>
                         <span>
                           <strong>Änderung:</strong>{" "}
-                          Warmmiete {formatCurrency(adjustment.old_total_rent ?? 0)} auf {formatCurrency(adjustment.new_total_rent ?? 0)}
-                          {" "}({formatCurrency((adjustment.new_total_rent ?? 0) - (adjustment.old_total_rent ?? 0))})
+                          Warmmiete {formatCurrency(manualOldTotal(adjustment))} auf {formatCurrency(manualNewTotal(adjustment))}
+                          {" "}({formatCurrency(manualNewTotal(adjustment) - manualOldTotal(adjustment))})
                         </span>
                         <span>
                           <strong>Details:</strong>{" "}
@@ -1307,35 +1414,9 @@ export default function Mietentwicklung() {
                       </div>
                     </div>
                   ))}
-                  {(selectedRow.latestIncrease ? [selectedRow.latestIncrease] : allChanges.filter((change) => change.objectLabel === selectedRow.object.label).slice(0, 3)).map((change) => (
-                    <div key={change.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-slate-600 ring-1 ring-slate-200">
-                          Automatisch erkannt
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => editDetectedAdjustment(change)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-800 shadow-sm"
-                        >
-                          <Pencil size={14} /> Bearbeiten
-                        </button>
-                      </div>
-                      <div className="grid gap-2 text-sm font-bold text-slate-700">
-                        <span><strong>Datum:</strong> {change.monthLabel}</span>
-                        <span><strong>Art:</strong> {change.source === "Buchungen" ? "Erhöhung aus Mietbuchung" : "Anpassung im Vermietungszeitraum"}</span>
-                        <span><strong>Änderung:</strong> Kaltmiete erhöht um {formatCurrency(change.delta)} (von {formatCurrency(change.previousAmount)} auf {formatCurrency(change.newAmount)})</span>
-                      </div>
-                      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
-                        <span className="inline-flex items-center gap-2"><FileText size={14} /> Ankündigungsschreiben_Mietanpassung.pdf (Download-Link)</span>
-                        <span className="inline-flex items-center gap-2"><Mail size={14} /> Zustimmung_Mieter_E-Mail.pdf (Download-Link)</span>
-                        <span>Notiz des Vermieters: Zustimmung und Begründung bitte bei Bedarf ergänzen.</span>
-                      </div>
-                    </div>
-                  ))}
-                  {!selectedRow.manualAdjustments.length && !selectedRow.latestIncrease && !allChanges.some((change) => change.objectLabel === selectedRow.object.label) ? (
+                  {!selectedRow.manualAdjustments.length ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                      Noch keine Mietanpassung für dieses Mietverhältnis erkannt.
+                      Noch keine manuelle Mietanpassung für dieses Mietverhältnis eingetragen.
                     </div>
                   ) : null}
                 </div>
