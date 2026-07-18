@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const ADMIN_EMAIL = "info.koenen@gmail.com";
@@ -77,7 +77,7 @@ async function enforceAdminCreateUserRateLimit(admin: ReturnType<typeof supabase
   }
 }
 
-async function findAuthUserByEmail(admin: ReturnType<typeof supabaseAdmin>, email: string) {
+async function findAuthUserByEmail(admin: ReturnType<typeof supabaseAdmin>, email: string): Promise<User | null> {
   let page = 1;
   const perPage = 1000;
 
@@ -85,9 +85,10 @@ async function findAuthUserByEmail(admin: ReturnType<typeof supabaseAdmin>, emai
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
     if (error) throw error;
 
-    const match = data.users.find((user) => normalizeEmail(user.email) === email);
+    const users = data.users as User[];
+    const match = users.find((user) => normalizeEmail(user.email) === email);
     if (match) return match;
-    if (data.users.length < perPage) return null;
+    if (users.length < perPage) return null;
     page += 1;
   }
 
