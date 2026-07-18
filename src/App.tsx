@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
 import {
   Link,
   NavLink,
@@ -52,6 +52,7 @@ import { useAuth } from "./auth/AuthProvider";
 import { isAdminEmail, isReadonlyApprovalEmail } from "./auth/accessControl";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
+import { isVacancyInRange, listVacancies, type UnitVacancy } from "./services/vacancyService";
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
@@ -1225,7 +1226,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "rent-account" | "utilities" | "wealth" | "handover";
+type ReportKind = "tax" | "advisor" | "rent-account" | "utilities" | "wealth" | "handover" | "vacancy";
 type ReportFormat = "pdf" | "csv" | "zip";
 
 function slugifyReportPart(value: string): string {
@@ -1454,7 +1455,11 @@ function ReportsExportsPage() {
   const currentYear = new Date().getFullYear();
   const [objectFilter, setObjectFilter] = useState("all");
   const [period, setPeriod] = useState(String(currentYear));
+  const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
+  const [vacancyError, setVacancyError] = useState<string | null>(null);
   const selectedObject = objects.find((object) => object.id === objectFilter);
+  const periodStart = `${period}-01-01`;
+  const periodEnd = `${period}-12-31`;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
     if (!selectedObject) return true;
@@ -1475,12 +1480,46 @@ function ReportsExportsPage() {
   const rentItems = scopedEntries.filter((entry) => isRentLikeEntry(entry)).length;
   const reportObjectName = selectedObject?.label ?? "Alle Immobilien";
   const reportSlug = `${slugifyReportPart(reportObjectName)}-${period}`;
+  const matchesSelectedVacancy = (vacancy: UnitVacancy) => {
+    if (!selectedObject) return true;
+    if (vacancy.property_id === selectedObject.id) return true;
+    const haystack = `${vacancy.object_label ?? ""} ${vacancy.object_code ?? ""} ${vacancy.property_id} ${vacancy.unit_label ?? ""}`.toLowerCase();
+    const candidates = [selectedObject.label, selectedObject.code ?? "", selectedObject.id, ...(selectedObject.aliases ?? [])]
+      .map((value) => value.toLowerCase().trim())
+      .filter(Boolean);
+    return candidates.some((candidate) => haystack.includes(candidate) || candidate.includes(haystack));
+  };
+  const scopedVacancies = vacancies
+    .filter((vacancy) => isVacancyInRange(vacancy, periodStart, periodEnd))
+    .filter(matchesSelectedVacancy)
+    .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
   const scopedLoans = selectedObject
     ? loanRows.filter((row) => {
       const rowName = row.property_name.toLowerCase();
       return row.property_id === selectedObject.id || rowName.includes(selectedObject.label.toLowerCase()) || selectedObject.label.toLowerCase().includes(rowName);
     })
     : loanRows;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadVacancyRows() {
+      try {
+        setVacancyError(null);
+        const rows = await listVacancies({ from: periodStart, to: periodEnd });
+        if (alive) setVacancies(rows);
+      } catch (error) {
+        if (!alive) return;
+        setVacancies([]);
+        setVacancyError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    void loadVacancyRows();
+    return () => {
+      alive = false;
+    };
+  }, [periodEnd, periodStart]);
 
   function reportTitle(kind: ReportKind): string {
     const titles: Record<ReportKind, string> = {
@@ -1490,6 +1529,7 @@ function ReportsExportsPage() {
       utilities: "Nebenkostenabrechnungen",
       wealth: "Immobilien-Vermögen und Kredite",
       handover: "Übergabeprotokolle und Zählerstände",
+      vacancy: "Leerstandsbericht",
     };
     return titles[kind];
   }
@@ -1512,6 +1552,25 @@ function ReportsExportsPage() {
   }
 
   function buildReportLines(kind: ReportKind): string[] {
+    if (kind === "vacancy") {
+      const vacancyLines = scopedVacancies.map((vacancy) => {
+        const endDate = vacancy.end_date ?? "offen";
+        return `${formatDate(vacancy.start_date)} bis ${formatDate(endDate)} | ${vacancy.object_label || vacancy.object_code || reportObjectName} | ${vacancy.unit_label || "Gesamte Immobilie"} | ${vacancy.reason ?? "-"} | ${vacancy.notes ?? ""}`;
+      });
+      return [
+        `Objekt: ${reportObjectName}`,
+        `Zeitraum: ${period}`,
+        `Leerstandszeiträume: ${scopedVacancies.length}`,
+        "",
+        "Steuerliche Dokumentation:",
+        "Leerstand wird als Nachweis fuer Vermietungsabsicht und Einnahmeausfall dokumentiert. Es wird keine künstliche Einnahme- oder Ausgabenbuchung erzeugt.",
+        "",
+        "Leerstände:",
+        ...(vacancyLines.length ? vacancyLines : ["Für diese Filterauswahl wurden keine Leerstände dokumentiert."]),
+        vacancyError ? `Hinweis: Leerstände konnten nicht vollständig geladen werden: ${vacancyError}` : "",
+      ].filter(Boolean);
+    }
+
     const rows = entryRows(kind);
     const reportIncome = rows.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
     const reportExpenses = rows.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
@@ -1542,6 +1601,20 @@ function ReportsExportsPage() {
   }
 
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "vacancy") {
+      const rows = scopedVacancies.map((vacancy) => [
+        vacancy.object_label || vacancy.object_code || reportObjectName,
+        vacancy.unit_label || "Gesamte Immobilie",
+        formatDate(vacancy.start_date),
+        vacancy.end_date ? formatDate(vacancy.end_date) : "offen",
+        vacancy.status,
+        vacancy.reason ?? "",
+        vacancy.notes ?? "",
+        "Nachweis fuer Steuererklaerung / Vermietungsabsicht",
+      ]);
+      return buildCsv(["Objekt", "Einheit", "Beginn", "Ende", "Status", "Grund", "Notiz", "Steuerhinweis"], rows);
+    }
+
     const rows = entryRows(kind)
       .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
       .map((entry) => [
@@ -1626,6 +1699,15 @@ function ReportsExportsPage() {
       icon: KeyRound,
       actions: [{ label: "Dokumente exportieren", kind: "handover", format: "zip", primary: true }],
     },
+    {
+      title: "Leerstandsbericht",
+      description: "Dokumentiert Leerstandszeiträume, Grund und Notiz für Steuerberater und Anlage-V-Nachweis.",
+      icon: DoorOpen,
+      actions: [
+        { label: "PDF herunterladen", kind: "vacancy", format: "pdf", primary: true },
+        { label: "CSV exportieren", kind: "vacancy", format: "csv" },
+      ],
+    },
   ] satisfies Array<{
     title: string;
     description: string;
@@ -1635,10 +1717,11 @@ function ReportsExportsPage() {
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Ausgewertete Buchungen" value={scopedEntries.length} detail={selectedObject?.label ?? "Alle Objekte"} icon={WalletCards} tone="blue" />
         <KpiCard label="Einnahmen" value={formatCurrency(income)} detail={period} icon={TrendingUp} tone="green" />
         <KpiCard label="Ausgaben" value={formatCurrency(expenses)} detail={`${rentItems} Mietbuchungen erkannt`} icon={ReceiptText} tone="red" />
+        <KpiCard label="Leerstände" value={scopedVacancies.length} detail={vacancyError ? "Leerstand konnte nicht geladen werden" : "Zeiträume im Filter"} icon={DoorOpen} tone={scopedVacancies.length ? "amber" : "slate"} />
       </section>
 
       <SectionPanel

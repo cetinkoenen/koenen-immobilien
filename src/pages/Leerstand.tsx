@@ -254,9 +254,9 @@ export default function Leerstand() {
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 Ende
                 <input name="endDate" type="date" value={form.endDate} onChange={updateField} className="h-11 rounded-xl border border-slate-300 px-3 font-semibold text-slate-950" />
-                <span className="text-xs font-semibold leading-5 text-slate-500">Leerstand endet am Tag vor dem neuen Mietbeginn.</span>
               </label>
             </div>
+            <p className="-mt-2 text-xs font-semibold leading-5 text-slate-500">Leerstand endet am Tag vor dem neuen Mietbeginn.</p>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               Grund
               <input name="reason" value={form.reason} onChange={updateField} placeholder="z. B. Kündigung, Renovierung, Neuvermietung offen" className="h-11 rounded-xl border border-slate-300 px-3 font-semibold text-slate-950" />

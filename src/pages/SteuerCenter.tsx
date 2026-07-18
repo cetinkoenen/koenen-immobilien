@@ -34,6 +34,7 @@ type LoanTaxRow = {
   principal: number;
   balance: number;
   source: string | null;
+  has_year_value: boolean;
 };
 
 type TaxVacancyRow = UnitVacancy & {
@@ -542,7 +543,7 @@ export default function SteuerCenter() {
     return new Map(objects.map((object) => [object.objekt_code, object.label]));
   }, [objects]);
 
-  async function loadObjects() {
+  async function loadObjects(): Promise<ObjectOption[]> {
     const { data, error: loadError } = await supabase
       .from("v_object_dropdown")
       .select("objekt_code,label")
@@ -561,6 +562,7 @@ export default function SteuerCenter() {
       .filter((row) => row.objekt_code && row.label);
 
     setObjects(rows);
+    return rows;
   }
 
   async function loadEntries() {
@@ -570,8 +572,9 @@ export default function SteuerCenter() {
     const range = yearRange(year);
 
     try {
-      if (objects.length === 0) {
-        await loadObjects();
+      let objectOptions = objects;
+      if (objectOptions.length === 0) {
+        objectOptions = await loadObjects();
       }
 
       let query = supabase
@@ -647,16 +650,54 @@ export default function SteuerCenter() {
             principal: parseLocaleNumber(row.principal, 0),
             balance: parseLocaleNumber(row.balance, 0),
             source: row.source ?? null,
+            has_year_value: true,
           };
         })
         .filter((row) => row.property_id && row.year === year)
+        .sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
+
+      const matchLoanToObject = (object: ObjectOption) => {
+        const objectLabel = normalize(object.label);
+        const objectCodeNormalized = normalize(object.objekt_code);
+        return loanRows.find((row) => {
+          const loanLabel = normalize(row.property_label);
+          const loanId = normalize(row.property_id);
+          return (
+            loanId === objectCodeNormalized ||
+            loanLabel === objectLabel ||
+            loanLabel.includes(objectLabel) ||
+            objectLabel.includes(loanLabel)
+          );
+        });
+      };
+
+      const loanRowsByObject = objectOptions.map<LoanTaxRow>((object) => {
+        const matchedLoan = matchLoanToObject(object);
+        if (matchedLoan) return matchedLoan;
+        return {
+          property_id: object.objekt_code,
+          property_label: object.label,
+          year,
+          interest: 0,
+          principal: 0,
+          balance: 0,
+          source: "Kein Darlehens-Jahreswert erfasst",
+          has_year_value: false,
+        };
+      });
+
+      const unmatchedLoanRows = loanRows.filter((loan) => {
+        return !objectOptions.some((object) => matchLoanToObject(object)?.property_id === loan.property_id);
+      });
+
+      const completeLoanRows = [...loanRowsByObject, ...unmatchedLoanRows]
         .filter((row) => {
           if (objectCode === "ALL") return true;
-          return normalize(row.property_label).includes(normalize(selectedLabel)) || normalize(selectedLabel).includes(normalize(row.property_label));
+          return normalize(row.property_label).includes(normalize(selectedLabel)) || normalize(selectedLabel).includes(normalize(row.property_label)) || normalize(row.property_id) === normalize(objectCode);
         })
         .sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
 
-      setLoanTaxRows(loanRows);
+      setLoanTaxRows(completeLoanRows);
       const vacancyRows = await listVacancies({ from: range.from, to: yearEnd(year) });
       setVacancies(vacancyRows);
     } catch (loadError) {
@@ -816,6 +857,8 @@ export default function SteuerCenter() {
       ? "Exportbereit"
       : `${totals.checkRows} Buchungen pruefen`;
   const advisorStatusTone: "green" | "amber" | "slate" = totals.count === 0 ? "slate" : totals.checkRows === 0 ? "green" : "amber";
+  const loanRowsWithYearValue = loanTaxRows.filter((row) => row.has_year_value);
+  const loanRowsMissingYearValue = loanTaxRows.filter((row) => !row.has_year_value);
   const advisorChecks = [
     {
       label: "Buchungen aus Hauptquelle finance_entry",
@@ -829,8 +872,10 @@ export default function SteuerCenter() {
     },
     {
       label: "Darlehenszinsen aus Seite Darlehen",
-      value: loanTaxRows.length ? `${loanTaxRows.length} Objekt(e)` : "Keine Jahreswerte",
-      relevance: loanTaxRows.length ? "tax" : "check",
+      value: loanRowsMissingYearValue.length
+        ? `${loanRowsWithYearValue.length} erfasst · ${loanRowsMissingYearValue.length} prüfen`
+        : `${loanRowsWithYearValue.length} erfasst`,
+      relevance: loanRowsMissingYearValue.length ? "check" : "tax",
     },
     {
       label: "Leerstands-Nachweise aus Seite Leerstand",
@@ -1038,7 +1083,11 @@ export default function SteuerCenter() {
                   <td style={styles.td}>{eur(row.interest)}</td>
                   <td style={styles.td}>{eur(row.principal)}</td>
                   <td style={styles.td}>{eur(row.balance)}</td>
-                  <td style={styles.td}>{row.source || "Darlehens-Ledger"}</td>
+                  <td style={styles.td}>
+                    {row.has_year_value ? row.source || "Darlehens-Ledger" : (
+                      <span style={{ color: "#b45309", fontWeight: 900 }}>Kein Jahreswert erfasst</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!loanTaxRows.length ? (
