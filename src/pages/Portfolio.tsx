@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { useNavigate } from "react-router-dom";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "../data/portfolioGallery";
 import { useAppData, type PortfolioLoanRow } from "../state/AppDataContext";
-import { loadAllPropertyExtras, savePropertyExtra, writeLocalPropertyExtras, type PropertyExtraInfo } from "../services/propertyExtraService";
+import { loadAllPropertyExtras, savePropertyExtra, type PropertyExtraInfo } from "../services/propertyExtraService";
 import { supabase } from "../lib/supabaseClient";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 
@@ -30,7 +30,6 @@ type PortfolioFinanceSummary = {
   mieteingaenge: number | string | null;
 };
 
-const STORAGE_KEY = "koenen:portfolio:object-overview-extra:v4";
 const EXPOSE_STORAGE_KEY = "koenen:portfolio:exposes:v1";
 
 const emptyExtra: ExtraInfo = {
@@ -71,19 +70,6 @@ function parseMoney(value: string): number {
 function toNumber(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function loadExtra(): Record<string, ExtraInfo> {
-  try {
-    const raw =
-      window.localStorage.getItem(STORAGE_KEY) ??
-      window.localStorage.getItem("koenen:portfolio:object-overview-extra:v3") ??
-      window.localStorage.getItem("koenen:portfolio:object-overview-extra:v2");
-    const parsed = raw ? (JSON.parse(raw) as Record<string, Partial<ExtraInfo>>) : {};
-    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, { ...emptyExtra, ...value }]));
-  } catch {
-    return {};
-  }
 }
 
 function loadExposes(): Record<string, ExposeInfo> {
@@ -181,7 +167,7 @@ export default function Portfolio() {
   const navigate = useNavigate();
   const appData = useAppData();
 
-  const [extraInfo, setExtraInfo] = useState<Record<string, ExtraInfo>>(() => loadExtra());
+  const [extraInfo, setExtraInfo] = useState<Record<string, ExtraInfo>>({});
   const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
   const [extraStatus, setExtraStatus] = useState<Record<string, string>>({});
   const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
@@ -203,9 +189,7 @@ export default function Portfolio() {
       if (cancelled || Object.keys(remote).length === 0) return;
 
       setExtraInfo((prev) => {
-        const next = { ...prev, ...remote };
-        writeLocalPropertyExtras(next);
-        return next;
+        return { ...prev, ...remote };
       });
     }
 
@@ -329,7 +313,6 @@ export default function Portfolio() {
   function updateExtra(propertyId: string, field: keyof ExtraInfo, value: string) {
     setExtraInfo((prev) => {
       const next = { ...prev, [propertyId]: { ...(prev[propertyId] ?? emptyExtra), [field]: value } };
-      writeLocalPropertyExtras(next);
       return next;
     });
 

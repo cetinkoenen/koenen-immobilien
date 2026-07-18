@@ -77,6 +77,42 @@ async function enforceAdminCreateUserRateLimit(admin: ReturnType<typeof supabase
   }
 }
 
+async function findAuthUserByEmail(admin: ReturnType<typeof supabaseAdmin>, email: string) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (page < 20) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const match = data.users.find((user) => normalizeEmail(user.email) === email);
+    if (match) return match;
+    if (data.users.length < perPage) return null;
+    page += 1;
+  }
+
+  return null;
+}
+
+async function resolveAccountId(admin: ReturnType<typeof supabaseAdmin>, requestedAccountId: unknown) {
+  const fromRequestOrEnv = String(requestedAccountId ?? process.env.KOENEN_ACCOUNT_ID ?? "").trim();
+  if (fromRequestOrEnv) return fromRequestOrEnv;
+
+  const adminUser = await findAuthUserByEmail(admin, ADMIN_EMAIL);
+  if (!adminUser?.id) return "";
+
+  const { data, error } = await admin
+    .from("account_members")
+    .select("account_id")
+    .eq("user_id", adminUser.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return String(data?.account_id ?? "");
+}
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -112,14 +148,26 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
-    });
+    let authUser = await findAuthUserByEmail(admin, email);
 
-    if (error && !error.message.toLowerCase().includes("already")) throw error;
+    if (authUser?.id) {
+      const { data, error } = await admin.auth.admin.updateUserById(authUser.id, {
+        password,
+        email_confirm: true,
+        user_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
+      });
+      if (error) throw error;
+      authUser = data.user;
+    } else {
+      const { data, error } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
+      });
+      if (error) throw error;
+      authUser = data.user;
+    }
 
     await admin.from("app_user_access").upsert({
       email,
@@ -129,8 +177,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       is_active: true,
     });
 
-    const accountId = String(req.body?.accountId ?? process.env.KOENEN_ACCOUNT_ID ?? "").trim();
-    const userId = data.user?.id;
+    const accountId = await resolveAccountId(admin, req.body?.accountId);
+    const userId = authUser?.id;
     if (accountId && userId) {
       await admin.from("account_members").upsert({
         account_id: accountId,

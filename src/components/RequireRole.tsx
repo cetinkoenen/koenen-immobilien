@@ -75,7 +75,6 @@ export default function RequireRole({ minRole, children, loadingFallback }: Prop
   const { role, loading: roleLoading, error: roleErr } = useMyRole(shouldLoadRole ? accountId! : null);
 
   if (DEBUG) {
-    // eslint-disable-next-line no-console
     devLog("[RequireRole]", {
       path: location.pathname,
       minRole,

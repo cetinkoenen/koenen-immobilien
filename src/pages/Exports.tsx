@@ -139,7 +139,6 @@ export default function Exports() {
         .select("account_id,user_id,role,created_at")
         .limit(10);
 
-      // eslint-disable-next-line no-console
       devLog("[Exports] Ping account_members:", {
         data,
         error,
@@ -156,7 +155,6 @@ export default function Exports() {
         alert("Ping ok. Schau Console.");
       }
     } catch (e: any) {
-      // eslint-disable-next-line no-console
       console.error("[Exports] debugPing failed:", e);
       alert(`Ping failed: ${e?.message ?? String(e)}`);
     } finally {

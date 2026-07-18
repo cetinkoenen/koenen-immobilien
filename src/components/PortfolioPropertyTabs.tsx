@@ -155,7 +155,6 @@ export default function PortfolioPropertyTabs() {
       // If URL had e.g. propertyId=undefined -> remove it
       if (raw && normalizePropertyId(raw) === "") setQueryParam("propertyId", null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadProperties() {

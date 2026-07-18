@@ -110,6 +110,62 @@ type CachedAppData = {
   loanChartByPropertyId?: Record<string, LoanChartPoint[]>;
 };
 
+type ObjectDropdownRow = {
+  value: unknown;
+  objekt_code: string | null;
+  label: string | null;
+  object_id: string | null;
+  property_id: string | null;
+};
+
+type FinanceEntryRow = {
+  id: string | number | null;
+  object_id: string | null;
+  objekt_code: string | null;
+  entry_type: string | null;
+  booking_date: string | null;
+  amount: unknown;
+  category: string | null;
+  note: string | null;
+  nk_relevant: boolean | null;
+};
+
+type PortfolioLoanSourceRow = {
+  property_id: string | null;
+  portfolio_property_id: string | null;
+  property_name: string | null;
+  last_balance: unknown;
+  principal_total: unknown;
+  interest_total: unknown;
+  repaid_percent: unknown;
+  repayment_status: string | null;
+  repayment_label: string | null;
+};
+
+type LoanDashboardSourceRow = {
+  property_id: string | null;
+  property_name: string | null;
+  first_year: unknown;
+  last_year: unknown;
+  last_balance_year: unknown;
+  last_balance: unknown;
+  interest_total: unknown;
+  principal_total: unknown;
+  repaid_percent: unknown;
+  repaid_percent_display: string | null;
+  repayment_status: string | null;
+  repayment_label: string | null;
+  refreshed_at: string | null;
+};
+
+type LoanLedgerSourceRow = {
+  property_id: string | null;
+  year: unknown;
+  balance: unknown;
+  interest?: unknown;
+  principal?: unknown;
+};
+
 const AppDataContext = createContext<AppDataContextValue | null>(null);
 
 function toNumber(value: unknown): number {
@@ -475,7 +531,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
       if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
 
-      const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as any[])
+      const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as ObjectDropdownRow[])
         .filter((row) => row.value)
         .map((row) => ({
           // AppObject.id muss zur Buchungstabelle passen: finance_entry.object_id -> public.objects.id.
@@ -486,7 +542,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           aliases: uniqueClean([row.object_id, row.property_id, row.value, row.objekt_code, row.label]),
         })));
 
-      const mappedEntries = ((entriesRes.data ?? []) as any[]).map((row) => ({
+      const mappedEntries = ((entriesRes.data ?? []) as FinanceEntryRow[]).map((row) => ({
         id: row.id ?? null,
         object_id: row.object_id == null ? null : String(row.object_id),
         objekt_code: row.objekt_code ?? null,
@@ -506,7 +562,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
       const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
-      let mappedPortfolio = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as any[])
+      let mappedPortfolio = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
@@ -521,7 +577,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           repayment_label: row.repayment_label ?? null,
         }));
 
-      let mappedLoans = ((loanRes.error ? [] : loanRes.data ?? []) as any[])
+      let mappedLoans = ((loanRes.error ? [] : loanRes.data ?? []) as LoanDashboardSourceRow[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
@@ -558,7 +614,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
         if (!ledgerOverrideRes.error) {
           const latestByProperty: Record<string, { year: number; balance: number; interestTotal: number; principalTotal: number }> = {};
-          for (const rawRow of (ledgerOverrideRes.data ?? []) as any[]) {
+          for (const rawRow of (ledgerOverrideRes.data ?? []) as LoanLedgerSourceRow[]) {
             const propertyId = String(rawRow.property_id ?? "");
             if (!propertyId) continue;
             const year = parseMaybeNumber(rawRow.year);
@@ -610,7 +666,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           .in("property_id", ids)
           .order("property_id", { ascending: true })
           .order("year", { ascending: true });
-        if (!ledgerRes.error) charts = groupLedgerRows((ledgerRes.data ?? []) as any[]);
+        if (!ledgerRes.error) charts = groupLedgerRows((ledgerRes.data ?? []) as LoanLedgerSourceRow[]);
       }
       for (const row of mappedLoans) {
         if (!charts[row.property_id] || charts[row.property_id].length === 0) {

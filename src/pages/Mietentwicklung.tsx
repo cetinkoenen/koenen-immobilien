@@ -1153,6 +1153,17 @@ export default function Mietentwicklung() {
   const selectedRow = selectedRowKey ? rows.find((row) => row.rowKey === selectedRowKey) ?? null : null;
   const selectedChartRow = selectedChartRowKey ? rows.find((row) => row.rowKey === selectedChartRowKey) ?? null : null;
 
+  useEffect(() => {
+    if (!selectedChartRow) return undefined;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelectedChartRowKey(null);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedChartRow]);
+
   function showAndFocusAdjustmentForm() {
     setShowAdjustmentForm(true);
     window.setTimeout(() => {
@@ -1737,11 +1748,17 @@ export default function Mietentwicklung() {
 
       {selectedChartRow ? (
         <div className="fixed inset-0 z-[60] bg-slate-950/45 p-3 backdrop-blur-sm sm:p-6" onClick={() => setSelectedChartRowKey(null)}>
-          <section className="mx-auto mt-8 max-h-[calc(100vh-4rem)] max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rent-chart-dialog-title"
+            className="mx-auto mt-8 max-h-[calc(100vh-4rem)] max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-[#315f72]">Mietentwicklungsdiagramm</p>
-                <h2 className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{selectedChartRow.displayLabel}</h2>
+                <h2 id="rent-chart-dialog-title" className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{selectedChartRow.displayLabel}</h2>
                 <p className="mt-1 text-sm font-bold text-slate-500">{selectedChartRow.tenantName}</p>
               </div>
               <button type="button" onClick={() => setSelectedChartRowKey(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm" aria-label="Diagramm schließen">

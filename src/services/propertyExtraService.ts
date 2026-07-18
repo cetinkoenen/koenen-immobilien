@@ -60,25 +60,26 @@ const OLD_KEYS = [
 function safeStorageGet(key: string) {
   try { return typeof localStorage === "undefined" ? null : localStorage.getItem(key); } catch { return null; }
 }
-function safeStorageSet(key: string, value: string) {
-  try { if (typeof localStorage !== "undefined") localStorage.setItem(key, value); } catch {}
+
+function readObjectValue(value: unknown, key: string): unknown {
+  return value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
 }
 
-function normalize(value: any): PropertyExtraInfo {
+function normalize(value: unknown): PropertyExtraInfo {
   const normalized: PropertyExtraInfo = {
     ...emptyPropertyExtra,
-    property_id: String(value?.property_id ?? value?.propertyId ?? ""),
-    livingArea: String(value?.livingArea ?? value?.living_area ?? ""),
-    rooms: String(value?.rooms ?? ""),
-    coldRent: String(value?.coldRent ?? value?.cold_rent ?? ""),
-    operatingCosts: String(value?.operatingCosts ?? value?.operating_costs ?? ""),
-    totalRent: String(value?.totalRent ?? value?.total_rent ?? ""),
-    marketValue: String(value?.marketValue ?? value?.market_value ?? ""),
-    equipment: String(value?.equipment ?? ""),
-    firstName: String(value?.firstName ?? value?.first_name ?? ""),
-    lastName: String(value?.lastName ?? value?.last_name ?? ""),
-    phone: String(value?.phone ?? ""),
-    email: String(value?.email ?? ""),
+    property_id: String(readObjectValue(value, "property_id") ?? readObjectValue(value, "propertyId") ?? ""),
+    livingArea: String(readObjectValue(value, "livingArea") ?? readObjectValue(value, "living_area") ?? ""),
+    rooms: String(readObjectValue(value, "rooms") ?? ""),
+    coldRent: String(readObjectValue(value, "coldRent") ?? readObjectValue(value, "cold_rent") ?? ""),
+    operatingCosts: String(readObjectValue(value, "operatingCosts") ?? readObjectValue(value, "operating_costs") ?? ""),
+    totalRent: String(readObjectValue(value, "totalRent") ?? readObjectValue(value, "total_rent") ?? ""),
+    marketValue: String(readObjectValue(value, "marketValue") ?? readObjectValue(value, "market_value") ?? ""),
+    equipment: String(readObjectValue(value, "equipment") ?? ""),
+    firstName: String(readObjectValue(value, "firstName") ?? readObjectValue(value, "first_name") ?? ""),
+    lastName: String(readObjectValue(value, "lastName") ?? readObjectValue(value, "last_name") ?? ""),
+    phone: String(readObjectValue(value, "phone") ?? ""),
+    email: String(readObjectValue(value, "email") ?? ""),
   };
   normalized.living_area = normalized.livingArea;
   normalized.cold_rent = normalized.coldRent;
@@ -94,10 +95,10 @@ function readRecordFromStorage(key: string): Record<string, PropertyExtraInfo> {
   const raw = safeStorageGet(key);
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, any>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     const result: Record<string, PropertyExtraInfo> = {};
     for (const [propertyId, value] of Object.entries(parsed ?? {})) {
-      result[propertyId] = { ...normalize(value), property_id: String((value as any)?.property_id ?? propertyId) };
+      result[propertyId] = { ...normalize(value), property_id: String(readObjectValue(value, "property_id") ?? propertyId) };
     }
     return result;
   } catch { return {}; }
@@ -116,16 +117,10 @@ export function loadLocalTenantExtras(): Record<string, PropertyExtraInfo> {
 export function mergeLocalSources(): Record<string, PropertyExtraInfo> { return loadLocalTenantExtras(); }
 
 export function writeLocalTenantExtras(dataOrPropertyId: Record<string, PropertyExtraInfo> | string, extra?: Partial<PropertyExtraInfo>) {
-  if (typeof dataOrPropertyId === "string") {
-    const propertyId = dataOrPropertyId;
-    const all = loadLocalTenantExtras();
-    all[propertyId] = { ...(all[propertyId] ?? emptyPropertyExtra), ...normalize(extra ?? {}), property_id: propertyId };
-    safeStorageSet(STORAGE_KEY, JSON.stringify(all));
-    return;
-  }
-  safeStorageSet(STORAGE_KEY, JSON.stringify(dataOrPropertyId));
+  void dataOrPropertyId;
+  void extra;
 }
-export function writeLocalPropertyExtras(dataOrPropertyId: Record<string, PropertyExtraInfo> | string, extra?: Partial<PropertyExtraInfo>) { writeLocalTenantExtras(dataOrPropertyId as any, extra); }
+export function writeLocalPropertyExtras(dataOrPropertyId: Record<string, PropertyExtraInfo> | string, extra?: Partial<PropertyExtraInfo>) { writeLocalTenantExtras(dataOrPropertyId, extra); }
 export function writeLocalPropertyExtra(propertyId: string, extra: Partial<PropertyExtraInfo>) { writeLocalTenantExtras(propertyId, extra); }
 
 export async function fetchPropertyExtras(propertyIds?: string[]): Promise<Record<string, PropertyExtraInfo>> {
