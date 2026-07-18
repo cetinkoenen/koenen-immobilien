@@ -594,8 +594,8 @@ function MiniRentChartIcon({ data }: { data: RentChartPoint[] }) {
       <span className="rent-chart-mini-bars">
         {recent.map((point) => (
           <span key={point.key} className="rent-chart-mini-stack">
-            <span className="rent-chart-mini-bar rent-chart-mini-bar-cold" style={{ height: `${Math.max(14, (point.coldRent / maxValue) * 56)}px` }} />
-            <span className="rent-chart-mini-bar rent-chart-mini-bar-nk" style={{ height: `${Math.max(8, (point.operatingCosts / maxValue) * 56)}px` }} />
+            <span className="rent-chart-mini-bar rent-chart-mini-bar-cold" style={{ height: `${Math.max(10, (point.coldRent / maxValue) * 30)}px` }} />
+            <span className="rent-chart-mini-bar rent-chart-mini-bar-nk" style={{ height: `${Math.max(6, (point.operatingCosts / maxValue) * 30)}px` }} />
           </span>
         ))}
       </span>
@@ -1295,7 +1295,7 @@ export default function Mietentwicklung() {
 
       {!loading ? (
         <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-          <div className="hidden grid-cols-[1.15fr_1fr_150px_150px_150px_150px_155px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.13em] text-slate-500 xl:grid">
+          <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_112px_112px_102px_112px_104px_72px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.13em] text-slate-500 xl:grid">
             <span>Objekt & Einheit</span>
             <span>Mieter</span>
             <span>Letzte Anpassung</span>
@@ -1323,7 +1323,7 @@ export default function Mietentwicklung() {
                     setSelectedRowKey(row.rowKey);
                   }
                 }}
-                className="grid w-full cursor-pointer gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_155px_96px] xl:items-center"
+                className="grid w-full cursor-pointer gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_112px_112px_102px_112px_104px_72px] xl:items-center"
               >
                 <div>
                   <h2 className="text-base font-black text-slate-950">{row.displayLabel}</h2>
@@ -1356,6 +1356,7 @@ export default function Mietentwicklung() {
                     title={`Mietdiagramm für ${row.displayLabel} öffnen`}
                     aria-label={`Mietdiagramm für ${row.displayLabel} öffnen`}
                   >
+                    <BarChart3 className="rent-chart-button-icon" size={18} aria-hidden="true" />
                     <MiniRentChartIcon data={buildRentChartData(row)} />
                   </button>
                 </div>

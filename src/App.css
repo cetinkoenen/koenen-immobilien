@@ -1301,30 +1301,38 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
 
 .rent-chart-button {
   display: inline-flex;
-  width: 82px;
-  height: 62px;
+  width: 68px;
+  min-width: 68px;
+  height: 54px;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
+  color: #0f766e;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .rent-chart-button:hover,
 .rent-chart-button:focus-visible {
   transform: translateY(-2px);
-  border-color: #99f6e4;
+  border-color: #5eead4;
+  background: linear-gradient(180deg, #ccfbf1 0%, #f0fdfa 100%);
   box-shadow: 0 16px 30px rgba(20, 184, 166, 0.16);
   outline: none;
+}
+
+.rent-chart-button-icon {
+  flex: 0 0 auto;
 }
 
 .rent-chart-mini {
   position: relative;
   display: block;
-  width: 64px;
-  height: 46px;
+  width: 34px;
+  height: 34px;
   overflow: hidden;
 }
 
@@ -1356,7 +1364,7 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
 
 .rent-chart-mini-bar {
   display: block;
-  width: 7px;
+  width: 5px;
   border-radius: 999px 999px 2px 2px;
 }
 
@@ -1376,8 +1384,8 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
 
 .rent-chart-mini-dot {
   position: absolute;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border: 2px solid #ffffff;
   border-radius: 999px;
   background: #6366f1;
