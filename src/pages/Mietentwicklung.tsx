@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
@@ -72,6 +73,14 @@ type DevelopmentRow = {
   qualityText: string;
   adjustmentStatus: "Aktiv" | "Prüfung empfohlen" | "Geplant" | "Offene Zustimmung";
   manualAdjustments: ManualRentAdjustment[];
+};
+
+type RentChartPoint = {
+  key: string;
+  label: string;
+  coldRent: number;
+  operatingCosts: number;
+  totalRent: number;
 };
 
 type ManualRentAdjustment = {
@@ -471,6 +480,175 @@ function manualNewTotal(adjustment: ManualRentAdjustment) {
   return money((adjustment.new_cold_rent ?? 0) + (adjustment.new_operating_costs ?? 0));
 }
 
+function previousMonthDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setMonth(date.getMonth() - 1);
+  return toIso(date);
+}
+
+function chartDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return MONTH_FORMATTER.format(date);
+}
+
+function buildRentChartData(row: DevelopmentRow): RentChartPoint[] {
+  const sortedAdjustments = [...row.manualAdjustments].sort((a, b) => a.effective_date.localeCompare(b.effective_date));
+  const points = new Map<string, RentChartPoint>();
+
+  for (const adjustment of sortedAdjustments) {
+    const oldCold = money(adjustment.old_cold_rent ?? 0);
+    const oldNk = money(adjustment.old_operating_costs ?? 0);
+    const newCold = money(adjustment.new_cold_rent ?? 0);
+    const newNk = money(adjustment.new_operating_costs ?? 0);
+
+    if (!points.size && (oldCold > 0 || oldNk > 0)) {
+      const oldKey = previousMonthDate(adjustment.effective_date);
+      points.set(`${oldKey}-old`, {
+        key: `${oldKey}-old`,
+        label: `${chartDateLabel(oldKey)} vorher`,
+        coldRent: oldCold,
+        operatingCosts: oldNk,
+        totalRent: money(oldCold + oldNk),
+      });
+    }
+
+    points.set(adjustment.effective_date, {
+      key: adjustment.effective_date,
+      label: chartDateLabel(adjustment.effective_date),
+      coldRent: newCold,
+      operatingCosts: newNk,
+      totalRent: money(newCold + newNk),
+    });
+  }
+
+  if (!points.size) {
+    const previousLabel = row.monthPoints.length > 1 ? row.monthPoints[row.monthPoints.length - 2]?.label ?? "Vorher" : "Vorher";
+    const currentLabel = row.monthPoints[row.monthPoints.length - 1]?.label ?? "Aktuell";
+    points.set("previous", {
+      key: "previous",
+      label: previousLabel,
+      coldRent: row.previousNetRent,
+      operatingCosts: row.previousUtilitiesRent,
+      totalRent: row.previousWarmRent,
+    });
+    points.set("current", {
+      key: "current",
+      label: currentLabel,
+      coldRent: row.netRent,
+      operatingCosts: row.utilitiesRent,
+      totalRent: row.warmRent,
+    });
+  }
+
+  const currentKey = `current-${row.rowKey}`;
+  points.set(currentKey, {
+    key: currentKey,
+    label: "Aktuell",
+    coldRent: row.netRent,
+    operatingCosts: row.utilitiesRent,
+    totalRent: row.warmRent,
+  });
+
+  return Array.from(points.values()).filter((point) => point.coldRent > 0 || point.operatingCosts > 0 || point.totalRent > 0);
+}
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name?: string; value?: number; color?: string }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 text-sm shadow-xl backdrop-blur">
+      <div className="mb-2 font-black text-slate-950">{label}</div>
+      <div className="grid gap-1">
+        {payload.map((item) => (
+          <div key={item.name} className="flex items-center justify-between gap-5 font-bold text-slate-700">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />
+              {item.name}
+            </span>
+            <strong className="text-slate-950">{formatCurrency(Number(item.value ?? 0))}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniRentChartIcon({ data }: { data: RentChartPoint[] }) {
+  const recent = data.slice(-4);
+  const maxValue = Math.max(1, ...recent.map((point) => point.totalRent));
+  return (
+    <span className="rent-chart-mini" aria-hidden="true">
+      <span className="rent-chart-mini-line">
+        {recent.map((point, index) => (
+          <span
+            key={`${point.key}-dot`}
+            className="rent-chart-mini-dot"
+            style={{
+              left: `${12 + index * 24}%`,
+              bottom: `${28 + (point.totalRent / maxValue) * 48}%`,
+            }}
+          />
+        ))}
+      </span>
+      <span className="rent-chart-mini-bars">
+        {recent.map((point) => (
+          <span key={point.key} className="rent-chart-mini-stack">
+            <span className="rent-chart-mini-bar rent-chart-mini-bar-cold" style={{ height: `${Math.max(14, (point.coldRent / maxValue) * 56)}px` }} />
+            <span className="rent-chart-mini-bar rent-chart-mini-bar-nk" style={{ height: `${Math.max(8, (point.operatingCosts / maxValue) * 56)}px` }} />
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function RentDevelopmentChart({ row }: { row: DevelopmentRow }) {
+  const data = buildRentChartData(row);
+  const hasData = data.length > 0;
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Kaltmiete aktuell</span>
+          <strong className="mt-2 block text-xl font-black text-slate-950">{formatCurrency(row.netRent)}</strong>
+        </div>
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+          <span className="text-xs font-black uppercase tracking-[0.12em] text-cyan-700">Nebenkosten aktuell</span>
+          <strong className="mt-2 block text-xl font-black text-cyan-800">{formatCurrency(row.utilitiesRent)}</strong>
+        </div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <span className="text-xs font-black uppercase tracking-[0.12em] text-emerald-700">Warmmiete aktuell</span>
+          <strong className="mt-2 block text-xl font-black text-emerald-800">{formatCurrency(row.warmRent)}</strong>
+        </div>
+      </div>
+      <div className="h-[360px] rounded-[22px] border border-slate-200 bg-white p-3 sm:p-5">
+        {hasData ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 18, right: 28, left: 10, bottom: 12 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: "#64748b", fontWeight: 800, fontSize: 12 }} axisLine={{ stroke: "#cbd5e1" }} tickLine={false} />
+              <YAxis tickFormatter={(value) => `${Number(value).toLocaleString("de-DE")} €`} tick={{ fill: "#64748b", fontWeight: 800, fontSize: 12 }} axisLine={false} tickLine={false} width={86} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontWeight: 900, fontSize: 13 }} />
+              <Line name="Kaltmiete" type="monotone" dataKey="coldRent" stroke="#315f72" strokeWidth={3} dot={{ r: 4, fill: "#315f72", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 7 }} />
+              <Line name="Nebenkosten" type="monotone" dataKey="operatingCosts" stroke="#14b8a6" strokeWidth={3} dot={{ r: 4, fill: "#14b8a6", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 7 }} />
+              <Line name="Warmmiete" type="monotone" dataKey="totalRent" stroke="#6366f1" strokeWidth={2.5} strokeDasharray="6 5" dot={{ r: 3, fill: "#6366f1", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-center text-sm font-black text-slate-500">
+            Noch keine Mietwerte für ein Diagramm vorhanden.
+          </div>
+        )}
+      </div>
+      <p className="text-xs font-bold leading-5 text-slate-500">
+        Quelle: manuell eingetragene Mietanpassungen, aktuelle Mietstruktur und erkannte Mietbestandteile.
+      </p>
+    </div>
+  );
+}
+
 function selectActiveRentalsForMonth(rentals: PortfolioRentalRow[], candidateIds: Set<string>, year: number, month: number) {
   const matches = rentals.filter((rental) => candidateIds.has(String(rental.property_id)) && rentalOverlapsMonth(rental, year, month));
   const byUnit = new Map<string, PortfolioRentalRow>();
@@ -609,6 +787,7 @@ export default function Mietentwicklung() {
   const [objectFilter, setObjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "action" | "future">("all");
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
+  const [selectedChartRowKey, setSelectedChartRowKey] = useState<string | null>(null);
   const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
   const [savingAdjustment, setSavingAdjustment] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -918,6 +1097,7 @@ export default function Mietentwicklung() {
 
   const loading = appData.loading || loadingRentals;
   const selectedRow = selectedRowKey ? rows.find((row) => row.rowKey === selectedRowKey) ?? null : null;
+  const selectedChartRow = selectedChartRowKey ? rows.find((row) => row.rowKey === selectedChartRowKey) ?? null : null;
 
   function showAndFocusAdjustmentForm() {
     setShowAdjustmentForm(true);
@@ -1115,7 +1295,7 @@ export default function Mietentwicklung() {
 
       {!loading ? (
         <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-          <div className="hidden grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.13em] text-slate-500 xl:grid">
+          <div className="hidden grid-cols-[1.15fr_1fr_150px_150px_150px_150px_155px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-[0.13em] text-slate-500 xl:grid">
             <span>Objekt & Einheit</span>
             <span>Mieter</span>
             <span>Letzte Anpassung</span>
@@ -1123,19 +1303,27 @@ export default function Mietentwicklung() {
             <span>Nebenkosten</span>
             <span>Warmmiete</span>
             <span>Status</span>
+            <span>Diagramm</span>
           </div>
           {filteredRows.length ? (
             filteredRows.map((row) => (
-              <button
+              <div
                 key={row.rowKey}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   setSelectedRowKey(row.rowKey);
                   setShowAdjustmentForm(false);
                   setActionMessage(null);
                   setGeneratedLetter(null);
                 }}
-                className="grid w-full gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_165px] xl:items-center"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedRowKey(row.rowKey);
+                  }
+                }}
+                className="grid w-full cursor-pointer gap-3 border-b border-slate-100 bg-white px-5 py-5 text-left transition last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[1.15fr_1fr_150px_150px_150px_150px_155px_96px] xl:items-center"
               >
                 <div>
                   <h2 className="text-base font-black text-slate-950">{row.displayLabel}</h2>
@@ -1157,7 +1345,21 @@ export default function Mietentwicklung() {
                     {row.adjustmentStatus}
                   </span>
                 </div>
-              </button>
+                <div className="flex justify-start xl:justify-end">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedChartRowKey(row.rowKey);
+                    }}
+                    className="rent-chart-button"
+                    title={`Mietdiagramm für ${row.displayLabel} öffnen`}
+                    aria-label={`Mietdiagramm für ${row.displayLabel} öffnen`}
+                  >
+                    <MiniRentChartIcon data={buildRentChartData(row)} />
+                  </button>
+                </div>
+              </div>
             ))
           ) : (
             <div className="p-6 text-sm font-black text-slate-500">
@@ -1475,6 +1677,26 @@ export default function Mietentwicklung() {
               </p>
             </div>
           </aside>
+        </div>
+      ) : null}
+
+      {selectedChartRow ? (
+        <div className="fixed inset-0 z-[60] bg-slate-950/45 p-3 backdrop-blur-sm sm:p-6" onClick={() => setSelectedChartRowKey(null)}>
+          <section className="mx-auto mt-8 max-h-[calc(100vh-4rem)] max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#315f72]">Mietentwicklungsdiagramm</p>
+                <h2 className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{selectedChartRow.displayLabel}</h2>
+                <p className="mt-1 text-sm font-bold text-slate-500">{selectedChartRow.tenantName}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedChartRowKey(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm" aria-label="Diagramm schließen">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-[calc(100vh-11rem)] overflow-y-auto p-5 sm:p-6">
+              <RentDevelopmentChart row={selectedChartRow} />
+            </div>
+          </section>
         </div>
       ) : null}
     </div>

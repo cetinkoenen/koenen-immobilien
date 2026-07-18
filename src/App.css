@@ -1299,6 +1299,91 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
   margin-top: 28px !important;
 }
 
+.rent-chart-button {
+  display: inline-flex;
+  width: 82px;
+  height: 62px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.rent-chart-button:hover,
+.rent-chart-button:focus-visible {
+  transform: translateY(-2px);
+  border-color: #99f6e4;
+  box-shadow: 0 16px 30px rgba(20, 184, 166, 0.16);
+  outline: none;
+}
+
+.rent-chart-mini {
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 46px;
+  overflow: hidden;
+}
+
+.rent-chart-mini::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 2px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.rent-chart-mini-bars {
+  position: absolute;
+  inset: 0 4px 7px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.rent-chart-mini-stack {
+  display: flex;
+  align-items: end;
+  gap: 2px;
+}
+
+.rent-chart-mini-bar {
+  display: block;
+  width: 7px;
+  border-radius: 999px 999px 2px 2px;
+}
+
+.rent-chart-mini-bar-cold {
+  background: #315f72;
+}
+
+.rent-chart-mini-bar-nk {
+  background: #14b8a6;
+}
+
+.rent-chart-mini-line {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.rent-chart-mini-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #6366f1;
+  box-shadow: 0 2px 6px rgba(49, 95, 114, 0.28);
+}
+
 .data-check-page > section:first-child {
   margin-bottom: 30px !important;
 }
