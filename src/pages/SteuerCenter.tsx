@@ -4,6 +4,7 @@ import { Download, FileText, Printer, RefreshCw, Search } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { canonicalizeFinanceCategory } from "../lib/financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
+import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
 
 type EntryType = "income" | "expense";
@@ -33,6 +34,11 @@ type LoanTaxRow = {
   principal: number;
   balance: number;
   source: string | null;
+};
+
+type TaxVacancyRow = UnitVacancy & {
+  tax_period: string;
+  tax_hint: string;
 };
 
 type ClassifiedEntry = EntryRow & {
@@ -295,6 +301,10 @@ function yearRange(year: number) {
   };
 }
 
+function yearEnd(year: number): string {
+  return isoDate(new Date(year, 11, 31));
+}
+
 function eur(value: number): string {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -308,6 +318,10 @@ function dateDE(value: string): string {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("de-DE").format(date);
+}
+
+function nullableDateDE(value: string | null): string {
+  return value ? dateDE(value) : "offen";
 }
 
 function normalize(value: string | null | undefined): string {
@@ -439,6 +453,7 @@ function downloadAdvisorCsv(
     totals: TaxTotals;
     summary: SummaryRow[];
     loanRows: LoanTaxRow[];
+    vacancyRows: TaxVacancyRow[];
     rows: ClassifiedEntry[];
   },
 ) {
@@ -472,6 +487,17 @@ function downloadAdvisorCsv(
     ["Darlehenswerte"],
     ["Objekt", "Jahr", "Zinsen steuerrelevant", "Tilgung nicht steuerrelevant", "Restschuld", "Quelle"],
     ...payload.loanRows.map((row) => [row.property_label, row.year, amount(row.interest), amount(row.principal), amount(row.balance), row.source || "Darlehens-Ledger"]),
+    [],
+    ["Leerstands-Nachweise"],
+    ["Objekt", "Einheit", "Zeitraum", "Grund", "Notiz", "Steuerhinweis"],
+    ...payload.vacancyRows.map((row) => [
+      row.object_label || row.object_code || row.property_id,
+      row.unit_label || "Gesamte Immobilie",
+      row.tax_period,
+      row.reason || "",
+      row.notes || "",
+      row.tax_hint,
+    ]),
     [],
     ["Buchungen"],
     ["Datum", "Objekt", "Typ", "Steuerstatus", "Steuergruppe", "Kategorie", "Notiz", "Betrag", "Hinweis"],
@@ -508,6 +534,7 @@ export default function SteuerCenter() {
   const [objects, setObjects] = useState<ObjectOption[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [loanTaxRows, setLoanTaxRows] = useState<LoanTaxRow[]>([]);
+  const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -630,11 +657,14 @@ export default function SteuerCenter() {
         .sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
 
       setLoanTaxRows(loanRows);
+      const vacancyRows = await listVacancies({ from: range.from, to: yearEnd(year) });
+      setVacancies(vacancyRows);
     } catch (loadError) {
       const message = getLoadErrorMessage(loadError);
       setError(message);
       setEntries([]);
       setLoanTaxRows([]);
+      setVacancies([]);
     } finally {
       setLoading(false);
     }
@@ -746,6 +776,38 @@ export default function SteuerCenter() {
     };
   }, [filteredRows, loanTaxRows]);
 
+  const taxVacancyRows = useMemo<TaxVacancyRow[]>(() => {
+    const from = `${year}-01-01`;
+    const to = yearEnd(year);
+    const selectedLabel = objectCode === "ALL" ? "" : objectLabelByCode.get(objectCode) ?? objectCode;
+
+    return vacancies
+      .filter((row) => isVacancyInRange(row, from, to))
+      .filter((row) => {
+        if (objectCode === "ALL") return true;
+        const selectedCode = normalize(objectCode);
+        const selectedName = normalize(selectedLabel);
+        const rowCode = normalize(row.object_code);
+        const rowName = normalize(row.object_label);
+        const rowPropertyId = normalize(row.property_id);
+        return (
+          rowCode === selectedCode ||
+          rowPropertyId === selectedCode ||
+          (rowName && selectedName && (rowName.includes(selectedName) || selectedName.includes(rowName)))
+        );
+      })
+      .map((row) => {
+        const periodStart = row.start_date < from ? from : row.start_date;
+        const periodEnd = !row.end_date || row.end_date > to ? to : row.end_date;
+        return {
+          ...row,
+          tax_period: `${dateDE(periodStart)} bis ${nullableDateDE(periodEnd)}`,
+          tax_hint: "Leerstand steuerlich als Nachweis dokumentiert; Einnahmeausfall wird nicht als Buchung erzeugt.",
+        };
+      })
+      .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  }, [objectCode, objectLabelByCode, vacancies, year]);
+
   const filenameObject = objectCode === "ALL" ? "alle_objekte" : objectCode.replace(/[^a-zA-Z0-9_-]+/g, "_");
   const selectedObjectLabel = objectCode === "ALL" ? "Alle Objekte" : objectLabelByCode.get(objectCode) ?? objectCode;
   const advisorStatus = totals.count === 0
@@ -769,6 +831,11 @@ export default function SteuerCenter() {
       label: "Darlehenszinsen aus Seite Darlehen",
       value: loanTaxRows.length ? `${loanTaxRows.length} Objekt(e)` : "Keine Jahreswerte",
       relevance: loanTaxRows.length ? "tax" : "check",
+    },
+    {
+      label: "Leerstands-Nachweise aus Seite Leerstand",
+      value: taxVacancyRows.length ? `${taxVacancyRows.length} Zeitraum(e)` : "Keine Leerstände",
+      relevance: taxVacancyRows.length ? "tax" : "private",
     },
     {
       label: "Objekt- und Jahresfilter",
@@ -902,6 +969,7 @@ export default function SteuerCenter() {
                   totals,
                   summary,
                   loanRows: loanTaxRows,
+                  vacancyRows: taxVacancyRows,
                   rows: filteredRows,
                 })}
                 style={styles.primaryButton}
@@ -975,6 +1043,47 @@ export default function SteuerCenter() {
               ))}
               {!loanTaxRows.length ? (
                 <tr><td colSpan={6} style={styles.td}>Keine Darlehenswerte fuer diese Auswahl gefunden. Bitte Seite Darlehen pruefen und Jahreswerte erfassen.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section style={styles.panel}>
+        <SectionHeading
+          title="Leerstands-Nachweise fuer Steuererklaerung"
+          subtitle="Kommt aus der Seite Leerstand. Zeitraum, Grund und Notiz dienen als Nachweis fuer Vermietungsabsicht und Einnahmeausfall."
+        />
+        <div className="tax-no-print" style={{ ...styles.actionRow, marginTop: 0, marginBottom: 14 }}>
+          <a href="/mieter/leerstand" style={{ ...styles.button, textDecoration: "none" }}>
+            Leerstand bearbeiten
+          </a>
+        </div>
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Objekt</th>
+                <th style={styles.th}>Einheit</th>
+                <th style={styles.th}>Zeitraum</th>
+                <th style={styles.th}>Grund</th>
+                <th style={styles.th}>Notiz</th>
+                <th style={styles.th}>Steuerhinweis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {taxVacancyRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={styles.td}><strong>{row.object_label || row.object_code || row.property_id}</strong></td>
+                  <td style={styles.td}>{row.unit_label || "Gesamte Immobilie"}</td>
+                  <td style={styles.td}>{row.tax_period}</td>
+                  <td style={styles.td}>{row.reason || "Ohne Grund"}</td>
+                  <td style={styles.td}>{row.notes || "Keine Notiz"}</td>
+                  <td style={styles.td}>{row.tax_hint}</td>
+                </tr>
+              ))}
+              {!taxVacancyRows.length ? (
+                <tr><td colSpan={6} style={styles.td}>Keine Leerstandszeiträume fuer diese Steuer-Auswahl dokumentiert.</td></tr>
               ) : null}
             </tbody>
           </table>

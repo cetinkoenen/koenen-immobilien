@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { Building2, Filter, Save, Trash2 } from "lucide-react";
+import { Building2, Filter, Pencil, Save, Trash2, X } from "lucide-react";
 
 import { useAppData } from "../state/AppDataContext";
 import {
@@ -9,6 +9,7 @@ import {
   effectiveVacancyStatusForRange,
   isVacancyEffectivelyActiveInRange,
   listVacancies,
+  updateVacancy,
   type UnitVacancy,
   type VacancyStatus,
 } from "../services/vacancyService";
@@ -53,9 +54,16 @@ function statusClass(status: VacancyStatus): string {
   return "bg-zinc-100 text-zinc-800 border-zinc-200";
 }
 
+function statusFromDates(startDate: string, endDate: string): VacancyStatus {
+  if (startDate > todayIso) return "planned";
+  if (endDate && endDate < todayIso) return "ended";
+  return "active";
+}
+
 export default function Leerstand() {
   const appData = useAppData();
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [rows, setRows] = useState<UnitVacancy[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -105,7 +113,7 @@ export default function Leerstand() {
 
     setSaving(true);
     try {
-      await createVacancy({
+      const payload = {
         propertyId: form.propertyId,
         objectCode: selectedProperty?.code ?? null,
         objectLabel: selectedProperty?.label ?? null,
@@ -114,10 +122,15 @@ export default function Leerstand() {
         endDate: form.endDate,
         reason: form.reason,
         notes: form.notes,
-        status: form.endDate && form.endDate < todayIso ? "ended" : "active",
-      });
+        status: statusFromDates(form.startDate, form.endDate),
+      };
+
+      if (editingId) await updateVacancy(editingId, payload);
+      else await createVacancy(payload);
+
       setForm(emptyForm);
-      setStatus("Leerstand wurde gespeichert.");
+      setEditingId(null);
+      setStatus(editingId ? "Leerstand wurde aktualisiert." : "Leerstand wurde gespeichert.");
       window.dispatchEvent(new Event("koenen:vacancy-changed"));
       await loadRows();
     } catch (saveError) {
@@ -140,6 +153,28 @@ export default function Leerstand() {
       const message = archiveError instanceof Error ? archiveError.message : String(archiveError);
       setError(`Archivieren fehlgeschlagen: ${message}`);
     }
+  }
+
+  function startEdit(row: UnitVacancy) {
+    setEditingId(row.id);
+    setForm({
+      propertyId: row.property_id,
+      unitLabel: row.unit_label ?? "",
+      startDate: row.start_date,
+      endDate: row.end_date ?? "",
+      reason: row.reason ?? "",
+      notes: row.notes ?? "",
+    });
+    setError(null);
+    setStatus("Leerstand wird bearbeitet. Änderungen oben speichern.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setStatus(null);
+    setError(null);
   }
 
   const filteredRows = useMemo(() => {
@@ -183,7 +218,20 @@ export default function Leerstand() {
 
       <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
         <form onSubmit={handleSubmit} className="min-w-0 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-black text-slate-950">Leerstand eintragen</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-950">{editingId ? "Leerstand bearbeiten" : "Leerstand eintragen"}</h2>
+              <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
+                Bei Wiedervermietung ab 10.03.2026 wird als Ende der 09.03.2026 eingetragen.
+              </p>
+            </div>
+            {editingId ? (
+              <button type="button" onClick={cancelEdit} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">
+                <X size={14} />
+                Abbrechen
+              </button>
+            ) : null}
+          </div>
           <div className="mt-4 grid gap-4">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               Immobilie
@@ -206,6 +254,7 @@ export default function Leerstand() {
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 Ende
                 <input name="endDate" type="date" value={form.endDate} onChange={updateField} className="h-11 rounded-xl border border-slate-300 px-3 font-semibold text-slate-950" />
+                <span className="text-xs font-semibold leading-5 text-slate-500">Leerstand endet am Tag vor dem neuen Mietbeginn.</span>
               </label>
             </div>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
@@ -219,7 +268,7 @@ export default function Leerstand() {
           </div>
           <button type="submit" disabled={saving} className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:bg-slate-300">
             <Save size={17} />
-            {saving ? "Speichert..." : "Leerstand speichern"}
+            {saving ? "Speichert..." : editingId ? "Änderungen speichern" : "Leerstand speichern"}
           </button>
           {status ? <div className="mt-3 text-sm font-bold text-emerald-700">{status}</div> : null}
           {error ? <div className="mt-3 text-sm font-bold text-red-700">{error}</div> : null}
@@ -265,6 +314,7 @@ export default function Leerstand() {
                 {filteredRows.map((row) => {
                   const effectiveStatus = effectiveVacancyStatusForRange(row, currentMonth.from, currentMonth.to);
                   const effectiveStart = effectiveVacancyStartDate(row);
+                  const displayStatus = row.end_date && row.end_date < todayIso ? "ended" : effectiveStatus;
                   return (
                     <article key={row.id} className="vacancy-list-item">
                       <div className="vacancy-list-main">
@@ -278,12 +328,12 @@ export default function Leerstand() {
                         </div>
                         <div>
                           <div className="vacancy-kicker">Zeitraum</div>
-                          <div className="vacancy-value">{formatDate(effectiveStart)} bis {effectiveStatus === "active" ? "offen" : formatDate(row.end_date)}</div>
+                          <div className="vacancy-value">{formatDate(effectiveStart)} bis {row.end_date ? formatDate(row.end_date) : "offen"}</div>
                         </div>
                         <div>
                           <div className="vacancy-kicker">Status</div>
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(effectiveStatus)}`}>
-                            {statusLabel(effectiveStatus)}
+                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusClass(displayStatus)}`}>
+                            {statusLabel(displayStatus)}
                           </span>
                         </div>
                         <div>
@@ -291,10 +341,16 @@ export default function Leerstand() {
                           <div className="vacancy-value">{row.reason || row.notes || "—"}</div>
                         </div>
                       </div>
-                      <button type="button" onClick={() => void handleArchive(row.id)} className="vacancy-archive-button">
-                        <Trash2 size={14} />
-                        Archivieren
-                      </button>
+                      <div className="vacancy-row-actions">
+                        <button type="button" onClick={() => startEdit(row)} className="vacancy-edit-button">
+                          <Pencil size={14} />
+                          Bearbeiten
+                        </button>
+                        <button type="button" onClick={() => void handleArchive(row.id)} className="vacancy-archive-button">
+                          <Trash2 size={14} />
+                          Archivieren
+                        </button>
+                      </div>
                     </article>
                   );
                 })}

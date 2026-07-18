@@ -1244,13 +1244,21 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
   font-size: 14px;
 }
 
+.vacancy-row-actions {
+  display: flex;
+  gap: 10px;
+  justify-self: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.vacancy-edit-button,
 .vacancy-archive-button {
   display: inline-flex;
   min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  justify-self: end;
   white-space: nowrap;
   border-radius: 14px;
   border: 1px solid #e2e8f0;
@@ -1259,6 +1267,12 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
   color: #334155;
   font-size: 12px;
   font-weight: 900;
+}
+
+.vacancy-edit-button {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .vacancy-empty-state {
@@ -1331,6 +1345,15 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
 
   .vacancy-list-item {
     grid-template-columns: 1fr;
+  }
+
+  .vacancy-row-actions {
+    justify-self: stretch;
+  }
+
+  .vacancy-edit-button,
+  .vacancy-archive-button {
+    flex: 1 1 160px;
   }
 
   .vacancy-list-main {
