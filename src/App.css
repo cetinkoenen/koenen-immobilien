@@ -912,6 +912,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
   gap: 18px;
   align-items: start;
 }
+.admin-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-grid-single > .admin-panel,
+.admin-grid-single > .admin-stack {
+  width: min(100%, 980px);
+}
 .admin-stack {
   display: grid;
   gap: 18px;

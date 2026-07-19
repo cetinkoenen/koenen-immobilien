@@ -202,6 +202,7 @@ type WorkspaceSubpage = {
   path: string;
   label: string;
   icon: LucideIcon;
+  adminOnly?: boolean;
 };
 
 type WorkspaceTab = {
@@ -308,6 +309,15 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
 ];
 
+const immobilienSubpages: WorkspaceSubpage[] = [
+  { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+  { path: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", icon: PlusCircle, adminOnly: true },
+  { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
+  { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
+  { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
+  { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+];
+
 const workspaceConfigs: Record<string, WorkspaceConfig> = {
   dashboardFinanz: {
     eyebrow: "1. Modul | Dashboard",
@@ -372,13 +382,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Bestehende Immobilienseite als zentrale Objekt- und Finanzübersicht im neuen Modulrahmen.",
     basePath: "/immobilien",
     source: "Portfolio, Objektakten, Buchhaltung, Darlehen",
-    subpages: [
-      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
-      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
-      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
-      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
-      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
-    ],
+    subpages: immobilienSubpages,
     tabs: [
       { label: "Wohnimmobilien", description: "Gebäude-Stammdaten, Einheiten-Struktur, Grundstücksdaten und Gemeinschaftsflächen." },
       { label: "Gewerbeimmobilien", description: "Nutzflächen, Umsatzsteueroptionen sowie Stellplatz- und Logistik-Zuordnung." },
@@ -390,13 +394,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Zentrale Übersicht aller Sollmieten, Ist-Buchungen und Mieterhöhungen seit Januar 2024.",
     basePath: "/immobilien",
     source: "Portfolio > Vermietungszeiträume, Buchhaltung, Mieteingang",
-    subpages: [
-      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
-      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
-      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
-      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
-      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
-    ],
+    subpages: immobilienSubpages,
     tabs: [
       { label: "Sollmieten", description: "Aktuelle Sollmiete pro Immobilie aus den gepflegten Vermietungszeiträumen." },
       { label: "Buchungsprüfung", description: "Tatsächliche Mietzahlungen und Mietbestandteil-NK aus der Buchhaltung." },
@@ -410,13 +408,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Wohnungen, Garagen, Gewerbeeinheiten und Belegungshistorie auf Basis vorhandener Objekt- und Mietdaten.",
     basePath: "/immobilien",
     source: "Portfolio, Vermietungszeiträume, Leerstand",
-    subpages: [
-      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
-      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
-      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
-      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
-      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
-    ],
+    subpages: immobilienSubpages,
     tabs: [
       { label: "Wohnungen", description: "Einheiten-Details, Ausstattung, Zustand, Grundriss, Fotos und abrechnungsrelevante Faktoren." },
       { label: "Garagen & Stellplätze", description: "Typisierung, E-Mobilität, Schließmedien und Kopplung an Wohnungen oder Fremdvermietung." },
@@ -431,13 +423,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Frontend-Zugang für Verbrauchs- und Zählerstandsprozesse inklusive Fotodokumentation im Objektkontext.",
     basePath: "/immobilien",
     source: "Objektakte, Nebenkosten, Dokumente",
-    subpages: [
-      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
-      { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
-      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
-      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
-      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
-    ],
+    subpages: immobilienSubpages,
     tabs: [
       { label: "Zählerstände", description: "Erfassung je Objekt und Einheit über vorhandene Objektakten vorbereiten." },
       { label: "Fotodokumentation", description: "Smartphone-taugliche Dokumentation von Zählerständen als Objektanhang." },
@@ -450,16 +436,25 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     description: "Digitale Objektakte für Energieausweise, Prüfberichte, Versicherungen und sonstige Objektunterlagen.",
     basePath: "/immobilien",
     source: "Dokumentenmanagement, Objektakte",
-    subpages: [
-      { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
-      { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
-      { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
-      { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
-    ],
+    subpages: immobilienSubpages,
     tabs: [
       { label: "Energieausweise", description: "Gültigkeit und Ablage über bestehende Objektakten prüfen." },
       { label: "Brandschutz & Prüfberichte", description: "Berichte objektbezogen strukturieren und auffindbar halten." },
       { label: "Versicherungen", description: "Policen, Laufzeiten und Nachweise im Objektkontext bündeln." },
+    ],
+  },
+  immobilienAnlegen: {
+    eyebrow: "2. Modul | Immobilien & Einheiten",
+    title: "Immobilie anlegen",
+    description: "Neue Wohnungen oder Garagen fachlich direkt im Immobilienbereich erfassen. Die Anlage schreibt weiterhin in die vorhandenen Portfolio- und Vermietungsquellen.",
+    basePath: "/immobilien",
+    source: "portfolio_properties, portfolio_property_rentals, property_extra_info",
+    subpages: immobilienSubpages,
+    tabs: [
+      { label: "Objektart", description: "Wohnung oder Garage auswählen und die Einheit sauber benennen." },
+      { label: "Adresse & Einheit", description: "Objektname, Adresse, Einheit und Nutzung im Portfolio-Kontext pflegen." },
+      { label: "Vermietungsstart", description: "Startdatum und Sollmiete als Grundlage für Mieteingang und Leerstand speichern." },
+      { label: "Finanzdaten", description: "Kaltmiete, Nebenkosten, Gesamtmiete und Marktwert als Stammdaten erfassen." },
     ],
   },
   kontakteVertraege: {
@@ -710,16 +705,16 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
   einstellungenBenutzer: {
     eyebrow: "6. Modul | System-Einstellungen",
     title: "Benutzer- & Rechteverwaltung",
-    description: "Administratives Zentrum für Benutzer, Rollen, Berechtigungen und Login-Sicherheit.",
+    description: "Geschützter Bereich für Benutzer, Rollen, Berechtigungen und Login-Sicherheit. Immobilien- und Mieterstammdaten liegen in den jeweiligen Fachmodulen.",
     basePath: "/einstellungen",
-    source: "Administrator, Rollen, Zugriffsschutz",
+    source: "Benutzerrollen, Zugriffsschutz, Login-Sicherheit",
     subpages: [
       { path: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", icon: UserCog },
       { path: "/einstellungen/datenschutz-compliance", label: "Datenschutz & Compliance", icon: ShieldCheck },
     ],
     tabs: [
       { label: "Benutzerübersicht", description: "Registrierte Profile und Zugänge." },
-      { label: "Rollen-Editor", description: "Admin, Verwalter, Buchhalter und Gast definieren." },
+      { label: "Rollen-Editor", description: "Admin- und Lesezugänge definieren." },
       { label: "Berechtigungs-Matrix", description: "Lese-/Schreibrechte für Objekte und Finanzen." },
       { label: "Sicherheit & Login", description: "2FA und Passwort-Richtlinien." },
     ],
@@ -870,7 +865,10 @@ function ModuleWorkspacePage({
   config: WorkspaceConfig;
   children?: ReactNode;
 }) {
+  const { user } = useAuth();
+  const isAdmin = isAdminEmail(user?.email);
   const eyebrow = config.eyebrow.replace(/^\d+\.\s*Modul\s*\|\s*/i, "");
+  const visibleSubpages = config.subpages.filter((subpage) => !subpage.adminOnly || isAdmin);
 
   return (
     <div className="module-workspace space-y-5">
@@ -885,7 +883,7 @@ function ModuleWorkspacePage({
 
       <section className="rounded-[24px] border border-white/70 bg-white/82 p-3 shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur sm:p-4">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {config.subpages.map((subpage) => {
+          {visibleSubpages.map((subpage) => {
             const Icon = subpage.icon;
             return (
               <NavLink
@@ -1198,7 +1196,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
       title: "Benutzer",
       description: "Benutzerübersicht für Admin und Lesezugänge. Rechteverwaltung bleibt in der bestehenden Administrator-Seite.",
       links: [
-        { to: "/administrator", label: "Administrator", description: "Admin-Funktionen, Benutzer und Immobilienanlage.", icon: ShieldCheck, adminOnly: true },
+        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", description: "Benutzer, Rollen und Login-Sicherheit verwalten.", icon: ShieldCheck, adminOnly: true },
         { to: "/dashboard", label: "Read-Only Übersicht", description: "Lesende Nutzer verwenden die App als Informationsquelle.", icon: BookOpenCheck },
       ],
     },
@@ -2205,10 +2203,11 @@ function AppShell() {
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
       { to: "/immobilien/objektuebersicht", label: "Objekte", group: "Immobilien", icon: Building2 },
+      ...(isAdmin ? [{ to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle }] : []),
       { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
-      { to: "/kontakte/aktive-mietvertraege", label: "Stammdaten", group: "Mieter", icon: Users },
+      { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
       { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
@@ -2225,9 +2224,7 @@ function AppShell() {
       ...(isAdmin ? [
         { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
         { to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Einstellungen", icon: ShieldCheck },
-      ] : [
-        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
-      ]),
+      ] : []),
     ],
     [isAdmin],
   );
@@ -2506,6 +2503,10 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.immobilienObjekte}><Portfolio /></ModuleWorkspacePage>}
         />
         <Route
+          path="/immobilien/immobilie-anlegen"
+          element={<AdminOnlyWorkspace config={workspaceConfigs.immobilienAnlegen}><Administrator focus="property" /></AdminOnlyWorkspace>}
+        />
+        <Route
           path="/immobilien/mietentwicklung"
           element={<ModuleWorkspacePage config={workspaceConfigs.immobilienMietentwicklung}><Mietentwicklung /></ModuleWorkspacePage>}
         />
@@ -2670,7 +2671,7 @@ export default function App() {
           path="/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle"
           element={<ModuleWorkspacePage config={workspaceConfigs.kontakteUebergaben}><EinAuszug /></ModuleWorkspacePage>}
         />
-        <Route path="/mieter" element={<Navigate to="/kontakte/aktive-mietvertraege" replace />} />
+        <Route path="/mieter" element={<Navigate to="/mieter/stammdaten" replace />} />
         <Route path="/mieter/uebersicht" element={<MieterHubPage />} />
         <Route path="/mieter/stammdaten" element={<MieterAnlegen />} />
         <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
@@ -2740,7 +2741,7 @@ export default function App() {
         <Route path="/einstellungen" element={<Navigate to="/einstellungen/benutzer-rechteverwaltung" replace />} />
         <Route
           path="/einstellungen/benutzer-rechteverwaltung"
-          element={<AdminOnlyWorkspace config={workspaceConfigs.einstellungenBenutzer}><Administrator /></AdminOnlyWorkspace>}
+          element={<AdminOnlyWorkspace config={workspaceConfigs.einstellungenBenutzer}><Administrator focus="users" /></AdminOnlyWorkspace>}
         />
         <Route
           path="/einstellungen/datenschutz-compliance"
