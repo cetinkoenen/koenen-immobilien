@@ -2009,25 +2009,25 @@ function TasksMaintenancePage() {
         </div>
       </SectionPanel>
 
-      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="grid gap-5 2xl:grid-cols-[minmax(360px,0.72fr)_minmax(0,1.68fr)]">
         <SectionPanel eyebrow="Neue Aufgabe" title="Neue Aufgabe anlegen" description="Aufgaben werden als Arbeitsliste und Kalenderfrist sichtbar. Die Fachseiten bleiben die Datenquelle.">
-          <form onSubmit={handleCreateTask} className="grid gap-4">
-            <label className="grid gap-2 text-sm font-black text-slate-700">
+          <form onSubmit={handleCreateTask} className="grid gap-4 text-[13px]">
+            <label className="grid gap-2 font-black leading-5 text-slate-700">
               Was ist zu tun?
               <input
                 value={form.title}
                 onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
                 placeholder="z. B. Wasserhahn in Bad prüfen lassen"
-                className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm placeholder:text-slate-400"
               />
             </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-black text-slate-700">
-                Betroffene Immobilie / Einheit auswählen
+            <div className="grid gap-4">
+              <label className="grid min-w-0 gap-2 font-black leading-5 text-slate-700">
+                Immobilie / Einheit
                 <select
                   value={form.objectId}
                   onChange={(event) => setForm((current) => ({ ...current, objectId: event.target.value }))}
-                  className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                  className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
                 >
                   {objects.map((object) => (
                     <option key={object.id} value={object.id}>{object.label}</option>
@@ -2035,22 +2035,22 @@ function TasksMaintenancePage() {
                   <option value="all">Allgemein</option>
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-black text-slate-700">
-                Bis wann muss die Aufgabe erledigt sein?
+              <label className="grid min-w-0 gap-2 font-black leading-5 text-slate-700">
+                Fällig bis
                 <input
                   type="date"
                   value={form.dueDate}
                   onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
-                  className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                  className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
                 />
               </label>
             </div>
-            <label className="grid gap-2 text-sm font-black text-slate-700">
+            <label className="grid gap-2 font-black leading-5 text-slate-700">
               Art der Aufgabe
               <select
                 value={form.category}
                 onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
               >
                 <option>Reparatur / Mangel</option>
                 <option>Verwaltung</option>
@@ -2058,24 +2058,24 @@ function TasksMaintenancePage() {
                 <option>Gesetzliche Prüfung</option>
               </select>
             </label>
-            <label className="grid gap-2 text-sm font-black text-slate-700">
+            <label className="grid gap-2 font-black leading-5 text-slate-700">
               Details zur Aufgabe
               <textarea
                 value={form.note}
                 onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
                 placeholder="Notiz, Ansprechpartner, gewünschtes Ergebnis..."
                 rows={4}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] font-semibold leading-5 text-slate-950 shadow-sm placeholder:text-slate-400"
               />
             </label>
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-900">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-[13px] font-bold leading-6 text-blue-900">
               Dieses Datum wird automatisch als Frist und Erinnerung in Ihren App-Kalender eingetragen.
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
+              <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 text-[13px] font-black text-white shadow-sm">
                 Aufgabe speichern
               </button>
-              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-900 shadow-sm">
+              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-[13px] font-black text-slate-900 shadow-sm">
                 Fotos oder Kostenvoranschlag hinzufügen
               </button>
             </div>
@@ -2084,18 +2084,18 @@ function TasksMaintenancePage() {
 
         <SectionPanel eyebrow="Arbeitsliste" title="Aufgaben & Instandhaltung" description="Klicken Sie auf eine Aufgabe, um Status, Verlauf und Dokumentation zu prüfen.">
           <div className="mb-4 grid gap-3 md:grid-cols-3">
-            <select value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+            <select value={objectFilter} onChange={(event) => setObjectFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-950">
               <option value="all">Alle Objekte</option>
               {objects.map((object) => <option key={object.id} value={object.id}>{object.label}</option>)}
             </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-950">
               <option value="all">Alle Status</option>
               <option value="overdue">Überfällige Aufgaben</option>
               <option value="Neu">Neu</option>
               <option value="In Arbeit">In Arbeit</option>
               <option value="Erledigt">Erledigt</option>
             </select>
-            <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950">
+            <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-950">
               <option value="all">Alle Prioritäten</option>
               <option value="Hoch">Hoch</option>
               <option value="Normal">Normal</option>
@@ -2108,18 +2108,18 @@ function TasksMaintenancePage() {
                   key={task.id}
                   type="button"
                   onClick={() => setSelectedTask(task)}
-                  className="grid w-full gap-3 border-b border-slate-100 bg-white p-4 text-left last:border-b-0 hover:bg-[#f8fbfa] lg:grid-cols-[1.1fr_1fr_120px_150px_110px]"
+                  className="grid w-full gap-3 border-b border-slate-100 bg-white p-4 text-left last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[minmax(190px,1.25fr)_minmax(150px,0.9fr)_110px_minmax(140px,0.8fr)_120px]"
                 >
                   <div>
-                    <p className="text-sm font-black text-slate-950">{task.title}</p>
-                    <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{task.category}</p>
+                    <p className="text-[13px] font-black leading-5 text-slate-950">{task.title}</p>
+                    <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{task.category}</p>
                   </div>
-                  <div className="text-sm font-bold text-slate-600">{task.objectLabel}</div>
-                  <div className="text-sm font-black text-slate-950">{formatDate(task.dueDate)}</div>
-                  <div className="text-sm font-bold text-slate-600">{task.contractor}</div>
-                  <div>
+                  <div className="text-[13px] font-bold leading-5 text-slate-600">{task.objectLabel}</div>
+                  <div className="whitespace-nowrap text-[13px] font-black text-slate-950">{formatDate(task.dueDate)}</div>
+                  <div className="text-[13px] font-bold leading-5 text-slate-600">{task.contractor}</div>
+                  <div className="xl:justify-self-end">
                     <span className={[
-                      "rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em]",
+                      "inline-flex min-h-8 items-center rounded-full px-3 text-[11px] font-black uppercase tracking-[0.12em]",
                       task.status === "Erledigt" ? "bg-emerald-50 text-emerald-800" : task.priority === "Hoch" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800",
                     ].join(" ")}>
                       {task.status}
