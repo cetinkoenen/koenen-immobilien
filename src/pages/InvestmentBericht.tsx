@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Banknote,
+  Building2,
   Calculator,
   ChevronDown,
   CheckCircle2,
@@ -21,7 +23,7 @@ import {
 
 import { PageHeader, SectionPanel } from "@/components/ui/professional";
 import logo from "@/assets/koenen-brand-logo.webp";
-import { useAppData } from "@/state/AppDataContext";
+import { useAppData, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { runInvestmentAiAnalysis, type InvestmentAiFile } from "@/services/investmentAiService";
 
 type UploadedFile = InvestmentAiFile;
@@ -107,6 +109,19 @@ type InvestmentChecklistItem = {
 
 type InvestmentSection = "financing" | "wealth" | "persons" | "checklist" | "export";
 
+type WealthDraft = Record<string, string>;
+
+type InvestmentWealthCard = {
+  id: string;
+  name: string;
+  address: string;
+  marketValue: number;
+  remainingDebt: number;
+  monthlyRate: number;
+  isRosenstein: boolean;
+  sourceLabel: string;
+};
+
 const requiredDocuments: RequiredDocument[] = [
   {
     label: "Exposé / Objektbeschreibung",
@@ -178,6 +193,29 @@ const investmentSections: { id: InvestmentSection; label: string }[] = [
   { id: "export", label: "Export" },
 ];
 
+const WEALTH_STORAGE_KEY = "koenen:immobilienvermoegen:v2";
+
+const wealthDefaults: Array<{
+  id: string;
+  match: string[];
+  name: string;
+  street: string;
+  houseNumber: string;
+  postalCode: string;
+  city: string;
+  marketValue: number;
+  remainingDebt: number;
+  monthlyRate: number;
+  isRosenstein?: boolean;
+}> = [
+  { id: "lilienthaler-str-54", match: ["lilienthaler"], name: "Lilienthaler Str. 54", street: "Lilienthaler Str.", houseNumber: "54", postalCode: "28215", city: "Bremen", marketValue: 530000, remainingDebt: 41667, monthlyRate: 1100 },
+  { id: "elsasser-str-52", match: ["elsasser", "elsäßer"], name: "Elsasser Str. 52", street: "Elsasser Str.", houseNumber: "52", postalCode: "28211", city: "Bremen", marketValue: 160000, remainingDebt: 78168, monthlyRate: 300 },
+  { id: "colmarer-str-45", match: ["colmarer"], name: "Colmarer Str. 45", street: "Colmarer Str.", houseNumber: "45", postalCode: "28211", city: "Bremen", marketValue: 145000, remainingDebt: 105616, monthlyRate: 411 },
+  { id: "fuerther-str-74", match: ["fürther", "fuerther"], name: "Fürther Str. 74", street: "Fürther Str.", houseNumber: "74", postalCode: "28215", city: "Bremen", marketValue: 140000, remainingDebt: 125063, monthlyRate: 439 },
+  { id: "hohenloher-str-78", match: ["hohenloher"], name: "Hohenloher Str. 78", street: "Hohenloher Str.", houseNumber: "78", postalCode: "74243", city: "Brettach", marketValue: 530000, remainingDebt: 400000, monthlyRate: 1690 },
+  { id: "rosensteinstr-25", match: ["rosenstein"], name: "Rosensteinstr. 25", street: "Rosensteinstr.", houseNumber: "25", postalCode: "", city: "", marketValue: 0, remainingDebt: 0, monthlyRate: 170, isRosenstein: true },
+];
+
 const formatFileSize = (bytes: number) => {
   if (!bytes) return "0 KB";
   const mb = bytes / 1024 / 1024;
@@ -216,6 +254,71 @@ const parseGermanNumber = (value: string) => {
 };
 
 const pickNumber = (value: string, fallback: number | null) => parseGermanNumber(value) ?? fallback;
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .replaceAll("ß", "ss")
+    .replace(/[ä]/g, "a")
+    .replace(/[ö]/g, "o")
+    .replace(/[ü]/g, "u")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function parseMoney(value: string | number | null | undefined) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const parsed = Number(String(value ?? "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCurrencyExact(value: number | null | undefined) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value ?? 0);
+}
+
+function loadWealthDrafts(): Record<string, WealthDraft> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(WEALTH_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, WealthDraft>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function findWealthRow(rows: PortfolioLoanRow[], match: string[], usedIds: Set<string>) {
+  return rows.find((row) => {
+    if (usedIds.has(row.property_id)) return false;
+    const rowName = normalizeText(row.property_name);
+    return match.some((term) => rowName.includes(normalizeText(term)));
+  });
+}
+
+function buildInvestmentWealthCards(rows: PortfolioLoanRow[], storedDrafts: Record<string, WealthDraft>): InvestmentWealthCard[] {
+  const usedIds = new Set<string>();
+  return wealthDefaults.map((item) => {
+    const row = findWealthRow(rows, item.match, usedIds);
+    if (row) usedIds.add(row.property_id);
+    const rowStorageId = row?.portfolio_property_id ?? row?.property_id;
+    const draft = {
+      ...(rowStorageId ? storedDrafts[rowStorageId] : undefined),
+      ...(storedDrafts[item.id] ?? {}),
+    };
+    const streetLine = [draft.street ?? item.street, draft.houseNumber ?? item.houseNumber].filter(Boolean).join(" ").trim();
+    const cityLine = [draft.postalCode ?? item.postalCode, draft.city ?? item.city].filter(Boolean).join(" ").trim();
+
+    return {
+      id: item.id,
+      name: draft.name || item.name || row?.property_name || "Unbenannte Immobilie",
+      address: [streetLine, cityLine].filter(Boolean).join(", ") || "Adresse offen",
+      marketValue: parseMoney(draft.marketValue || draft.estimatedMarketValue) || item.marketValue,
+      remainingDebt: parseMoney(draft.remainingDebt) || (row?.last_balance ?? item.remainingDebt),
+      monthlyRate: parseMoney(draft.currentMonthlyRate) || item.monthlyRate,
+      isRosenstein: Boolean(item.isRosenstein),
+      sourceLabel: "Quelle: Immobilien Vermögen Seite",
+    };
+  });
+}
 
 function escapeHtml(value: string) {
   return value
@@ -368,7 +471,6 @@ export default function InvestmentBericht() {
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiError, setAiError] = useState("");
-  const year = new Date().getFullYear();
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
 
@@ -473,27 +575,26 @@ export default function InvestmentBericht() {
     };
   }, [additionalMaintenance, amortizationRate, apartmentRent, buyerProvision, interestRate, loanAmount, monthlyBankRate, monthlyHousegeld, nkPrepayment, nonDeductibleHousegeld, parkingRent, personalTaxRate, plannedRentIncreaseRate, purchasePrice, targetRent]);
 
-  const existingNetCashflow = useMemo(() => {
-    return appData.portfolioRows.reduce((sum, row) => {
-      const summary = appData.getYearlyFinanceSummary(row.property_id, year);
-      return sum + ((summary?.einnahmen ?? 0) - (summary?.ausgaben ?? 0));
-    }, 0);
-  }, [appData, year]);
-
-  const existingPortfolioIndicator = useMemo(
-    () => appData.portfolioRows.reduce((sum, row) => sum + (row.last_balance ?? 0), 0),
+  const investmentWealthCards = useMemo(
+    () => buildInvestmentWealthCards(appData.portfolioRows, loadWealthDrafts()),
     [appData.portfolioRows],
+  );
+
+  const investmentWealthTotals = useMemo(
+    () =>
+      investmentWealthCards.reduce(
+        (totals, card) => ({
+          marketValue: totals.marketValue + card.marketValue,
+          remainingDebt: totals.remainingDebt + card.remainingDebt,
+          monthlyRate: totals.monthlyRate + card.monthlyRate,
+        }),
+        { marketValue: 0, remainingDebt: 0, monthlyRate: 0 },
+      ),
+    [investmentWealthCards],
   );
 
   const checklistProgress = Math.round((checklist.filter((item) => item.checked).length / checklist.length) * 100);
   const canExportReport = Boolean(objectName.trim() && (purchasePrice.trim() || investmentCalculation.purchase));
-  const totalWealthIndicator = existingPortfolioIndicator + (investmentCalculation.purchase ?? 0);
-  const monthlyPortfolioCashflow = existingNetCashflow / 12;
-  const totalMonthlyCashflow = monthlyPortfolioCashflow + investmentCalculation.realCashflowAfterTax;
-  const equityYield =
-    investmentCalculation.requiredEquity > 0
-      ? (investmentCalculation.monthlyWealthBuild * 12 * 100) / investmentCalculation.requiredEquity
-      : null;
 
   const investmentProfile = useMemo(
     () =>
@@ -701,6 +802,24 @@ export default function InvestmentBericht() {
     const checklistRows = checklist
       .map((item) => `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.text)}</td><td>${item.checked ? "erledigt" : "offen"}</td></tr>`)
       .join("");
+    const wealthRows = investmentWealthCards
+      .map((card) => {
+        const equityPosition = card.marketValue - card.remainingDebt;
+        const note = card.isRosenstein
+          ? "Tiefgaragestellplätze: P250 und P253 vermietet, P254 leer. Soll TG mtl. wird separat dokumentiert."
+          : "Bestandsimmobilie aus Immobilien Vermögen mit Marktwert, Restschuld und Monatsrate.";
+        return `<tr><td>${escapeHtml(card.name)}</td><td>${escapeHtml(card.address)}</td><td>${escapeHtml(formatCurrencyExact(card.marketValue))}</td><td>${escapeHtml(formatCurrencyExact(card.remainingDebt))}</td><td>${escapeHtml(formatCurrencyExact(card.monthlyRate))}</td><td>${escapeHtml(formatCurrencyExact(equityPosition))}</td><td>${escapeHtml(note)}</td></tr>`;
+      })
+      .join("");
+    const wealthSummaryRows = [
+      ["Objekte", String(investmentWealthCards.length)],
+      ["Marktwert gesamt", formatCurrencyExact(investmentWealthTotals.marketValue)],
+      ["Restschuld gesamt", formatCurrencyExact(investmentWealthTotals.remainingDebt)],
+      ["Freies Vermögen indikativ", formatCurrencyExact(investmentWealthTotals.marketValue - investmentWealthTotals.remainingDebt)],
+      ["Monatliche Raten / Soll TG", formatCurrencyExact(investmentWealthTotals.monthlyRate)],
+    ]
+      .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
+      .join("");
     const keyFactRows = [
       ["Objektart", profile.objectType],
       ["Anschrift / Objekt", profile.address],
@@ -836,14 +955,24 @@ export default function InvestmentBericht() {
     </div>
   </section>
 
-  <h2>1. Executive Summary und Objektübersicht</h2>
-  <p><strong>Vorläufiges Ergebnis:</strong> ${escapeHtml(profile.recommendation)}</p>
-  <p>${escapeHtml(profile.bankKeyMessage)}</p>
-  <table>
-    <tbody>${keyFactRows}</tbody>
-  </table>
+	  <h2>1. Executive Summary und Objektübersicht</h2>
+	  <p><strong>Vorläufiges Ergebnis:</strong> ${escapeHtml(profile.recommendation)}</p>
+	  <p>${escapeHtml(profile.bankKeyMessage)}</p>
+	  <table>
+	    <tbody>${keyFactRows}</tbody>
+	  </table>
 
-  <h2>2. Standort- und Marktanalyse</h2>
+	  <h2>Immobilienvermögen Bestand</h2>
+	  <p><strong>Quelle: Immobilien Vermögen Seite.</strong> Die folgende Übersicht dokumentiert die Bestandsimmobilien als Vermögens- und Sicherheitenlage für die Bank-/Finanzierungsprüfung.</p>
+	  <table>
+	    <tbody>${wealthSummaryRows}</tbody>
+	  </table>
+	  <table>
+	    <thead><tr><th>Immobilie</th><th>Adresse</th><th>Marktwert</th><th>Restschuld</th><th>mtl. Rate / Soll</th><th>Vermögensposition</th><th>Hinweis</th></tr></thead>
+	    <tbody>${wealthRows}</tbody>
+	  </table>
+
+	  <h2>2. Standort- und Marktanalyse</h2>
   <p>Standort: <strong>${safeLocation}</strong>. Für die bankseitige Erstprüfung sind Mikrolage, Nachfrage, Vergleichsmieten, Leerstandsrisiko und Wiederverwertbarkeit maßgeblich.</p>
   <p>Bei Innenstadt- oder zentrumsnahen Lagen spricht die Vermietbarkeit grundsätzlich für das Objekt. Einschränkungen durch Sondernutzung, Seniorenbindung, WEG-Regelungen oder Stellplatzzuordnung müssen marktseitig bewertet werden.</p>
 
@@ -940,9 +1069,11 @@ export default function InvestmentBericht() {
 	    equity,
 	    files,
 	    financingScenarios,
-	    interestRate,
-	    investmentProfile,
-	    investmentCalculation,
+		    interestRate,
+		    investmentWealthCards,
+		    investmentWealthTotals,
+		    investmentProfile,
+		    investmentCalculation,
 	    location,
 	    objectName,
 	    persons,
@@ -1115,24 +1246,25 @@ export default function InvestmentBericht() {
       </div>
 
       {activeSection === "wealth" ? (
+      <>
       <section className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Immobilienvermögen</p>
-            <div className="mt-3 text-2xl font-black text-slate-950">{formatEuro(totalWealthIndicator)}</div>
-            <p className="mt-2 text-xs font-bold leading-5 text-slate-500">Bestand plus neues Kaufinteresse</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Bestand Marktwert</p>
+            <div className="mt-3 text-2xl font-black text-slate-950">{formatCurrencyExact(investmentWealthTotals.marketValue)}</div>
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-500">Quelle: Immobilien Vermögen Seite</p>
           </div>
           <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">Netto-Cashflow</p>
-            <div className={`mt-3 text-2xl font-black ${totalMonthlyCashflow >= 0 ? "text-emerald-800" : "text-rose-800"}`}>
-              {formatSignedEuroMonthly(totalMonthlyCashflow)}
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">Freies Vermögen</p>
+            <div className="mt-3 text-2xl font-black text-emerald-800">
+              {formatCurrencyExact(investmentWealthTotals.marketValue - investmentWealthTotals.remainingDebt)}
             </div>
-            <p className="mt-2 text-xs font-bold leading-5 text-emerald-800">Bestand monatlich plus neues Objekt</p>
+            <p className="mt-2 text-xs font-bold leading-5 text-emerald-800">Marktwert minus Restschuld</p>
           </div>
           <div className="rounded-[22px] border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Ø EK-Rendite</p>
-            <div className="mt-3 text-2xl font-black text-indigo-900">{formatPercent(equityYield)}</div>
-            <p className="mt-2 text-xs font-bold leading-5 text-indigo-800">Vermögensaufbau zu Nebenkosten-EK</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Monatsraten</p>
+            <div className="mt-3 text-2xl font-black text-indigo-900">{formatCurrencyExact(investmentWealthTotals.monthlyRate)}</div>
+            <p className="mt-2 text-xs font-bold leading-5 text-indigo-800">Darlehen plus TG-Sollwerte</p>
           </div>
         </div>
 
@@ -1167,6 +1299,63 @@ export default function InvestmentBericht() {
           </div>
         </div>
       </section>
+      <SectionPanel
+        eyebrow="Quelle: Immobilien Vermögen Seite"
+        title="Immobilienbestand als Vermögensnachweis"
+        description="Diese Karten werden im Investment-Bericht für die Bank-/Finanzierungsprüfung übernommen. Detaildaten bleiben zentral in Immobilien Vermögen gepflegt."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          {investmentWealthCards.map((card) => (
+            <Link
+              key={card.id}
+              to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`}
+              className="group grid min-h-[178px] overflow-hidden rounded-[18px] border border-slate-200 bg-white text-slate-950 no-underline shadow-[0_12px_28px_rgba(51,65,85,0.07)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_18px_42px_rgba(51,65,85,0.10)] sm:grid-cols-[116px_1fr]"
+            >
+              <div className="flex min-h-[96px] items-center justify-center bg-orange-100 text-orange-600">
+                <Building2 size={38} strokeWidth={1.9} />
+              </div>
+              <div className="grid gap-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-black text-slate-950">{card.name}</h2>
+                    <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{card.address}</p>
+                    {card.isRosenstein ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700">3 TG-Stellplätze</span>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">2 vermietet</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">P254 leer</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+                    Detail
+                  </span>
+                </div>
+
+                <div className="grid gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">Marktwert</span>
+                    <b>{formatCurrencyExact(card.marketValue)}</b>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">Restschuld</span>
+                    <b>{formatCurrencyExact(card.remainingDebt)}</b>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">{card.isRosenstein ? "Soll TG mtl." : "mtl. Rate"}</span>
+                    <b>{formatCurrencyExact(card.monthlyRate)}</b>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm font-black text-[#255f6f]">
+                  <ShieldCheck size={17} /> Detailmaske öffnen
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </SectionPanel>
+      </>
       ) : null}
 
       {activeSection === "financing" ? (
