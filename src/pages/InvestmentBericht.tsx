@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   Banknote,
+  Calculator,
+  ChevronDown,
   CheckCircle2,
   ClipboardCheck,
   Copy,
@@ -14,10 +16,12 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  UserPlus,
 } from "lucide-react";
 
 import { PageHeader, SectionPanel } from "@/components/ui/professional";
 import logo from "@/assets/koenen-brand-logo.webp";
+import { useAppData } from "@/state/AppDataContext";
 import { runInvestmentAiAnalysis, type InvestmentAiFile } from "@/services/investmentAiService";
 
 type UploadedFile = InvestmentAiFile;
@@ -85,6 +89,22 @@ type RequiredDocument = {
   keywords: string[];
 };
 
+type InvestmentPerson = {
+  id: string;
+  name: string;
+  income: string;
+  expenses: string;
+  assets: string;
+  liabilities: string;
+};
+
+type InvestmentChecklistItem = {
+  id: number;
+  category: string;
+  text: string;
+  checked: boolean;
+};
+
 const requiredDocuments: RequiredDocument[] = [
   {
     label: "Exposé / Objektbeschreibung",
@@ -134,6 +154,20 @@ const reportChapters = [
   "Kaufempfehlung und Bankfazit",
 ];
 
+const checklistTemplates: InvestmentChecklistItem[] = [
+  { id: 1, category: "Objektunterlagen", text: "Teilungserklärung inklusive aller Nachträge eingesehen", checked: false },
+  { id: 2, category: "Objektunterlagen", text: "Wirtschaftsplan / Hausgeldunterlagen geprüft", checked: false },
+  { id: 3, category: "Objektunterlagen", text: "Grundsteuerbescheid und laufende Kosten abgeglichen", checked: false },
+  { id: 4, category: "Bonität", text: "Letzte 3 Gehaltsnachweise bereitgelegt", checked: false },
+  { id: 5, category: "Bonität", text: "Aktuelle Schufa-Auskunft eingeholt", checked: false },
+  { id: 6, category: "Sonderprüfung", text: "WEG-Protokolle, Sanierungen und Sonderumlagenrisiken analysiert", checked: false },
+];
+
+const initialPersons: InvestmentPerson[] = [
+  { id: "cetin", name: "Cetin Könen", income: "", expenses: "", assets: "", liabilities: "" },
+  { id: "nihal", name: "Nihal Könen", income: "", expenses: "", assets: "", liabilities: "" },
+];
+
 const formatFileSize = (bytes: number) => {
   if (!bytes) return "0 KB";
   const mb = bytes / 1024 / 1024;
@@ -149,6 +183,12 @@ const formatEuro = (value: number | null) => {
 const formatEuroMonthly = (value: number | null) => {
   if (value === null || Number.isNaN(value)) return "offen";
   return `${Math.round(value).toLocaleString("de-DE")} EUR/Monat`;
+};
+
+const formatSignedEuroMonthly = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "offen";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${Math.round(value).toLocaleString("de-DE")} EUR/Monat`;
 };
 
 const formatPercent = (value: number | null) => {
@@ -287,22 +327,33 @@ function createFileId(file: File) {
 }
 
 export default function InvestmentBericht() {
+  const appData = useAppData();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [objectName, setObjectName] = useState("Neue Investition");
+  const [unitDescription, setUnitDescription] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
+  const [loanAmount, setLoanAmount] = useState("");
   const [buyerProvision, setBuyerProvision] = useState("");
   const [equity, setEquity] = useState("");
   const [targetRent, setTargetRent] = useState("");
+  const [apartmentRent, setApartmentRent] = useState("");
+  const [parkingRent, setParkingRent] = useState("");
   const [livingArea, setLivingArea] = useState("");
   const [rooms, setRooms] = useState("");
   const [monthlyHousegeld, setMonthlyHousegeld] = useState("");
   const [interestRate, setInterestRate] = useState("3,50");
   const [amortizationRate, setAmortizationRate] = useState("2,00");
+  const [monthlyBankRate, setMonthlyBankRate] = useState("");
+  const [personalTaxRate, setPersonalTaxRate] = useState("44,30");
   const [location, setLocation] = useState("");
+  const [calculationOpen, setCalculationOpen] = useState(false);
+  const [persons, setPersons] = useState<InvestmentPerson[]>(initialPersons);
+  const [checklist, setChecklist] = useState<InvestmentChecklistItem[]>(checklistTemplates);
   const [copyStatus, setCopyStatus] = useState("");
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiError, setAiError] = useState("");
+  const year = new Date().getFullYear();
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
 
@@ -326,6 +377,73 @@ export default function InvestmentBericht() {
       100,
   );
 
+  const investmentCalculation = useMemo(() => {
+    const purchase = pickNumber(purchasePrice, null);
+    const provisionInput = pickNumber(buyerProvision, null);
+    const loan = pickNumber(loanAmount, purchase);
+    const interest = pickNumber(interestRate, 4.52) ?? 4.52;
+    const amortization = pickNumber(amortizationRate, 1) ?? 1;
+    const fixedRate = pickNumber(monthlyBankRate, null);
+    const taxRate = pickNumber(personalTaxRate, 44.3) ?? 44.3;
+    const apartment = pickNumber(apartmentRent, null);
+    const parking = pickNumber(parkingRent, null);
+    const target = pickNumber(targetRent, null);
+    const monthlyIncome = (apartment ?? 0) + (parking ?? 0) || target || 0;
+    const housegeld = pickNumber(monthlyHousegeld, 0) ?? 0;
+    const calculatedRate = loan ? (loan * ((interest + amortization) / 100)) / 12 : 0;
+    const bankRate = fixedRate ?? calculatedRate;
+    const transferTax = purchase ? purchase * 0.05 : 0;
+    const notary = purchase ? purchase * 0.02 : 0;
+    const broker = provisionInput ?? (purchase ? purchase * 0.0357 : 0);
+    const requiredEquity = transferTax + notary + broker;
+    const riskBuffer = monthlyIncome * 0.0755;
+    const monthlyInterest = loan ? (loan * (interest / 100)) / 12 : 0;
+    const taxRefund = monthlyInterest * (taxRate / 100) * 0.5;
+    const realCashflowAfterTax = monthlyIncome - housegeld - bankRate - riskBuffer + taxRefund;
+    const monthlyWealthBuild = loan ? (loan * (amortization / 100)) / 12 : 0;
+
+    return {
+      purchase,
+      loan,
+      interest,
+      amortization,
+      bankRate,
+      taxRate,
+      monthlyIncome,
+      housegeld,
+      transferTax,
+      notary,
+      broker,
+      requiredEquity,
+      riskBuffer,
+      taxRefund,
+      realCashflowAfterTax,
+      monthlyWealthBuild,
+    };
+  }, [amortizationRate, apartmentRent, buyerProvision, interestRate, loanAmount, monthlyBankRate, monthlyHousegeld, parkingRent, personalTaxRate, purchasePrice, targetRent]);
+
+  const existingNetCashflow = useMemo(() => {
+    return appData.portfolioRows.reduce((sum, row) => {
+      const summary = appData.getYearlyFinanceSummary(row.property_id, year);
+      return sum + ((summary?.einnahmen ?? 0) - (summary?.ausgaben ?? 0));
+    }, 0);
+  }, [appData, year]);
+
+  const existingPortfolioIndicator = useMemo(
+    () => appData.portfolioRows.reduce((sum, row) => sum + (row.last_balance ?? 0), 0),
+    [appData.portfolioRows],
+  );
+
+  const checklistProgress = Math.round((checklist.filter((item) => item.checked).length / checklist.length) * 100);
+  const canExportReport = Boolean(objectName.trim() && (purchasePrice.trim() || investmentCalculation.purchase));
+  const totalWealthIndicator = existingPortfolioIndicator + (investmentCalculation.purchase ?? 0);
+  const monthlyPortfolioCashflow = existingNetCashflow / 12;
+  const totalMonthlyCashflow = monthlyPortfolioCashflow + investmentCalculation.realCashflowAfterTax;
+  const equityYield =
+    investmentCalculation.requiredEquity > 0
+      ? (investmentCalculation.monthlyWealthBuild * 12 * 100) / investmentCalculation.requiredEquity
+      : null;
+
   const investmentProfile = useMemo(
     () =>
       buildInvestmentProfile({
@@ -334,12 +452,12 @@ export default function InvestmentBericht() {
         buyerProvision,
         livingArea,
         rooms,
-        targetRent,
+        targetRent: String(investmentCalculation.monthlyIncome || targetRent),
         monthlyHousegeld,
         interestRate,
         amortizationRate,
       }),
-    [amortizationRate, buyerProvision, interestRate, livingArea, monthlyHousegeld, objectName, purchasePrice, rooms, targetRent],
+    [amortizationRate, buyerProvision, interestRate, investmentCalculation.monthlyIncome, livingArea, monthlyHousegeld, objectName, purchasePrice, rooms, targetRent],
   );
 
   const financingScenarios = useMemo<FinancingScenario[]>(() => {
@@ -376,28 +494,89 @@ export default function InvestmentBericht() {
     `Hallo,\n\nanbei/folgend bereite ich eine erste Finanzierungsprüfung für ${objectName || "eine neue Investition"} vor.\n\nBitte prüfen Sie auf Basis des Investmentberichts grob die mögliche Finanzierung, Beleihung, Eigenkapitalanforderung und Konditionsindikation.\n\nUnterlagen und Bericht werden separat übermittelt.\n\nViele Grüße`,
   );
 
+  const manualReport = useMemo<AiReport>(() => {
+    const checkedItems = checklist.filter((item) => item.checked);
+    const openItems = checklist.filter((item) => !item.checked);
+    return {
+      generatedAt: new Date().toLocaleString("de-DE"),
+      statusLabel: canExportReport ? "Bankfähiger Entwurf aus Eingabedaten" : "Entwurf - Kerndaten fehlen",
+      summary:
+        canExportReport
+          ? `Für ${objectName || "das neue Kaufinteresse"} wurden Stammdaten, Finanzierungsannahmen, Kalkulation und Checkliste zu einem Bank-Entwurf zusammengeführt. Der reale Cashflow nach Steuern liegt indikativ bei ${formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax)}.`
+          : "Bitte mindestens Objekt/Adresse und Kaufpreis eintragen, damit ein sinnvoller Bank-Entwurf erstellt werden kann.",
+      risks: [
+        ...openItems.slice(0, 6).map((item) => `${item.category}: ${item.text}`),
+        "Bankkonditionen, Beleihungswert und persönliche Bonität sind verbindlich durch Bank/Finanzberater zu prüfen.",
+      ],
+      nextSteps: [
+        "PDF-Export erzeugen und zusammen mit Exposé, Grundriss, Wirtschaftsplan, Energieausweis und Mietunterlagen weitergeben.",
+        "Finanzierungsrahmen, Eigenkapitalbedarf, Beleihungsauslauf und Konditionsindikation prüfen lassen.",
+        "Offene Checklistenpunkte vor Kaufentscheidung schließen.",
+      ],
+      chapterStatus: reportChapters.map((chapter, index) => ({
+        chapter,
+        status: index === 5 || checkedItems.length >= 3 ? "Bereit" : "Prüfen",
+        note:
+          index === 5
+            ? "Live-Kalkulation aus Kaufpreis, Darlehen, Zins, Rate, Miete, Hausgeld, Risiko und Steuerannahme vorhanden."
+            : checkedItems.length
+              ? `${checkedItems.length} von ${checklist.length} Prüfpunkten erledigt.`
+              : "Manuelle Prüfung und Unterlagenstatus ergänzen.",
+      })),
+      bankFazit:
+        investmentCalculation.realCashflowAfterTax >= 0
+          ? "Vorläufig bankseitig prüfenswert. Cashflow, Beleihungsauslauf, Eigenkapitalbedarf und Unterlagenqualität wirken als erste Grundlage plausibel, müssen aber bankseitig validiert werden."
+          : "Vorläufig prüfenswert mit Cashflow-Hinweis. Der kalkulierte reale Cashflow ist negativ; Bank und Berater sollten Tragfähigkeit, Eigenkapital, Zinsbindung und Risikopuffer konservativ prüfen.",
+      profile: {
+        monthlyRent: investmentCalculation.monthlyIncome || null,
+        monthlyHousegeld: investmentCalculation.housegeld || null,
+        monthlySurplusBeforeFinancing: investmentCalculation.monthlyIncome - investmentCalculation.housegeld || null,
+        recommendation:
+          investmentCalculation.realCashflowAfterTax >= 0
+            ? "Weiterprüfen / Finanzierungsgespräch vorbereiten"
+            : "Weiterprüfen mit Fokus auf Cashflow, Eigenkapital und Konditionen",
+        bankKeyMessage: "Dieser Bericht basiert auf den manuell eingetragenen Daten, der Live-Kalkulation und dem Checklistenstatus.",
+      },
+      financialScenarios: financingScenarios,
+      riskMatrix: [
+        { field: "Cashflow nach Steuern", rating: investmentCalculation.realCashflowAfterTax >= 0 ? "Stabil" : "Belastet", finding: formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax) },
+        { field: "Eigenkapitalbedarf", rating: "Berechnet", finding: formatEuro(investmentCalculation.requiredEquity) },
+        { field: "Vermögensaufbau", rating: "Berechnet", finding: formatEuroMonthly(investmentCalculation.monthlyWealthBuild) },
+        { field: "Checkliste", rating: `${checklistProgress}%`, finding: `${checkedItems.length} von ${checklist.length} Punkten erledigt.` },
+      ],
+      openQuestions: openItems.map((item) => item.text),
+      documentFindings: coveredDocuments.map((document) => ({
+        document: document.label,
+        status: document.coverage === "direct" ? "vorhanden" : document.coverage === "package" ? "im Paket prüfen" : "offen",
+        finding: document.examples,
+      })),
+    };
+  }, [canExportReport, checklist, checklistProgress, coveredDocuments, financingScenarios, investmentCalculation, objectName]);
+
+  const effectiveReport = aiReport ?? manualReport;
+
   const aiReportText = useMemo(() => {
-    if (!aiReport) return "";
+    if (!effectiveReport) return "";
     return [
-      `${aiReport.statusLabel} - ${objectName || "Neue Investition"}`,
-      `Erstellt: ${aiReport.generatedAt}`,
+      `${effectiveReport.statusLabel} - ${objectName || "Neue Investition"}`,
+      `Erstellt: ${effectiveReport.generatedAt}`,
       "",
       "Executive Summary",
-      aiReport.summary,
+      effectiveReport.summary,
       "",
       "Kapitelstatus",
-      ...aiReport.chapterStatus.map((item, index) => `${index + 1}. ${item.chapter}: ${item.status} - ${item.note}`),
+      ...effectiveReport.chapterStatus.map((item, index) => `${index + 1}. ${item.chapter}: ${item.status} - ${item.note}`),
       "",
       "Risiken / offene Prüfpositionen",
-      ...aiReport.risks.map((risk) => `- ${risk}`),
+      ...effectiveReport.risks.map((risk) => `- ${risk}`),
       "",
       "Nächste Schritte",
-      ...aiReport.nextSteps.map((step) => `- ${step}`),
+      ...effectiveReport.nextSteps.map((step) => `- ${step}`),
       "",
       "Bankfazit",
-      aiReport.bankFazit,
+      effectiveReport.bankFazit,
     ].join("\n");
-  }, [aiReport, objectName]);
+  }, [effectiveReport, objectName]);
 
   async function copyAiReport() {
     if (!aiReportText) return;
@@ -410,9 +589,9 @@ export default function InvestmentBericht() {
   }
 
   const reportDocumentHtml = useMemo(() => {
-    if (!aiReport) return "";
-    const profile = { ...investmentProfile, ...(aiReport.profile ?? {}) } as InvestmentProfile;
-    const scenarios = aiReport.financialScenarios?.length ? aiReport.financialScenarios : financingScenarios;
+    if (!effectiveReport) return "";
+    const profile = { ...investmentProfile, ...(effectiveReport.profile ?? {}) } as InvestmentProfile;
+    const scenarios = effectiveReport.financialScenarios?.length ? effectiveReport.financialScenarios : financingScenarios;
     const safeObjectName = escapeHtml(objectName || "Neue Investition");
     const safeLocation = escapeHtml(location || "noch offen");
     const safePurchasePrice = escapeHtml(purchasePrice || "noch offen");
@@ -426,17 +605,44 @@ export default function InvestmentBericht() {
           )
           .join("")
       : `<tr><td colspan="3">Keine Unterlagen gelistet.</td></tr>`;
-    const chapterRows = aiReport.chapterStatus
+    const chapterRows = effectiveReport.chapterStatus
       .map(
         (item, index) =>
           `<tr><td>${index + 1}</td><td>${escapeHtml(item.chapter)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.note)}</td></tr>`,
       )
       .join("");
-    const riskItems = aiReport.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("");
-    const stepItems = aiReport.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+    const riskItems = effectiveReport.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("");
+    const stepItems = effectiveReport.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+    const calculationRows = [
+      ["Kaufpreis der Immobilie", formatEuro(investmentCalculation.purchase)],
+      ["Bankdarlehen", formatEuro(investmentCalculation.loan)],
+      ["Sollzins p.a.", `${investmentCalculation.interest.toFixed(2).replace(".", ",")} %`],
+      ["Tilgung p.a.", `${investmentCalculation.amortization.toFixed(2).replace(".", ",")} %`],
+      ["Monatliche Bankrate", formatEuroMonthly(investmentCalculation.bankRate)],
+      ["Persönlicher Steuersatz", `${investmentCalculation.taxRate.toFixed(2).replace(".", ",")} %`],
+      ["Grunderwerbsteuer 5,0 %", formatEuro(investmentCalculation.transferTax)],
+      ["Notar & Grundbuch 2,0 %", formatEuro(investmentCalculation.notary)],
+      ["Maklerprovision", formatEuro(investmentCalculation.broker)],
+      ["Benötigtes Eigenkapital", formatEuro(investmentCalculation.requiredEquity)],
+      ["Einnahmen Kaltmiete + Stellplatz", formatEuroMonthly(investmentCalculation.monthlyIncome)],
+      ["Ausgaben Hausgeld + Rate", formatEuroMonthly(-(investmentCalculation.housegeld + investmentCalculation.bankRate))],
+      ["Risikopuffer Instandhaltung/Leerstand", formatEuroMonthly(-investmentCalculation.riskBuffer)],
+      ["Steuererstattung Leverage", formatEuroMonthly(investmentCalculation.taxRefund)],
+      ["Realer Cashflow nach Steuern", formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax)],
+      ["Monatlicher Vermögensaufbau", formatEuroMonthly(investmentCalculation.monthlyWealthBuild)],
+    ]
+      .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(String(value))}</td></tr>`)
+      .join("");
+    const personRows = persons
+      .map((person) => `<tr><td>${escapeHtml(person.name || "Person")}</td><td>${escapeHtml(person.income || "offen")}</td><td>${escapeHtml(person.expenses || "offen")}</td><td>${escapeHtml(person.assets || "offen")}</td><td>${escapeHtml(person.liabilities || "offen")}</td></tr>`)
+      .join("");
+    const checklistRows = checklist
+      .map((item) => `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.text)}</td><td>${item.checked ? "erledigt" : "offen"}</td></tr>`)
+      .join("");
     const keyFactRows = [
       ["Objektart", profile.objectType],
       ["Anschrift / Objekt", profile.address],
+      ["Einheiten", unitDescription || "offen"],
       ["Kaufpreis", formatEuro(profile.purchasePrice)],
       ["Käuferprovision", formatEuro(profile.buyerProvision)],
       ["Geschätzte Gesamterwerbskosten", formatEuro(profile.acquisitionCosts)],
@@ -481,8 +687,8 @@ export default function InvestmentBericht() {
           `<tr><td>${escapeHtml(scenario.label)}</td><td>${formatEuro(scenario.loanAmount)}</td><td>${formatEuroMonthly(scenario.monthlyRate)}</td><td>${formatEuroMonthly(scenario.cashflowAfterRate)}</td></tr>`,
       )
       .join("");
-    const documentFindings = aiReport.documentFindings?.length
-      ? aiReport.documentFindings
+    const documentFindings = effectiveReport.documentFindings?.length
+      ? effectiveReport.documentFindings
       : coveredDocuments.map((document) => ({
           document: document.label,
           status:
@@ -496,8 +702,8 @@ export default function InvestmentBericht() {
     const documentRows = documentFindings
       .map((document) => `<tr><td>${escapeHtml(document.document)}</td><td>${escapeHtml(document.status)}</td><td>${escapeHtml(document.finding)}</td></tr>`)
       .join("");
-    const riskMatrix = aiReport.riskMatrix?.length
-      ? aiReport.riskMatrix
+    const riskMatrix = effectiveReport.riskMatrix?.length
+      ? effectiveReport.riskMatrix
       : [
           { field: "WEG-Verwaltung", rating: "Prüfen", finding: "Verwaltungsqualität, Protokolle, Rücklagenstand und Hausgeldrückstände prüfen." },
           { field: "Dach / Fassade / Gemeinschaftseigentum", rating: "Prüfen", finding: "Beschlüsse, Angebote und Instandhaltungsrücklage prüfen." },
@@ -509,8 +715,8 @@ export default function InvestmentBericht() {
     const riskMatrixRows = riskMatrix
       .map((item) => `<tr><td>${escapeHtml(item.field)}</td><td>${escapeHtml(item.rating)}</td><td>${escapeHtml(item.finding)}</td></tr>`)
       .join("");
-    const questions = aiReport.openQuestions?.length
-      ? aiReport.openQuestions
+    const questions = effectiveReport.openQuestions?.length
+      ? effectiveReport.openQuestions
       : [
           "Welches konkrete Wohnungs- und Teileigentum wird verkauft (Einheitsnummer, Miteigentumsanteil, Stellplatznummer)?",
           "Wie hoch sind aktueller Hausgeldvorschuss, Rücklagenstand und etwaige Hausgeldrückstände?",
@@ -545,8 +751,10 @@ export default function InvestmentBericht() {
     th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; font-size: 12px; }
     th { background: #f1f5f9; color: #334155; }
     .status { display: inline-block; border-radius: 999px; background: #ecfdf5; color: #047857; padding: 4px 10px; font-weight: 800; }
-    .warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 12px; }
-    .footer { margin-top: 34px; color: #64748b; font-size: 11px; }
+	    .warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 12px; }
+	    .positive { color: #047857; font-weight: 800; }
+	    .negative { color: #be123c; font-weight: 800; }
+	    .footer { margin-top: 34px; color: #64748b; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -554,14 +762,14 @@ export default function InvestmentBericht() {
     <img class="logo" src="${logo}" alt="Koenen Immobilien Logo" />
     <div class="eyebrow">Koenen Investment- und Finanzierungsanalyse</div>
     <h1>${safeObjectName}</h1>
-    <p><span class="status">${escapeHtml(aiReport.statusLabel)}</span></p>
-    <p>${escapeHtml(aiReport.summary)}</p>
+    <p><span class="status">${escapeHtml(effectiveReport.statusLabel)}</span></p>
+    <p>${escapeHtml(effectiveReport.summary)}</p>
     <div class="meta">
       <div class="box"><div class="label">Standort</div><div class="value">${safeLocation}</div></div>
       <div class="box"><div class="label">Kaufpreis</div><div class="value">${safePurchasePrice}</div></div>
       <div class="box"><div class="label">Eigenkapital</div><div class="value">${safeEquity}</div></div>
       <div class="box"><div class="label">Soll-/Zielmiete</div><div class="value">${safeTargetRent}</div></div>
-      <div class="box"><div class="label">Berichtsdatum</div><div class="value">${escapeHtml(aiReport.generatedAt)}</div></div>
+      <div class="box"><div class="label">Berichtsdatum</div><div class="value">${escapeHtml(effectiveReport.generatedAt)}</div></div>
       <div class="box"><div class="label">Berichtsreife</div><div class="value">${readiness}%</div></div>
     </div>
   </section>
@@ -602,12 +810,17 @@ export default function InvestmentBericht() {
     <thead><tr><th>Position</th><th>Wert</th><th>Hinweis</th></tr></thead>
     <tbody>${profitabilityRows}</tbody>
   </table>
-  <h3>Vorläufige Finanzierungsrechnung</h3>
-  <p>Die folgenden Szenarien dienen der ersten Orientierung. Angenommen werden ${escapeHtml(interestRate || "3,50")} % Sollzins und ${escapeHtml(amortizationRate || "2,00")} % anfängliche Tilgung. Persönliche Bonität, Zusatzsicherheiten, Steuern, Mietausfall und Sondereigentumsreparaturen sind nicht eingerechnet.</p>
-  <table>
-    <thead><tr><th>Szenario</th><th>Darlehen</th><th>Rate/Monat</th><th>Cashflow nach Rate</th></tr></thead>
-    <tbody>${financingRows}</tbody>
-  </table>
+	  <h3>Vorläufige Finanzierungsrechnung</h3>
+	  <p>Die folgenden Szenarien dienen der ersten Orientierung. Angenommen werden ${escapeHtml(interestRate || "3,50")} % Sollzins und ${escapeHtml(amortizationRate || "2,00")} % anfängliche Tilgung. Persönliche Bonität, Zusatzsicherheiten, Steuern, Mietausfall und Sondereigentumsreparaturen sind nicht eingerechnet.</p>
+	  <h3>Könen Investment- und Finanzierungsanalyse</h3>
+	  <table>
+	    <thead><tr><th>Position</th><th>Wert</th></tr></thead>
+	    <tbody>${calculationRows}</tbody>
+	  </table>
+	  <table>
+	    <thead><tr><th>Szenario</th><th>Darlehen</th><th>Rate/Monat</th><th>Cashflow nach Rate</th></tr></thead>
+	    <tbody>${financingRows}</tbody>
+	  </table>
   <div class="meta">
     <div class="box"><div class="label">Kaufpreis</div><div class="value">${safePurchasePrice}</div></div>
     <div class="box"><div class="label">Eigenkapital</div><div class="value">${safeEquity}</div></div>
@@ -627,12 +840,25 @@ export default function InvestmentBericht() {
 
   <h2>8. Kaufempfehlung und Bankfazit</h2>
   <p><strong>${escapeHtml(profile.recommendation)}</strong></p>
-  <p>${escapeHtml(aiReport.bankFazit)}</p>
+  <p>${escapeHtml(effectiveReport.bankFazit)}</p>
   <p>Gesamturteil: Das Objekt ist für eine langfristige Bestandshaltung prüfenswert, wenn Hausgeld, Rücklage, Mietvertrag, Zahlungsstand, WEG-Risiken und Finanzierungsstruktur zufriedenstellend geklärt werden.</p>
-  <h3>Nächste Schritte</h3>
-  <ul>${stepItems}</ul>
-  <h3>Offene Fragen vor verbindlicher Kaufentscheidung</h3>
-  <ul>${openQuestions}</ul>
+	  <h3>Nächste Schritte</h3>
+	  <ul>${stepItems}</ul>
+	  <h3>Offene Fragen vor verbindlicher Kaufentscheidung</h3>
+	  <ul>${openQuestions}</ul>
+
+	  <h2>Finanzierungsvorbereitung: Personenprofile</h2>
+	  <table>
+	    <thead><tr><th>Person</th><th>Einnahmen</th><th>Ausgaben</th><th>Vermögen</th><th>Verbindlichkeiten</th></tr></thead>
+	    <tbody>${personRows}</tbody>
+	  </table>
+
+	  <h2>Finanzierungsvorbereitung: Checkliste</h2>
+	  <p>Fortschritt: ${checklistProgress}%</p>
+	  <table>
+	    <thead><tr><th>Kategorie</th><th>Prüfpunkt</th><th>Status</th></tr></thead>
+	    <tbody>${checklistRows}</tbody>
+	  </table>
 
   <h2>Kapitelstatus</h2>
   <table>
@@ -644,20 +870,25 @@ export default function InvestmentBericht() {
 </body>
 </html>`;
   }, [
-    aiReport,
-    amortizationRate,
-    coveredDocuments,
-    equity,
-    files,
-    financingScenarios,
-    interestRate,
-    investmentProfile,
-    location,
-    objectName,
-    purchasePrice,
-    readiness,
-    targetRent,
-  ]);
+	    effectiveReport,
+	    amortizationRate,
+	    checklist,
+	    checklistProgress,
+	    coveredDocuments,
+	    equity,
+	    files,
+	    financingScenarios,
+	    interestRate,
+	    investmentProfile,
+	    investmentCalculation,
+	    location,
+	    objectName,
+	    persons,
+	    purchasePrice,
+	    readiness,
+	    targetRent,
+	    unitDescription,
+	  ]);
 
   function downloadWordReport() {
     if (!reportDocumentHtml) return;
@@ -686,6 +917,22 @@ export default function InvestmentBericht() {
       reportWindow.focus();
       reportWindow.print();
     }, 300);
+  }
+
+  function updatePerson(id: string, field: keyof InvestmentPerson, value: string) {
+    setPersons((current) => current.map((person) => (person.id === id ? { ...person, [field]: value } : person)));
+  }
+
+  function addPerson() {
+    const id = `person-${Date.now()}`;
+    setPersons((current) => [
+      ...current,
+      { id, name: "Weitere Person", income: "", expenses: "", assets: "", liabilities: "" },
+    ]);
+  }
+
+  function toggleChecklistItem(id: number) {
+    setChecklist((current) => current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)));
   }
 
   function removeFile(fileId: string) {
@@ -773,7 +1020,7 @@ export default function InvestmentBericht() {
         title="Investment-Bericht"
         description="KI-gestützter Arbeitsbereich für neue Immobilienkäufe: Unterlagen hochladen, Inhalte analysieren, Kapitel 1-8 erstellen und Bank-/Finanzberaterpaket vorbereiten."
         meta={[
-          { label: "Output", value: "DOCX-Bericht Kapitel 1-8" },
+          { label: "Output", value: "DOCX/PDF-Bericht Kapitel 1-8" },
           { label: "Ziel", value: "Bank- und Finanzierungsprüfung" },
         ]}
       >
@@ -787,6 +1034,59 @@ export default function InvestmentBericht() {
           KI-Bewertung starten
         </button>
       </PageHeader>
+
+      <section className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Immobilienvermögen</p>
+            <div className="mt-3 text-2xl font-black text-slate-950">{formatEuro(totalWealthIndicator)}</div>
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-500">Bestand plus neues Kaufinteresse</p>
+          </div>
+          <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">Netto-Cashflow</p>
+            <div className={`mt-3 text-2xl font-black ${totalMonthlyCashflow >= 0 ? "text-emerald-800" : "text-rose-800"}`}>
+              {formatSignedEuroMonthly(totalMonthlyCashflow)}
+            </div>
+            <p className="mt-2 text-xs font-bold leading-5 text-emerald-800">Bestand monatlich plus neues Objekt</p>
+          </div>
+          <div className="rounded-[22px] border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">Ø EK-Rendite</p>
+            <div className="mt-3 text-2xl font-black text-indigo-900">{formatPercent(equityYield)}</div>
+            <p className="mt-2 text-xs font-bold leading-5 text-indigo-800">Vermögensaufbau zu Nebenkosten-EK</p>
+          </div>
+        </div>
+
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Neues Kaufinteresse</p>
+              <h2 className="mt-2 text-xl font-black text-slate-950">{objectName || "Neue Investition"}</h2>
+              <p className="mt-1 text-sm font-bold text-slate-600">{location || "Standort noch offen"}</p>
+            </div>
+            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] ${
+              canExportReport ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+            }`}>
+              {canExportReport ? "Export bereit" : "Daten ergänzen"}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Kaufpreis</p>
+              <p className="mt-2 text-lg font-black text-slate-950">{formatEuro(investmentCalculation.purchase)}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Cashflow nach Steuer</p>
+              <p className={`mt-2 text-lg font-black ${investmentCalculation.realCashflowAfterTax >= 0 ? "text-emerald-800" : "text-rose-800"}`}>
+                {formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Vermögensaufbau</p>
+              <p className="mt-2 text-lg font-black text-slate-950">{formatEuroMonthly(investmentCalculation.monthlyWealthBuild)}</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
@@ -813,8 +1113,16 @@ export default function InvestmentBericht() {
               <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="z.B. Innenstadt, Stadtteil, PLZ" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
+              Einheiten
+              <input value={unitDescription} onChange={(event) => setUnitDescription(event.target.value)} placeholder="z.B. Wohnung + Stellplatz" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
               Kaufpreis
               <input value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="z.B. 305.000 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Bankdarlehen
+              <input value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} placeholder="z.B. 135.000 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
               Käuferprovision
@@ -827,6 +1135,14 @@ export default function InvestmentBericht() {
             <label className="grid gap-2 text-sm font-black text-slate-700">
               Kaltmiete / Zielmiete
               <input value={targetRent} onChange={(event) => setTargetRent(event.target.value)} placeholder="z.B. 1.250 EUR kalt monatlich" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Kaltmiete Wohnung
+              <input value={apartmentRent} onChange={(event) => setApartmentRent(event.target.value)} placeholder="z.B. 480 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Kaltmiete Stellplatz
+              <input value={parkingRent} onChange={(event) => setParkingRent(event.target.value)} placeholder="z.B. 60 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
               Wohnfläche
@@ -847,6 +1163,14 @@ export default function InvestmentBericht() {
             <label className="grid gap-2 text-sm font-black text-slate-700">
               Tilgung
               <input value={amortizationRate} onChange={(event) => setAmortizationRate(event.target.value)} placeholder="z.B. 2,00 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Monatliche Bankrate
+              <input value={monthlyBankRate} onChange={(event) => setMonthlyBankRate(event.target.value)} placeholder="z.B. 621 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Persönlicher Steuersatz
+              <input value={personalTaxRate} onChange={(event) => setPersonalTaxRate(event.target.value)} placeholder="z.B. 44,30 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
           </div>
         </div>
@@ -877,6 +1201,78 @@ export default function InvestmentBericht() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setCalculationOpen((open) => !open)}
+          className="flex w-full flex-col gap-3 px-5 py-5 text-left sm:flex-row sm:items-center sm:justify-between md:px-6"
+          aria-expanded={calculationOpen}
+        >
+          <span className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <Calculator size={20} />
+            </span>
+            <span>
+              <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Könen Investment- und Finanzierungsanalyse</span>
+              <span className="mt-1 block text-lg font-black text-slate-950">Realer Cashflow, Nebenkosten, Steuer und Vermögensaufbau</span>
+            </span>
+          </span>
+          <ChevronDown className={`shrink-0 text-slate-500 transition ${calculationOpen ? "rotate-180" : ""}`} size={22} />
+        </button>
+
+        {calculationOpen ? (
+          <div className="border-t border-slate-200 p-5 md:p-6">
+            <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="grid gap-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Realer Cashflow nach Steuern</p>
+                  <p className={`mt-3 text-3xl font-black ${investmentCalculation.realCashflowAfterTax >= 0 ? "text-emerald-800" : "text-rose-800"}`}>
+                    {formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Eigenkapitalbedarf</p>
+                    <p className="mt-2 text-lg font-black text-slate-950">{formatEuro(investmentCalculation.requiredEquity)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Monatlicher Aufbau</p>
+                    <p className="mt-2 text-lg font-black text-slate-950">{formatEuroMonthly(investmentCalculation.monthlyWealthBuild)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200">
+                <div className="grid grid-cols-[1.1fr_0.9fr] bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                  <span>Position</span>
+                  <span className="text-right">Wert</span>
+                </div>
+                {[
+                  ["Kaufpreis", formatEuro(investmentCalculation.purchase)],
+                  ["Bankdarlehen", formatEuro(investmentCalculation.loan)],
+                  ["Sollzins", formatPercent(investmentCalculation.interest)],
+                  ["Tilgung", formatPercent(investmentCalculation.amortization)],
+                  ["Monatliche Bankrate", formatEuroMonthly(investmentCalculation.bankRate)],
+                  ["Persönlicher Steuersatz", formatPercent(investmentCalculation.taxRate)],
+                  ["Grunderwerbsteuer 5 %", formatEuro(investmentCalculation.transferTax)],
+                  ["Notar 2 %", formatEuro(investmentCalculation.notary)],
+                  ["Makler / Käuferprovision", formatEuro(investmentCalculation.broker)],
+                  ["Kaltmiete Wohnung + Stellplatz", formatEuroMonthly(investmentCalculation.monthlyIncome)],
+                  ["Hausgeld / Mietvoranschlag", formatEuroMonthly(investmentCalculation.housegeld)],
+                  ["Risikopuffer", formatEuroMonthly(investmentCalculation.riskBuffer)],
+                  ["Steuererstattung indikativ", formatEuroMonthly(investmentCalculation.taxRefund)],
+                ].map(([label, value]) => (
+                  <div key={label} className="grid grid-cols-[1.1fr_0.9fr] border-t border-slate-100 px-4 py-3 text-sm">
+                    <span className="font-bold text-slate-600">{label}</span>
+                    <span className="text-right font-black text-slate-950">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
@@ -976,6 +1372,81 @@ export default function InvestmentBericht() {
                   ) : null}
                 </div>
               </div>
+            ))}
+          </div>
+        </SectionPanel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+        <SectionPanel
+          eyebrow="Finanzierung"
+          title="Personenprofile"
+          description="Diese Daten werden im Bankbericht als Vorbereitung für die erste Finanzierungsprüfung dokumentiert."
+        >
+          <div className="grid gap-4">
+            {persons.map((person) => (
+              <div key={person.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                <label className="grid gap-2 text-sm font-black text-slate-700">
+                  Person
+                  <input value={person.name} onChange={(event) => updatePerson(person.id, "name", event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+                </label>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    Einnahmen
+                    <input value={person.income} onChange={(event) => updatePerson(person.id, "income", event.target.value)} placeholder="monatlich / jährlich" className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-slate-950 outline-none focus:border-slate-400" />
+                  </label>
+                  <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    Ausgaben
+                    <input value={person.expenses} onChange={(event) => updatePerson(person.id, "expenses", event.target.value)} placeholder="Fixkosten, Raten" className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-slate-950 outline-none focus:border-slate-400" />
+                  </label>
+                  <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    Vermögen
+                    <input value={person.assets} onChange={(event) => updatePerson(person.id, "assets", event.target.value)} placeholder="Guthaben, Bestand" className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-slate-950 outline-none focus:border-slate-400" />
+                  </label>
+                  <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    Verbindlichkeiten
+                    <input value={person.liabilities} onChange={(event) => updatePerson(person.id, "liabilities", event.target.value)} placeholder="Darlehen, sonstige Pflichten" className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold normal-case tracking-normal text-slate-950 outline-none focus:border-slate-400" />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addPerson}
+            className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-950 shadow-sm"
+          >
+            <UserPlus size={17} />
+            Weitere Person hinzufügen
+          </button>
+        </SectionPanel>
+
+        <SectionPanel
+          eyebrow="Checkliste"
+          title="Finanzierungsvorbereitung"
+          description="Interaktive Prüfpunkte für den Bankexport. Abgehakte Punkte erscheinen im Bericht als erledigt."
+        >
+          <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-indigo-700">Fortschritt</p>
+            <div className="mt-2 flex items-end justify-between gap-4">
+              <span className="text-3xl font-black text-indigo-900">{checklistProgress}%</span>
+              <span className="text-sm font-bold text-indigo-800">{checklist.filter((item) => item.checked).length} von {checklist.length} erledigt</span>
+            </div>
+          </div>
+          <div className="grid gap-3">
+            {checklist.map((item) => (
+              <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  onChange={() => toggleChecklistItem(item.id)}
+                  className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-950"
+                />
+                <span>
+                  <span className="block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{item.category}</span>
+                  <span className="mt-1 block text-sm font-bold leading-5 text-slate-800">{item.text}</span>
+                </span>
+              </label>
             ))}
           </div>
         </SectionPanel>
@@ -1112,9 +1583,9 @@ export default function InvestmentBericht() {
 
       <section className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
         <SectionPanel
-          eyebrow="Export"
-          title="Bericht herunterladen"
-          description="Sobald eine KI-Erstbewertung erstellt wurde, kannst du den Bericht direkt als Word-Datei herunterladen oder über den Browser als PDF speichern."
+        eyebrow="Export"
+        title="Bericht herunterladen"
+        description="Sobald Objekt und Kaufpreis eingetragen sind, kannst du den Bank-Entwurf als Word-Datei herunterladen oder über den Browser als PDF speichern. Die KI-Bewertung kann den Bericht zusätzlich fachlich vertiefen."
         >
           <div className="grid gap-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1134,7 +1605,7 @@ export default function InvestmentBericht() {
             <button
               type="button"
               onClick={downloadWordReport}
-              disabled={!aiReport}
+              disabled={!canExportReport}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download size={18} />
@@ -1143,15 +1614,15 @@ export default function InvestmentBericht() {
             <button
               type="button"
               onClick={createPdfReport}
-              disabled={!aiReport}
+              disabled={!canExportReport}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FileText size={18} />
               PDF erstellen
             </button>
           </div>
-          {!aiReport ? (
-            <p className="mt-4 text-sm font-bold text-slate-500">Bitte zuerst “KI-Bewertung starten”, dann wird der Download aktiviert.</p>
+          {!canExportReport ? (
+            <p className="mt-4 text-sm font-bold text-slate-500">Bitte mindestens Objekt/Adresse und Kaufpreis eintragen, dann wird der Bankexport aktiviert.</p>
           ) : null}
         </SectionPanel>
 
