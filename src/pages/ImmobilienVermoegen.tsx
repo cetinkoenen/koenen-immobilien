@@ -311,6 +311,76 @@ const SECTION_FIELDS: Array<{ title: string; description: string; icon: typeof H
   },
 ];
 
+const FIELD_BY_KEY = new Map<string, FieldConfig>(SECTION_FIELDS.flatMap((section) => section.fields.map((field) => [field.key, field])));
+
+const DETAIL_TEMPLATE_SECTIONS: Array<{
+  id: string;
+  title: string;
+  subtitle: string;
+  pageLabel: string;
+  icon: typeof Home;
+  columns: Array<{ title: string; description?: string; fields: string[]; action?: "parking" | "modernization" | "borrower" }>;
+}> = [
+  {
+    id: "vorhaben",
+    title: "Vorhaben & Adresse",
+    subtitle: "Stammdaten, Kontaktadresse und Kostenbasis nach Vorlage Seite 2.",
+    pageLabel: "Vorlage S. 2",
+    icon: MapPin,
+    columns: [
+      { title: "Vorhaben", fields: ["financingReason", "propertyType", "name"] },
+      { title: "Adresse und Kontaktdaten", fields: ["street", "houseNumber", "postalCode", "city", "state", "inhabitants", "surroundings"] },
+      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseYear"] },
+    ],
+  },
+  {
+    id: "beschreibung",
+    title: "Beschreibung",
+    subtitle: "Flächen, Nutzung, Ausstattung und Stellplätze nach Vorlage Seite 3.",
+    pageLabel: "Vorlage S. 3",
+    icon: Building2,
+    columns: [
+      { title: "Flächen und Nutzung", fields: ["usageType", "unitCount", "totalArea", "coldRentMonthly", "landArea", "convertedSpace"] },
+      { title: "Ausstattung", fields: ["equipmentYear", "constructionType", "constructionSpecials", "equipmentRating", "floors", "elevator", "condition", "attic", "cellar"] },
+      { title: "Stellplätze", description: "Parkplätze, Garagen oder Tiefgaragenstellplätze separat dokumentieren.", fields: ["parkingSpaces"], action: "parking" },
+    ],
+  },
+  {
+    id: "bewertung",
+    title: "Bewertung",
+    subtitle: "Marktwert, Bodenrichtwert und Erwerbsbesonderheiten nach Vorlage Seite 4.",
+    pageLabel: "Vorlage S. 4",
+    icon: Euro,
+    columns: [
+      { title: "Wertansätze", fields: ["marketValue", "landValue", "estimatedMarketValue"] },
+      { title: "Erwerb", fields: ["acquisitionSpecials", "heritableBuildingRight"] },
+    ],
+  },
+  {
+    id: "energie",
+    title: "Energie und Modernisierungen",
+    subtitle: "Energiekennzahlen und Modernisierungshistorie nach Vorlage Seite 5.",
+    pageLabel: "Vorlage S. 5",
+    icon: Zap,
+    columns: [
+      { title: "Energie", fields: ["energyClass", "primaryEnergyDemand", "primaryEnergyConsumption", "co2Emissions"] },
+      { title: "Bereits durchgeführte Modernisierungen", fields: ["modernizations", "lastModernizationYear", "modernizationCosts"], action: "modernization" },
+    ],
+  },
+  {
+    id: "darlehen",
+    title: "Bestehende Darlehen",
+    subtitle: "Darlehensgeber, Konditionen, Ablösung und Darlehensnehmer nach Vorlage Seite 6.",
+    pageLabel: "Vorlage S. 6",
+    icon: Landmark,
+    columns: [
+      { title: "Darlehen 1", fields: ["lender", "ibanBic", "loanNumber", "landRegisterRank", "subsidizedLoan"] },
+      { title: "Konditionen", fields: ["originalLoanAmount", "currentMonthlyRate", "agreedFutureRate", "interestRate", "interestBinding", "fullRepaymentDate"] },
+      { title: "Ablösung", fields: ["release", "shouldBeRedeemed", "remainingDebt", "expectedEndDate", "borrowers"], action: "borrower" },
+    ],
+  },
+];
+
 function normalize(value: string) {
   return value
     .toLowerCase()
@@ -452,12 +522,14 @@ function DetailField({
 
 function DetailPage({
   card,
+  cards,
   onUpdate,
   onSave,
   saveStatus,
   isAdmin,
 }: {
   card: WealthCard;
+  cards: WealthCard[];
   onUpdate: (id: string, key: string, value: string) => void;
   onSave: (id: string) => void;
   saveStatus?: string;
@@ -468,85 +540,153 @@ function DetailPage({
     const current = card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
   };
+  const renderAction = (action?: "parking" | "modernization" | "borrower") => {
+    if (!action) return null;
+    const config = {
+      parking: { key: "parkingSpaces", label: "PKW Stellplatz hinzufügen", value: "PKW Stellplatz" },
+      modernization: { key: "modernizations", label: "Modernisierung hinzufügen", value: "Neue Modernisierung" },
+      borrower: { key: "borrowers", label: "Person hinzufügen", value: "Neue Person" },
+    }[action];
+
+    return (
+      <button
+        type="button"
+        disabled={!isAdmin}
+        onClick={() => appendValue(config.key, config.value)}
+        className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      >
+        <PlusCircle size={17} /> {config.label}
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        eyebrow="Immobilienvermögen"
-        title={card.draft.name || "Immobilie"}
-        description="Separate Detailmaske mit den standardisierten Datenfeldern aus der neuen Vermögensvorlage."
-        meta={[
-          { label: "Marktwert", value: formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue) },
-          { label: "Restschuld", value: formatCurrency(card.draft.remainingDebt) },
-          { label: "Monatsrate", value: formatCurrency(card.draft.currentMonthlyRate) },
-        ]}
-      >
-        <button
-          type="button"
-          onClick={() => navigate("/immobilienvermoegen")}
-          className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm"
-        >
-          <ArrowLeft size={17} /> Zur Übersicht
-        </button>
-      </PageHeader>
+      <section className="rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_44px_rgba(51,65,85,0.08)] backdrop-blur">
+        <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Immobilienvermögen</p>
+            <h1 className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">{card.draft.name || "Immobilie"}</h1>
+            <p className="mt-1 text-sm font-bold text-slate-500">
+              {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
+                .filter(Boolean)
+                .join(", ") || "Adresse offen"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/immobilienvermoegen")}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm"
+          >
+            <ArrowLeft size={17} /> Zur Übersicht
+          </button>
+        </div>
 
-      {SECTION_FIELDS.map((section) => {
-        const Icon = section.icon;
-        return (
-          <SectionPanel key={section.title} title={section.title} description={section.description}>
-            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef7f4] text-[#255f6f] ring-1 ring-teal-100">
-              <Icon size={20} />
+        <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+          <aside className="space-y-4">
+            <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-slate-600">
+                  <Home size={16} /> Immobilienvermögen
+                </div>
+                {isAdmin ? (
+                  <Link to="/immobilien/immobilie-anlegen" className="text-orange-600 no-underline" aria-label="Immobilie hinzufügen">
+                    <PlusCircle size={20} />
+                  </Link>
+                ) : null}
+              </div>
+              <div className="mt-4 grid gap-2">
+                {cards.map((item) => {
+                  const active = item.id === card.id;
+                  return (
+                    <Link
+                      key={item.id}
+                      to={`/immobilienvermoegen/${encodeURIComponent(item.id)}`}
+                      className={[
+                        "group rounded-xl border px-4 py-3 text-slate-950 no-underline transition",
+                        active ? "border-orange-200 bg-white shadow-sm" : "border-transparent bg-white/60 hover:border-slate-200 hover:bg-white",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black">{item.draft.name || "Unbenannte Immobilie"}</p>
+                          <p className="mt-1 truncate text-xs font-bold text-slate-500">
+                            {[item.draft.street && `${item.draft.street} ${item.draft.houseNumber}`.trim(), [item.draft.postalCode, item.draft.city].filter(Boolean).join(" ")]
+                              .filter(Boolean)
+                              .join(", ") || "Adresse offen"}
+                          </p>
+                        </div>
+                        <span className="text-lg font-black text-slate-400">⌄</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {section.fields.map((field) => (
-                <DetailField
-                  key={field.key}
-                  field={field}
-                  value={card.draft[field.key] ?? ""}
-                  disabled={!isAdmin}
-                  onChange={(value) => onUpdate(card.id, field.key, value)}
-                />
-              ))}
+
+            <div className="grid gap-3 rounded-[18px] border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Marktwert</span>
+                <b className="text-sm">{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Restschuld</span>
+                <b className="text-sm">{formatCurrency(card.draft.remainingDebt)}</b>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">mtl. Rate</span>
+                <b className="text-sm">{formatCurrency(card.draft.currentMonthlyRate)}</b>
+              </div>
             </div>
-            {section.title.includes("Beschreibung") ? (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={!isAdmin}
-                  onClick={() => appendValue("parkingSpaces", "PKW Stellplatz")}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <PlusCircle size={17} /> PKW Stellplatz hinzufügen
-                </button>
-              </div>
-            ) : null}
-            {section.title.includes("Energie") ? (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={!isAdmin}
-                  onClick={() => appendValue("modernizations", "Neue Modernisierung")}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <PlusCircle size={17} /> Modernisierung hinzufügen
-                </button>
-              </div>
-            ) : null}
-            {section.title.includes("Darlehen") ? (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  disabled={!isAdmin}
-                  onClick={() => appendValue("borrowers", "Neue Person")}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <PlusCircle size={17} /> Person hinzufügen
-                </button>
-              </div>
-            ) : null}
-          </SectionPanel>
-        );
-      })}
+          </aside>
+
+          <div className="space-y-5">
+            {DETAIL_TEMPLATE_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              return (
+                <article key={section.id} id={section.id} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                        <Icon size={19} />
+                      </span>
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{section.pageLabel}</p>
+                        <h2 className="text-xl font-black text-slate-950">{section.title}</h2>
+                        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{section.subtitle}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-5 bg-slate-50/70 p-5 lg:grid-cols-2 2xl:grid-cols-3">
+                    {section.columns.map((column) => (
+                      <div key={column.title} className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 className="text-base font-black text-slate-950">{column.title}</h3>
+                        {column.description ? <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{column.description}</p> : null}
+                        <div className="mt-4 grid gap-3">
+                          {column.fields.map((fieldKey) => {
+                            const field = FIELD_BY_KEY.get(fieldKey);
+                            if (!field) return null;
+                            return (
+                              <DetailField
+                                key={field.key}
+                                field={field}
+                                value={card.draft[field.key] ?? ""}
+                                disabled={!isAdmin}
+                                onChange={(value) => onUpdate(card.id, field.key, value)}
+                              />
+                            );
+                          })}
+                        </div>
+                        {renderAction(column.action)}
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
         <textarea
@@ -619,7 +759,7 @@ export default function ImmobilienVermoegen() {
     if (!selectedCard) {
       return <EmptyState title="Immobilie nicht gefunden" description="Die ausgewählte Vermögens-Detailmaske konnte nicht geladen werden." />;
     }
-    return <DetailPage card={selectedCard} onUpdate={updateDraft} onSave={saveDraft} saveStatus={saveStatus[selectedCard.id]} isAdmin={isAdmin} />;
+    return <DetailPage card={selectedCard} cards={cards} onUpdate={updateDraft} onSave={saveDraft} saveStatus={saveStatus[selectedCard.id]} isAdmin={isAdmin} />;
   }
 
   return (
