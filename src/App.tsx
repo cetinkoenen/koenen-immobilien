@@ -2129,7 +2129,7 @@ function TasksMaintenancePage() {
 function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
-    () => new Set(["Dashboard", "Immobilien", "Mieter", "Buchhaltung"]),
+    () => new Set(["Dashboard", "Immobilien", "Immobilienvermögen", "Mieter", "Buchhaltung"]),
   );
   const { user } = useAuth();
   const location = useLocation();
@@ -2148,6 +2148,12 @@ function AppShell() {
       { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
       { to: "/immobilienvermoegen", label: "Dashboard", group: "Immobilienvermögen", icon: Landmark },
+      { to: "/immobilienvermoegen/lilienthaler-str-54", label: "Lilienthaler Str. 54", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/elsasser-str-52", label: "Elsasser Str. 52", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/colmarer-str-45", label: "Colmarer Str. 45", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/fuerther-str-74", label: "Fürther Str. 74", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/rosensteinstr-25", label: "Rosensteinstr. 25", group: "Immobilienvermögen", icon: Building2 },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
       { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
