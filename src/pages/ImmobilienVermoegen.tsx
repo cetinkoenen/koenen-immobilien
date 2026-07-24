@@ -1,22 +1,28 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useMemo, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Building2,
+  Eye,
   Euro,
+  FileText,
   Home,
   Landmark,
   MapPin,
   PlusCircle,
   Save,
   ShieldCheck,
+  Upload,
   Zap,
 } from "lucide-react";
 
-import { EmptyState, KpiCard, PageHeader, SectionPanel } from "@/components/ui/professional";
+import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/professional";
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
 import { useAppData, type PortfolioLoanRow } from "@/state/AppDataContext";
+import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
+import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
+import type { MasterFinanceSnapshot } from "@/services/masterDataService";
 
 type WealthDraft = Record<string, string>;
 
@@ -32,6 +38,31 @@ type WealthCard = {
   draft: WealthDraft;
 };
 
+type ExposeInfo = {
+  fileName: string;
+  dataUrl: string;
+  uploadedAt: string;
+};
+
+type ExposePreview = {
+  card: WealthCard;
+  extra: PropertyExtraInfo;
+  finance: WealthFinance;
+};
+
+type WealthFinance = {
+  income: number;
+  expenses: number;
+  rentIncome: number;
+  netCashflow: number;
+  nebenkosten: number;
+  value: number;
+  lastBalance: number;
+  repaidPercent: number;
+  grossYield: number;
+  netYield: number;
+};
+
 type FieldConfig = {
   key: string;
   label: string;
@@ -41,6 +72,7 @@ type FieldConfig = {
 };
 
 const STORAGE_KEY = "koenen:immobilienvermoegen:v2";
+const EXPOSE_STORAGE_KEY = "koenen:portfolio:exposes:v1";
 
 const EMPTY_DRAFT: WealthDraft = {
   name: "",
@@ -397,10 +429,42 @@ function formatCurrency(value: string | number | null | undefined): string {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Number.isFinite(parsed) ? parsed : 0);
 }
 
+function formatCurrencyExact(value: string | number | null | undefined): string {
+  const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/\./g, "").replace(",", "."));
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(parsed) ? parsed : 0);
+}
+
+function formatPercent(value: number): string {
+  return new Intl.NumberFormat("de-DE", { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((value || 0) / 100);
+}
+
 function parseAmount(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const parsed = Number(String(value ?? "").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNumber(value: number | string | null | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function currentYear() {
+  return new Date().getFullYear();
+}
+
+function safeRatio(value: number, base: number) {
+  if (!base) return 0;
+  return (value / base) * 100;
+}
+
+function loadExposes(): Record<string, ExposeInfo> {
+  try {
+    const raw = window.localStorage.getItem(EXPOSE_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, ExposeInfo>) : {};
+  } catch {
+    return {};
+  }
 }
 
 function loadStoredDrafts(): Record<string, WealthDraft> {
@@ -520,22 +584,134 @@ function DetailField({
   );
 }
 
+function SourceKpi({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "green" | "red" | "blue" }) {
+  const toneClass = {
+    neutral: "border-slate-200 bg-white text-slate-950",
+    green: "border-emerald-100 bg-emerald-50 text-emerald-800",
+    red: "border-rose-100 bg-rose-50 text-rose-800",
+    blue: "border-blue-100 bg-blue-50 text-blue-800",
+  }[tone];
+
+  return (
+    <div className={`rounded-[18px] border p-4 shadow-sm ${toneClass}`}>
+      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <b className="mt-3 block text-2xl font-black">{value}</b>
+    </div>
+  );
+}
+
+function CashflowPanel({ finance, year, objectValue }: { finance: WealthFinance; year: number; objectValue: number }) {
+  const maxBar = Math.max(finance.income, finance.expenses, objectValue, 1);
+  return (
+    <section className="rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_44px_rgba(51,65,85,0.08)]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_1.25fr] lg:items-center">
+        <div>
+          <span className="inline-flex rounded-full bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#255f6f]">Cashflow & Rendite</span>
+          <h2 className="mt-4 text-2xl font-black text-slate-950">{formatCurrencyExact(finance.netCashflow)} Netto-Cashflow im Jahr {year}</h2>
+          <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-slate-500">
+            Einnahmen und Ausgaben kommen aus Buchhaltung/Finanzmaster. Rendite nutzt den gepflegten Objektwert; ohne Wert wird ersatzweise die Restschuld verwendet.
+          </p>
+        </div>
+        <div className="grid gap-3">
+          {[
+            ["Einnahmen", finance.income],
+            ["Ausgaben", finance.expenses],
+            ["Objektwerte", objectValue],
+          ].map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[110px_1fr_130px] items-center gap-3 text-sm font-black text-slate-700 max-sm:grid-cols-1">
+              <span>{label}</span>
+              <i className="h-3 rounded-full bg-gradient-to-r from-[#315f6d] to-[#a5dccd]" style={{ width: `${Math.min(100, safeRatio(Number(value), maxBar))}%` }} />
+              <b className="text-right text-slate-950 max-sm:text-left">{formatCurrencyExact(Number(value))}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FinanceOverview({ totals, year, objectValue, objectCount }: { totals: WealthFinance; year: number; objectValue: number; objectCount: number }) {
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <SourceKpi label="Objekte" value={String(objectCount)} />
+        <SourceKpi label={`Cashflow ${year}`} value={formatCurrencyExact(totals.netCashflow)} tone={totals.netCashflow >= 0 ? "green" : "red"} />
+        <SourceKpi label="Brutto-Rendite" value={formatPercent(totals.grossYield)} />
+        <SourceKpi label="Netto-Rendite" value={formatPercent(totals.netYield)} />
+        <SourceKpi label="Restschuld Gesamt" value={formatCurrencyExact(totals.lastBalance)} />
+        <SourceKpi label="Ø Rückzahlungsstand" value={formatPercent(totals.repaidPercent)} />
+      </section>
+      <CashflowPanel finance={totals} year={year} objectValue={objectValue} />
+    </div>
+  );
+}
+
+function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; year: number }) {
+  const progress = Math.max(0, Math.min(100, finance.repaidPercent));
+  return (
+    <section className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SourceKpi label="Restschuld" value={formatCurrencyExact(finance.lastBalance)} />
+        <SourceKpi label={`Cashflow ${year}`} value={formatCurrencyExact(finance.netCashflow)} tone={finance.netCashflow >= 0 ? "green" : "red"} />
+        <SourceKpi label="Netto-Rendite" value={formatPercent(finance.netYield)} />
+        <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Rückzahlung</p>
+          <b className="mt-3 block text-2xl font-black text-slate-950">{formatPercent(finance.repaidPercent)}</b>
+          <div className="mt-4 h-2 rounded-full bg-slate-200">
+            <i className="block h-2 rounded-full bg-gradient-to-r from-[#315f6d] to-[#7c8cf6]" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <SourceKpi label={`Einnahmen ${year}`} value={formatCurrencyExact(finance.income)} tone="green" />
+        <SourceKpi label={`Ausgaben ${year}`} value={formatCurrencyExact(finance.expenses)} />
+        <SourceKpi label={`Mieten ${year}`} value={formatCurrencyExact(finance.rentIncome)} />
+        <SourceKpi label="NK aus Buchungen" value={formatCurrencyExact(finance.nebenkosten)} />
+        <SourceKpi label="Brutto-Rendite" value={formatPercent(finance.grossYield)} />
+      </div>
+    </section>
+  );
+}
+
 function DetailPage({
   card,
   cards,
+  extra,
+  finance,
+  year,
+  uploadedExpose,
   onUpdate,
   onSave,
+  onExtraChange,
+  onExtraSave,
+  onExposePreview,
+  onExposeGenerate,
+  onExposeUpload,
+  extraDirty,
+  extraStatus,
   saveStatus,
   isAdmin,
 }: {
   card: WealthCard;
   cards: WealthCard[];
+  extra: PropertyExtraInfo;
+  finance: WealthFinance;
+  year: number;
+  uploadedExpose?: ExposeInfo;
   onUpdate: (id: string, key: string, value: string) => void;
   onSave: (id: string) => void;
+  onExtraChange: (propertyId: string, field: keyof PropertyExtraInfo, value: string) => void;
+  onExtraSave: (propertyId: string) => Promise<void>;
+  onExposePreview: (card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) => void;
+  onExposeGenerate: (card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) => void;
+  onExposeUpload: (propertyId: string) => void;
+  extraDirty?: boolean;
+  extraStatus?: string;
   saveStatus?: string;
   isAdmin: boolean;
 }) {
   const navigate = useNavigate();
+  const propertyId = card.row?.property_id ?? card.id;
   const appendValue = (key: string, value: string) => {
     const current = card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
@@ -641,6 +817,88 @@ function DetailPage({
           </aside>
 
           <div className="space-y-5">
+            <PropertyEconomicOverview finance={finance} year={year} />
+
+            <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektakte</p>
+                  <h2 className="text-xl font-black text-slate-950">Exposé</h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onExposePreview(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
+                    <Eye size={17} /> Ansehen
+                  </button>
+                  <button type="button" onClick={() => onExposeGenerate(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
+                    <FileText size={17} /> PDF erstellen
+                  </button>
+                  <button type="button" disabled={!isAdmin} onClick={() => onExposeUpload(propertyId)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">
+                    <Upload size={17} /> PDF hochladen
+                  </button>
+                  {uploadedExpose ? (
+                    <a href={uploadedExpose.dataUrl} download={uploadedExpose.fileName} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 no-underline">
+                      Download
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+              <p className="px-5 py-4 text-sm font-bold leading-6 text-slate-500">
+                {uploadedExpose ? `Aktuell hinterlegt: ${uploadedExpose.fileName}` : "Noch kein PDF hochgeladen. Ein Exposé kann aus den aktuellen Immobilien- und Finanzdaten vorbereitet werden."}
+              </p>
+            </article>
+
+            <article className="rounded-[18px] border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-black text-slate-950">Mieteingang</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["firstName", "Name", "Name"],
+                  ["lastName", "Nachname", "Nachname"],
+                  ["phone", "Telefon", "Telefon"],
+                  ["email", "E-Mail", "E-Mail"],
+                ].map(([field, label, placeholder]) => (
+                  <label key={field} className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    {label}
+                    <input
+                      className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
+                      value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
+                      disabled={!isAdmin}
+                      placeholder={placeholder}
+                      onChange={(event) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, event.target.value)}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {[
+                  ["coldRent", "Kaltmiete"],
+                  ["operatingCosts", "Betriebskosten / Nebenkosten"],
+                  ["totalRent", "Gesamtmiete"],
+                ].map(([field, label]) => (
+                  <label key={field} className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                    {label}
+                    <input
+                      className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
+                      value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
+                      disabled={!isAdmin}
+                      placeholder="0,00"
+                      onChange={(event) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, event.target.value)}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => void onExtraSave(propertyId)}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-900 bg-white px-4 text-sm font-black text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  {extraDirty ? "Mietdaten speichern" : "Speichern"}
+                </button>
+                {extraStatus ? <span className="text-sm font-bold text-slate-500">{extraStatus}</span> : null}
+              </div>
+            </article>
+
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (
@@ -712,27 +970,162 @@ function DetailPage({
   );
 }
 
+function ExposeModal({ preview, uploaded, onClose }: { preview: ExposePreview; uploaded?: ExposeInfo; onClose: () => void }) {
+  const name = preview.card.draft.name || preview.card.row?.property_name || "Immobilie";
+  const address = [
+    preview.card.draft.street && `${preview.card.draft.street} ${preview.card.draft.houseNumber}`.trim(),
+    [preview.card.draft.postalCode, preview.card.draft.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-slate-950/45 p-4" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="my-6 w-full max-w-4xl rounded-[24px] bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Immobilien-Exposé</p>
+            <h2 className="text-2xl font-black text-slate-950">{name}</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => window.print()} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800">Als PDF speichern / drucken</button>
+            {uploaded ? <a href={uploaded.dataUrl} download={uploaded.fileName} className="inline-flex min-h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 no-underline">Hochgeladenes PDF</a> : null}
+            <button type="button" onClick={onClose} className="min-h-10 rounded-xl bg-slate-950 px-4 text-sm font-black text-white">Schließen</button>
+          </div>
+        </div>
+
+        <div className="grid gap-5 py-5">
+          <section className="rounded-[18px] border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm font-bold text-slate-500">{address || "Adresse offen"}</p>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">{name}</h1>
+            <p className="mt-3 text-sm font-bold leading-6 text-slate-600">
+              Exposé aus den zentralen Immobilien-, Finanz- und Mietdaten. Diese Vorschau ist bewusst prüfbar aufgebaut und kann als PDF gespeichert werden.
+            </p>
+          </section>
+
+          <section className="grid gap-3 md:grid-cols-3">
+            <SourceKpi label="Restschuld" value={formatCurrencyExact(preview.finance.lastBalance)} />
+            <SourceKpi label="Cashflow" value={formatCurrencyExact(preview.finance.netCashflow)} tone={preview.finance.netCashflow >= 0 ? "green" : "red"} />
+            <SourceKpi label="Netto-Rendite" value={formatPercent(preview.finance.netYield)} />
+            <SourceKpi label="Kaltmiete" value={preview.extra.coldRent ? formatCurrencyExact(preview.extra.coldRent) : "–"} />
+            <SourceKpi label="Nebenkosten" value={preview.extra.operatingCosts ? formatCurrencyExact(preview.extra.operatingCosts) : "–"} />
+            <SourceKpi label="Gesamtmiete" value={preview.extra.totalRent ? formatCurrencyExact(preview.extra.totalRent) : "–"} />
+          </section>
+
+          <section className="rounded-[18px] border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-black text-slate-950">Mieter / Kontakt</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <SourceKpi label="Name" value={preview.extra.firstName || "–"} />
+              <SourceKpi label="Nachname" value={preview.extra.lastName || "–"} />
+              <SourceKpi label="Telefon" value={preview.extra.phone || "–"} />
+              <SourceKpi label="E-Mail" value={preview.extra.email || "–"} />
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ImmobilienVermoegen() {
   const params = useParams<{ propertyId?: string }>();
   const appData = useAppData();
   const { user } = useAuth();
   const isAdmin = isAdminEmail(user?.email);
+  const year = currentYear();
+  const backendFinance = useBackendFinanceMaster(year);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>(() => loadStoredDrafts());
   const [saveStatus, setSaveStatus] = useState<Record<string, string>>({});
+  const [extraInfo, setExtraInfo] = useState<Record<string, PropertyExtraInfo>>({});
+  const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
+  const [extraStatus, setExtraStatus] = useState<Record<string, string>>({});
+  const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
+  const [uploadTarget, setUploadTarget] = useState<string | null>(null);
+  const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
   const selectedCard = params.propertyId ? cards.find((card) => card.id === params.propertyId) : undefined;
 
-  const totals = useMemo(() => {
+  useEffect(() => {
+    let cancelled = false;
+    async function loadExtras() {
+      const remote = await loadAllPropertyExtras();
+      if (!cancelled) setExtraInfo(remote);
+    }
+    void loadExtras();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const findSnapshotForCard = useCallback((card: WealthCard): MasterFinanceSnapshot | undefined => {
+    const row = card.row;
+    const cardName = normalize(card.draft.name || row?.property_name || "");
+    return backendFinance.snapshots.find((snapshot) => {
+      const snapshotName = normalize(snapshot.propertyName);
+      return (
+        (row?.property_id && snapshot.propertyId === row.property_id) ||
+        (row?.portfolio_property_id && snapshot.portfolioPropertyId === row.portfolio_property_id) ||
+        (snapshotName && cardName && (cardName.includes(snapshotName) || snapshotName.includes(cardName) || cardName.includes(snapshotName.split(" ")[0])))
+      );
+    });
+  }, [backendFinance.snapshots]);
+
+  const getFinanceForCard = useCallback((card: WealthCard): WealthFinance => {
+    const row = card.row;
+    const propertyId = row?.property_id ?? card.id;
+    const extra = extraInfo[propertyId] ?? emptyPropertyExtra;
+    const snapshot = findSnapshotForCard(card);
+    const summary = row ? appData.getYearlyFinanceSummary(row.property_id, year) : null;
+
+    const income = snapshot?.income ?? toNumber(summary?.einnahmen);
+    const expenses = snapshot?.expenses ?? toNumber(summary?.ausgaben);
+    const rentIncome = snapshot?.rentIncome ?? toNumber(summary?.mieteingaenge);
+    const nebenkosten = row ? appData.getNebenkostenExpenses(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0) : 0;
+    const lastBalance = row?.last_balance ?? parseAmount(card.draft.remainingDebt);
+    const value = parseAmount(extra.marketValue) || parseAmount(card.draft.marketValue || card.draft.estimatedMarketValue) || lastBalance || 0;
+    const netCashflow = income - expenses;
+
+    return {
+      income,
+      expenses,
+      rentIncome,
+      netCashflow,
+      nebenkosten,
+      value,
+      lastBalance,
+      repaidPercent: row?.repaid_percent ?? 0,
+      grossYield: safeRatio(income, value),
+      netYield: safeRatio(netCashflow, value),
+    };
+  }, [appData, extraInfo, findSnapshotForCard, year]);
+
+  const wealthTotals = useMemo(() => {
     return cards.reduce(
-      (acc, card) => ({
-        marketValue: acc.marketValue + parseAmount(card.draft.marketValue || card.draft.estimatedMarketValue),
-        remainingDebt: acc.remainingDebt + parseAmount(card.draft.remainingDebt),
-        monthlyRate: acc.monthlyRate + parseAmount(card.draft.currentMonthlyRate),
-      }),
-      { marketValue: 0, remainingDebt: 0, monthlyRate: 0 },
+      (acc, card) => {
+        const finance = getFinanceForCard(card);
+        return {
+          income: acc.income + finance.income,
+          expenses: acc.expenses + finance.expenses,
+          rentIncome: acc.rentIncome + finance.rentIncome,
+          netCashflow: acc.netCashflow + finance.netCashflow,
+          nebenkosten: acc.nebenkosten + finance.nebenkosten,
+          value: acc.value + finance.value,
+          lastBalance: acc.lastBalance + finance.lastBalance,
+          repaidPercent: acc.repaidPercent + finance.repaidPercent,
+          grossYield: 0,
+          netYield: 0,
+        };
+      },
+      { income: 0, expenses: 0, rentIncome: 0, netCashflow: 0, nebenkosten: 0, value: 0, lastBalance: 0, repaidPercent: 0, grossYield: 0, netYield: 0 },
     );
-  }, [cards]);
+  }, [cards, getFinanceForCard]);
+
+  const totals: WealthFinance = useMemo(() => ({
+    ...wealthTotals,
+    repaidPercent: cards.length ? wealthTotals.repaidPercent / cards.length : 0,
+    grossYield: safeRatio(wealthTotals.income, wealthTotals.value),
+    netYield: safeRatio(wealthTotals.netCashflow, wealthTotals.value),
+  }), [cards.length, wealthTotals]);
 
   function updateDraft(id: string, key: string, value: string) {
     setStoredDrafts((current) => {
@@ -755,15 +1148,93 @@ export default function ImmobilienVermoegen() {
     setSaveStatus((current) => ({ ...current, [id]: "Gespeichert." }));
   }
 
+  function updateExtra(propertyId: string, field: keyof PropertyExtraInfo, value: string) {
+    setExtraInfo((prev) => ({ ...prev, [propertyId]: { ...(prev[propertyId] ?? emptyPropertyExtra), [field]: value, property_id: propertyId } }));
+    setDirtyExtras((prev) => ({ ...prev, [propertyId]: true }));
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Ungespeicherte Änderung." }));
+  }
+
+  async function saveExtra(propertyId: string) {
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: "Speichert…" }));
+    const result = await savePropertyExtra(propertyId, extraInfo[propertyId] ?? emptyPropertyExtra);
+    setExtraStatus((prev) => ({ ...prev, [propertyId]: result.message }));
+    setDirtyExtras((prev) => ({ ...prev, [propertyId]: !result.ok }));
+  }
+
+  function openUpload(propertyId: string) {
+    setUploadTarget(propertyId);
+    window.setTimeout(() => fileInputRef.current?.click(), 0);
+  }
+
+  function handleExposeUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    const propertyId = uploadTarget;
+    event.target.value = "";
+    if (!file || !propertyId) return;
+    if (file.type !== "application/pdf") {
+      window.alert("Bitte nur PDF-Dateien als Exposé hochladen.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const next = {
+        ...exposes,
+        [propertyId]: { fileName: file.name, dataUrl: String(reader.result ?? ""), uploadedAt: new Date().toISOString() },
+      };
+      setExposes(next);
+      window.localStorage.setItem(EXPOSE_STORAGE_KEY, JSON.stringify(next));
+      window.alert("Exposé wurde gespeichert.");
+    };
+    reader.onerror = () => window.alert("Exposé konnte nicht gelesen werden.");
+    reader.readAsDataURL(file);
+  }
+
+  function previewExpose(card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) {
+    setExposePreview({ card, extra, finance });
+  }
+
+  function generateExpose(card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) {
+    setExposePreview({ card, extra, finance });
+    window.setTimeout(() => window.print(), 120);
+  }
+
   if (params.propertyId) {
     if (!selectedCard) {
       return <EmptyState title="Immobilie nicht gefunden" description="Die ausgewählte Vermögens-Detailmaske konnte nicht geladen werden." />;
     }
-    return <DetailPage card={selectedCard} cards={cards} onUpdate={updateDraft} onSave={saveDraft} saveStatus={saveStatus[selectedCard.id]} isAdmin={isAdmin} />;
+    const propertyId = selectedCard.row?.property_id ?? selectedCard.id;
+    const extra = extraInfo[propertyId] ?? emptyPropertyExtra;
+    const finance = getFinanceForCard(selectedCard);
+    return (
+      <>
+        <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
+        <DetailPage
+          card={selectedCard}
+          cards={cards}
+          extra={extra}
+          finance={finance}
+          year={year}
+          uploadedExpose={exposes[propertyId]}
+          onUpdate={updateDraft}
+          onSave={saveDraft}
+          onExtraChange={updateExtra}
+          onExtraSave={saveExtra}
+          onExposePreview={previewExpose}
+          onExposeGenerate={generateExpose}
+          onExposeUpload={openUpload}
+          extraDirty={dirtyExtras[propertyId]}
+          extraStatus={extraStatus[propertyId]}
+          saveStatus={saveStatus[selectedCard.id]}
+          isAdmin={isAdmin}
+        />
+        {exposePreview ? <ExposeModal preview={exposePreview} uploaded={exposes[exposePreview.card.row?.property_id ?? exposePreview.card.id]} onClose={() => setExposePreview(null)} /> : null}
+      </>
+    );
   }
 
   return (
     <div className="space-y-5">
+      <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
       <PageHeader
         eyebrow="Immobilienvermögen"
         title="Immobilienvermögen"
@@ -787,12 +1258,7 @@ export default function ImmobilienVermoegen() {
         )}
       </PageHeader>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Immobilien" value={cards.length} icon={Building2} tone="blue" />
-        <KpiCard label="Marktwert gesamt" value={formatCurrency(totals.marketValue)} icon={Home} tone="green" />
-        <KpiCard label="Restschuld gesamt" value={formatCurrency(totals.remainingDebt)} icon={Landmark} tone="violet" />
-        <KpiCard label="Kreditrate / Monat" value={formatCurrency(totals.monthlyRate)} icon={Euro} tone="amber" />
-      </section>
+      <FinanceOverview totals={totals} year={year} objectValue={totals.value} objectCount={cards.length} />
 
       <section className="grid gap-4 md:grid-cols-2">
         {cards.map((card) => (
