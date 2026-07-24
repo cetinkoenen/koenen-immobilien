@@ -19,7 +19,7 @@ import {
 import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/professional";
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
-import { useAppData, type PortfolioLoanRow } from "@/state/AppDataContext";
+import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
 import type { MasterFinanceSnapshot } from "@/services/masterDataService";
@@ -63,6 +63,18 @@ type WealthFinance = {
   netYield: number;
 };
 
+type ParkingUnitStatus = "rented" | "vacant";
+
+type ParkingUnit = {
+  key: string;
+  title: string;
+  shortLabel: string;
+  reference: string;
+  status: ParkingUnitStatus;
+  tenantName: string;
+  monthlyRent: number;
+};
+
 type FieldConfig = {
   key: string;
   label: string;
@@ -73,6 +85,36 @@ type FieldConfig = {
 
 const STORAGE_KEY = "koenen:immobilienvermoegen:v2";
 const EXPOSE_STORAGE_KEY = "koenen:portfolio:exposes:v1";
+
+const ROSENSTEIN_PARKING_UNITS: ParkingUnit[] = [
+  {
+    key: "p250",
+    title: "TG-Stellplatz 1",
+    shortLabel: "P250",
+    reference: "P250 - E008440000121",
+    status: "rented",
+    tenantName: "Steffen Aicher",
+    monthlyRent: 85,
+  },
+  {
+    key: "p253",
+    title: "TG-Stellplatz 2",
+    shortLabel: "P253",
+    reference: "P253 - E008440000122",
+    status: "rented",
+    tenantName: "Lena Huhn",
+    monthlyRent: 85,
+  },
+  {
+    key: "p254",
+    title: "TG-Stellplatz 3",
+    shortLabel: "P254",
+    reference: "P254 - E008440000123",
+    status: "vacant",
+    tenantName: "Leerstand",
+    monthlyRent: 85,
+  },
+];
 
 const EMPTY_DRAFT: WealthDraft = {
   name: "",
@@ -244,7 +286,11 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       name: "Rosensteinstr. 25",
       street: "Rosensteinstr.",
       houseNumber: "25",
-      notes: "Vollständige Standardmaske für manuelle Einpflege.",
+      propertyType: "Tiefgaragestellplätze",
+      usageType: "Vermietete TG-Stellplätze",
+      unitCount: "3",
+      parkingSpaces: "P250 - E008440000121\nP253 - E008440000122\nP254 - E008440000123",
+      notes: "Hauptobjekt für drei separat dokumentierte TG-Stellplätze. P250 und P253 sind vermietet; P254 ist als Leerstand geführt.",
     },
   },
 ];
@@ -456,6 +502,46 @@ function currentYear() {
 function safeRatio(value: number, base: number) {
   if (!base) return 0;
   return (value / base) * 100;
+}
+
+function isRosensteinCard(card: WealthCard) {
+  return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("rosenstein");
+}
+
+function getEntryYear(entry: FinanceEntry) {
+  const raw = entry.booking_date ?? "";
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.getFullYear();
+  const fallback = raw.match(/\b(20\d{2})\b/);
+  return fallback ? Number(fallback[1]) : null;
+}
+
+function getEntryLabel(entry: FinanceEntry) {
+  return normalize([entry.object_id, entry.objekt_code, entry.category, entry.note].filter(Boolean).join(" "));
+}
+
+function entryMatchesParkingUnit(entry: FinanceEntry, unit: ParkingUnit) {
+  const label = getEntryLabel(entry);
+  const compactReference = normalize(unit.reference.replace(/\s+/g, ""));
+  return (
+    label.includes(normalize(unit.shortLabel)) ||
+    label.includes(normalize(unit.reference)) ||
+    label.includes(compactReference) ||
+    label.includes(normalize(unit.reference.split("-").at(-1) ?? ""))
+  );
+}
+
+function isRentEntry(entry: FinanceEntry) {
+  return entry.entry_type === "income" && ["miete", "miete garage", "mietbestandteil nk"].includes(normalize(entry.category ?? ""));
+}
+
+function getRosensteinUnitPayment(entries: FinanceEntry[], unit: ParkingUnit, year: number) {
+  const unitEntries = entries.filter((entry) => isRentEntry(entry) && getEntryYear(entry) === year && entryMatchesParkingUnit(entry, unit));
+  const total = unitEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const lastEntry = unitEntries
+    .filter((entry) => entry.booking_date)
+    .sort((left, right) => String(right.booking_date).localeCompare(String(left.booking_date)))[0];
+  return { total, lastBookingDate: lastEntry?.booking_date ?? null };
 }
 
 function loadExposes(): Record<string, ExposeInfo> {
@@ -699,10 +785,84 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
   );
 }
 
+function RosensteinUnitOverview({ entries, year }: { entries: FinanceEntry[]; year: number }) {
+  const units = ROSENSTEIN_PARKING_UNITS.map((unit) => ({
+    ...unit,
+    payment: getRosensteinUnitPayment(entries, unit, year),
+  }));
+  const rentedUnits = units.filter((unit) => unit.status === "rented");
+  const vacantUnits = units.filter((unit) => unit.status === "vacant");
+  const monthlyTarget = rentedUnits.reduce((sum, unit) => sum + unit.monthlyRent, 0);
+  const yearlyPayments = units.reduce((sum, unit) => sum + unit.payment.total, 0);
+
+  return (
+    <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Einheitenstruktur</p>
+          <h2 className="text-xl font-black text-slate-950">TG-Stellplätze Rosensteinstr. 25</h2>
+          <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
+            Das Vermögensobjekt bleibt eine Hauptakte; die drei Stellplätze werden darunter separat geführt.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <SourceKpi label="Einheiten" value={String(units.length)} />
+          <SourceKpi label="Vermietet" value={String(rentedUnits.length)} tone="green" />
+          <SourceKpi label="Leer" value={String(vacantUnits.length)} />
+          <SourceKpi label="Soll mtl." value={formatCurrencyExact(monthlyTarget)} tone="blue" />
+          <SourceKpi label={`Eingang ${year}`} value={formatCurrencyExact(yearlyPayments)} tone="green" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200 text-left">
+          <thead className="bg-slate-50">
+            <tr>
+              {["Einheit", "Status", "Mieter", "Sollmiete", `Mieteingang ${year}`, "Letzter Eingang"].map((label) => (
+                <th key={label} className="px-5 py-3 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {units.map((unit) => (
+              <tr key={unit.key} className="align-top">
+                <td className="px-5 py-4">
+                  <b className="block text-sm font-black text-slate-950">{unit.title}</b>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">{unit.reference}</span>
+                </td>
+                <td className="px-5 py-4">
+                  <span
+                    className={[
+                      "inline-flex rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em]",
+                      unit.status === "rented" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+                    ].join(" ")}
+                  >
+                    {unit.status === "rented" ? "Vermietet" : "Leerstand"}
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-sm font-bold text-slate-700">{unit.tenantName}</td>
+                <td className="px-5 py-4 text-sm font-black text-slate-950">
+                  {formatCurrencyExact(unit.monthlyRent)}
+                  {unit.status === "vacant" ? <span className="mt-1 block text-xs font-bold text-slate-500">Zielmiete bei Neuvermietung</span> : null}
+                </td>
+                <td className="px-5 py-4 text-sm font-black text-emerald-700">{formatCurrencyExact(unit.payment.total)}</td>
+                <td className="px-5 py-4 text-sm font-bold text-slate-600">{unit.payment.lastBookingDate ? new Date(unit.payment.lastBookingDate).toLocaleDateString("de-DE") : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
 function DetailPage({
   card,
   extra,
   finance,
+  entries,
   year,
   uploadedExpose,
   onUpdate,
@@ -720,6 +880,7 @@ function DetailPage({
   card: WealthCard;
   extra: PropertyExtraInfo;
   finance: WealthFinance;
+  entries: FinanceEntry[];
   year: number;
   uploadedExpose?: ExposeInfo;
   onUpdate: (id: string, key: string, value: string) => void;
@@ -784,6 +945,7 @@ function DetailPage({
 
         <div className="space-y-5">
             <PropertyEconomicOverview finance={finance} year={year} />
+            {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} /> : null}
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1177,6 +1339,7 @@ export default function ImmobilienVermoegen() {
           card={selectedCard}
           extra={extra}
           finance={finance}
+          entries={appData.entries}
           year={year}
           uploadedExpose={exposes[propertyId]}
           onUpdate={updateDraft}
@@ -1225,51 +1388,61 @@ export default function ImmobilienVermoegen() {
       <FinanceOverview totals={totals} year={year} objectValue={totals.value} objectCount={cards.length} />
 
       <section className="grid gap-4 md:grid-cols-2">
-        {cards.map((card) => (
-          <Link
-            key={card.id}
-            to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`}
-            className="group grid min-h-[178px] overflow-hidden rounded-[18px] border border-slate-200 bg-white text-slate-950 no-underline shadow-[0_12px_28px_rgba(51,65,85,0.07)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_18px_42px_rgba(51,65,85,0.10)] sm:grid-cols-[116px_1fr]"
-          >
-            <div className="flex min-h-[96px] items-center justify-center bg-orange-100 text-orange-600">
-              <Building2 size={38} strokeWidth={1.9} />
-            </div>
-            <div className="grid gap-4 p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="text-lg font-black text-slate-950">{card.draft.name || "Unbenannte Immobilie"}</h2>
-                  <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
-                    {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
-                      .filter(Boolean)
-                      .join(", ") || "Adresse offen"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
-                  Detail
-                </span>
+        {cards.map((card) => {
+          const isRosenstein = isRosensteinCard(card);
+          return (
+            <Link
+              key={card.id}
+              to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`}
+              className="group grid min-h-[178px] overflow-hidden rounded-[18px] border border-slate-200 bg-white text-slate-950 no-underline shadow-[0_12px_28px_rgba(51,65,85,0.07)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_18px_42px_rgba(51,65,85,0.10)] sm:grid-cols-[116px_1fr]"
+            >
+              <div className="flex min-h-[96px] items-center justify-center bg-orange-100 text-orange-600">
+                <Building2 size={38} strokeWidth={1.9} />
               </div>
+              <div className="grid gap-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-black text-slate-950">{card.draft.name || "Unbenannte Immobilie"}</h2>
+                    <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
+                      {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
+                        .filter(Boolean)
+                        .join(", ") || "Adresse offen"}
+                    </p>
+                    {isRosenstein ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700">3 TG-Stellplätze</span>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">2 vermietet</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">P254 leer</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+                    Detail
+                  </span>
+                </div>
 
-              <div className="grid gap-2 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-slate-500">Marktwert</span>
-                  <b>{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+                <div className="grid gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">Marktwert</span>
+                    <b>{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">Restschuld</span>
+                    <b>{formatCurrency(card.draft.remainingDebt)}</b>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-bold text-slate-500">{isRosenstein ? "Soll TG mtl." : "mtl. Rate"}</span>
+                    <b>{isRosenstein ? formatCurrencyExact(170) : formatCurrency(card.draft.currentMonthlyRate)}</b>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-slate-500">Restschuld</span>
-                  <b>{formatCurrency(card.draft.remainingDebt)}</b>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-slate-500">mtl. Rate</span>
-                  <b>{formatCurrency(card.draft.currentMonthlyRate)}</b>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 text-sm font-black text-[#255f6f]">
-                <ShieldCheck size={17} /> Detailmaske öffnen
+                <div className="flex items-center gap-2 text-sm font-black text-[#255f6f]">
+                  <ShieldCheck size={17} /> Detailmaske öffnen
+                </div>
               </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
         {isAdmin ? (
           <Link
             to="/immobilien/immobilie-anlegen"
