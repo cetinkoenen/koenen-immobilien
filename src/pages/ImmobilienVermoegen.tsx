@@ -595,7 +595,7 @@ function SourceKpi({ label, value, tone = "neutral" }: { label: string; value: s
   return (
     <div className={`rounded-[18px] border p-4 shadow-sm ${toneClass}`}>
       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <b className="mt-3 block text-2xl font-black">{value}</b>
+      <b className="mt-3 block text-xl font-black">{value}</b>
     </div>
   );
 }
@@ -668,7 +668,7 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
           <div key={item.label} className="border-b border-slate-200 p-5 md:border-r xl:border-b-0">
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
             <b className={[
-              "mt-3 block text-2xl font-black sm:text-3xl",
+              "mt-3 block text-xl font-black sm:text-2xl",
               item.tone === "green" ? "text-emerald-700" : item.tone === "red" ? "text-rose-700" : "text-slate-950",
             ].join(" ")}>
               {item.value}
@@ -678,7 +678,7 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
         <div className="border-b border-slate-200 p-5 xl:border-b-0">
           <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Rückzahlung</p>
           <div className="mt-3 flex items-center gap-4">
-            <b className="min-w-[96px] text-2xl font-black text-slate-950 sm:text-3xl">{formatPercent(finance.repaidPercent)}</b>
+            <b className="min-w-[86px] text-xl font-black text-slate-950 sm:text-2xl">{formatPercent(finance.repaidPercent)}</b>
             <div className="h-2 flex-1 rounded-full bg-slate-200">
               <i className="block h-2 rounded-full bg-gradient-to-r from-[#315f6d] to-[#7c8cf6]" style={{ width: `${progress}%` }} />
             </div>
@@ -689,7 +689,7 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
         {detailItems.map((item) => (
           <div key={item.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
             <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-500" title={item.label}>{item.label}</p>
-            <b className={["mt-1 block truncate text-lg font-black", item.tone === "green" ? "text-emerald-700" : "text-slate-950"].join(" ")} title={item.value}>
+            <b className={["mt-1 block truncate text-base font-black", item.tone === "green" ? "text-emerald-700" : "text-slate-950"].join(" ")} title={item.value}>
               {item.value}
             </b>
           </div>
@@ -701,7 +701,6 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
 
 function DetailPage({
   card,
-  cards,
   extra,
   finance,
   year,
@@ -719,7 +718,6 @@ function DetailPage({
   isAdmin,
 }: {
   card: WealthCard;
-  cards: WealthCard[];
   extra: PropertyExtraInfo;
   finance: WealthFinance;
   year: number;
@@ -768,7 +766,7 @@ function DetailPage({
         <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Immobilienvermögen</p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">{card.draft.name || "Immobilie"}</h1>
+            <h1 className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{card.draft.name || "Immobilie"}</h1>
             <p className="mt-1 text-sm font-bold text-slate-500">
               {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
                 .filter(Boolean)
@@ -784,65 +782,7 @@ function DetailPage({
           </button>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-          <aside className="space-y-4">
-            <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-slate-600">
-                  <Home size={16} /> Immobilienvermögen
-                </div>
-                {isAdmin ? (
-                  <Link to="/immobilien/immobilie-anlegen" className="text-orange-600 no-underline" aria-label="Immobilie hinzufügen">
-                    <PlusCircle size={20} />
-                  </Link>
-                ) : null}
-              </div>
-              <div className="mt-4 grid gap-2">
-                {cards.map((item) => {
-                  const active = item.id === card.id;
-                  return (
-                    <Link
-                      key={item.id}
-                      to={`/immobilienvermoegen/${encodeURIComponent(item.id)}`}
-                      className={[
-                        "group rounded-xl border px-4 py-3 text-slate-950 no-underline transition",
-                        active ? "border-orange-200 bg-white shadow-sm" : "border-transparent bg-white/60 hover:border-slate-200 hover:bg-white",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black">{item.draft.name || "Unbenannte Immobilie"}</p>
-                          <p className="mt-1 truncate text-xs font-bold text-slate-500">
-                            {[item.draft.street && `${item.draft.street} ${item.draft.houseNumber}`.trim(), [item.draft.postalCode, item.draft.city].filter(Boolean).join(" ")]
-                              .filter(Boolean)
-                              .join(", ") || "Adresse offen"}
-                          </p>
-                        </div>
-                        <span className="text-lg font-black text-slate-400">⌄</span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="grid gap-3 rounded-[18px] border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Marktwert</span>
-                <b className="text-sm">{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Restschuld</span>
-                <b className="text-sm">{formatCurrency(card.draft.remainingDebt)}</b>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">mtl. Rate</span>
-                <b className="text-sm">{formatCurrency(card.draft.currentMonthlyRate)}</b>
-              </div>
-            </div>
-          </aside>
-
-          <div className="space-y-5">
+        <div className="space-y-5">
             <PropertyEconomicOverview finance={finance} year={year} />
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
@@ -969,7 +909,6 @@ function DetailPage({
               );
             })}
           </div>
-        </div>
       </section>
 
       <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
@@ -1236,7 +1175,6 @@ export default function ImmobilienVermoegen() {
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
         <DetailPage
           card={selectedCard}
-          cards={cards}
           extra={extra}
           finance={finance}
           year={year}
