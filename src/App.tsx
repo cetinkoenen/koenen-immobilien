@@ -30,7 +30,6 @@ import {
   LayoutDashboard,
   ListChecks,
   Menu,
-  PieChart,
   PlusCircle,
   ReceiptText,
   Settings2,
@@ -132,6 +131,7 @@ const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
 const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
 const InvestmentBericht = lazy(() => import("./pages/InvestmentBericht"));
+const ImmobilienVermoegen = lazy(() => import("./pages/ImmobilienVermoegen"));
 const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage"));
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
@@ -223,6 +223,7 @@ type WorkspaceConfig = {
 const groupAccent: Record<string, string> = {
   Dashboard: "text-[#9ed7e2]",
   Immobilien: "text-[#9bd8c4]",
+  Immobilienvermögen: "text-[#aeb8ff]",
   Investment: "text-[#aeb8ff]",
   Mieter: "text-[#9bd8c4]",
   Buchhaltung: "text-[#d8c5ef]",
@@ -1082,66 +1083,6 @@ function BuchhaltungHubPage() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function VermoegenHubPage() {
-  const { entries, loanRows, objects } = useAppData();
-  const currentYear = new Date().getFullYear();
-  const currentYearEntries = useMemo(
-    () => entries.filter((entry) => entry.booking_date?.startsWith(`${currentYear}-`)),
-    [currentYear, entries],
-  );
-  const yearlyIncome = currentYearEntries
-    .filter((entry) => entry.entry_type === "income")
-    .reduce((sum, entry) => sum + entry.amount, 0);
-  const yearlyExpenses = currentYearEntries
-    .filter((entry) => entry.entry_type === "expense")
-    .reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
-  const loanBalance = loanRows.reduce((sum, row) => sum + (row.last_balance ?? 0), 0);
-
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow="Aggregierte Sicht"
-        title="Vermögen"
-        description="Investor- und Bankensicht aus vorhandenen Immobilien-, Buchhaltungs-, Darlehens- und Steuerdaten. Dieses Modul speichert keine eigenen Daten."
-        meta={[
-          { label: "Jahr", value: currentYear },
-          { label: "Quelle", value: "Portfolio, Buchhaltung, Darlehen" },
-        ]}
-      />
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Immobilien" value={objects.length} icon={Building2} tone="blue" />
-        <KpiCard label="Darlehen Restschuld" value={formatCurrency(loanBalance)} icon={Landmark} tone="violet" />
-        <KpiCard label="Einnahmen Jahr" value={formatCurrency(yearlyIncome)} icon={WalletCards} tone="green" />
-        <KpiCard label="Cashflow Jahr" value={formatCurrency(yearlyIncome - yearlyExpenses)} icon={PieChart} tone={yearlyIncome - yearlyExpenses >= 0 ? "green" : "amber"} />
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ModuleCard to="/immobilien" label="Immobilienbestand" description="Objekte, Einheiten und Objektakten aus dem Portfolio." icon={Building2} />
-        <ModuleCard to="/darlehen" label="Darlehen" description="Finanzierung, Restschuld und Zuordnung zu Immobilien." icon={Landmark} />
-        <ModuleCard to="/buchhaltung" label="Cashflow" description="Zahlungsstroeme aus der bestehenden Buchhaltung." icon={WalletCards} />
-        <ModuleCard to="/steuer" label="Steuer" description="Steuerliche Auswertungen aus dem bestehenden Steuercenter." icon={Euro} />
-        <ModuleCard to="/berichte" label="Investment-Reports" description="Auswertungen als Grundlage fuer Investor-Informationen." icon={PieChart} />
-      </section>
-
-      <SectionPanel
-        eyebrow="Investor-Logik"
-        title="Keine eigene Datenhaltung"
-        description="Die Vermoegenssicht ist ein Einstiegspunkt fuer Bank-, Investor- und Management-Fragen. Zahlen werden aus bestehenden Modulen gelesen."
-      >
-        <InfoList
-          items={[
-            { label: "Immobilien", value: "Portfolio und Objektakte", tone: "blue" },
-            { label: "Cashflow", value: "Buchhaltung", tone: "green" },
-            { label: "Finanzierung", value: "Darlehensuebersicht", tone: "violet" },
-            { label: "Steuer", value: "Steuercenter", tone: "amber" },
-          ]}
-        />
-      </SectionPanel>
     </div>
   );
 }
@@ -2206,6 +2147,7 @@ function AppShell() {
       ...(isAdmin ? [{ to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle }] : []),
       { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
+      { to: "/immobilienvermoegen", label: "Dashboard", group: "Immobilienvermögen", icon: Landmark },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
       { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
@@ -2231,7 +2173,7 @@ function AppShell() {
 
   const navGroups = useMemo(
     () =>
-      ["Dashboard", "Immobilien", "Investment", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
+      ["Dashboard", "Immobilien", "Immobilienvermögen", "Investment", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
@@ -2724,7 +2666,9 @@ export default function App() {
         <Route path="/darlehensuebersicht/:propertyId" element={<RedirectLoanRoute />} />
 
         <Route path="/kautionen" element={<Kautionen />} />
-        <Route path="/vermoegen" element={<VermoegenHubPage />} />
+        <Route path="/immobilienvermoegen" element={<ImmobilienVermoegen />} />
+        <Route path="/immobilienvermoegen/:propertyId" element={<ImmobilienVermoegen />} />
+        <Route path="/vermoegen" element={<Navigate to="/immobilienvermoegen" replace />} />
         <Route path="/ticketsystem" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route
           path="/ticketsystem/schadenmeldungen"
