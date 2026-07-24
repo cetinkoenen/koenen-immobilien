@@ -40,7 +40,7 @@ type FieldConfig = {
   placeholder?: string;
 };
 
-const STORAGE_KEY = "koenen:immobilienvermoegen:v1";
+const STORAGE_KEY = "koenen:immobilienvermoegen:v2";
 
 const EMPTY_DRAFT: WealthDraft = {
   name: "",
@@ -349,14 +349,11 @@ function findTemplate(rowName: string): WealthTemplate | undefined {
 
 function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate, stored: Record<string, WealthDraft>): WealthDraft {
   const id = row?.portfolio_property_id ?? row?.property_id ?? template.key;
+  const liveFallback: WealthDraft = row ? { name: template.defaults.name || row.property_name } : {};
+
   return {
     ...template.defaults,
-    ...(row
-      ? {
-          name: row.property_name || template.defaults.name,
-          remainingDebt: String(Math.round(row.last_balance || parseAmount(template.defaults.remainingDebt))),
-        }
-      : {}),
+    ...liveFallback,
     ...(stored[id] ?? {}),
   };
 }
@@ -467,6 +464,10 @@ function DetailPage({
   isAdmin: boolean;
 }) {
   const navigate = useNavigate();
+  const appendValue = (key: string, value: string) => {
+    const current = card.draft[key]?.trim();
+    onUpdate(card.id, key, current ? `${current}\n${value}` : value);
+  };
 
   return (
     <div className="space-y-5">
@@ -476,7 +477,7 @@ function DetailPage({
         description="Separate Detailmaske mit den standardisierten Datenfeldern aus der neuen Vermögensvorlage."
         meta={[
           { label: "Marktwert", value: formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue) },
-          { label: "Restschuld", value: formatCurrency(card.draft.remainingDebt || card.row?.last_balance) },
+          { label: "Restschuld", value: formatCurrency(card.draft.remainingDebt) },
           { label: "Monatsrate", value: formatCurrency(card.draft.currentMonthlyRate) },
         ]}
       >
@@ -507,6 +508,42 @@ function DetailPage({
                 />
               ))}
             </div>
+            {section.title.includes("Beschreibung") ? (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => appendValue("parkingSpaces", "PKW Stellplatz")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <PlusCircle size={17} /> PKW Stellplatz hinzufügen
+                </button>
+              </div>
+            ) : null}
+            {section.title.includes("Energie") ? (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => appendValue("modernizations", "Neue Modernisierung")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <PlusCircle size={17} /> Modernisierung hinzufügen
+                </button>
+              </div>
+            ) : null}
+            {section.title.includes("Darlehen") ? (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => appendValue("borrowers", "Neue Person")}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <PlusCircle size={17} /> Person hinzufügen
+                </button>
+              </div>
+            ) : null}
           </SectionPanel>
         );
       })}
@@ -550,7 +587,7 @@ export default function ImmobilienVermoegen() {
     return cards.reduce(
       (acc, card) => ({
         marketValue: acc.marketValue + parseAmount(card.draft.marketValue || card.draft.estimatedMarketValue),
-        remainingDebt: acc.remainingDebt + parseAmount(card.draft.remainingDebt || card.row?.last_balance),
+        remainingDebt: acc.remainingDebt + parseAmount(card.draft.remainingDebt),
         monthlyRate: acc.monthlyRate + parseAmount(card.draft.currentMonthlyRate),
       }),
       { marketValue: 0, remainingDebt: 0, monthlyRate: 0 },
@@ -617,46 +654,60 @@ export default function ImmobilienVermoegen() {
         <KpiCard label="Kreditrate / Monat" value={formatCurrency(totals.monthlyRate)} icon={Euro} tone="amber" />
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         {cards.map((card) => (
           <Link
             key={card.id}
             to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`}
-            className="group rounded-[24px] border border-white/70 bg-white/86 p-5 text-slate-950 no-underline shadow-[0_14px_34px_rgba(51,65,85,0.07)] backdrop-blur transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-[0_18px_44px_rgba(51,65,85,0.10)]"
+            className="group grid min-h-[178px] overflow-hidden rounded-[18px] border border-slate-200 bg-white text-slate-950 no-underline shadow-[0_12px_28px_rgba(51,65,85,0.07)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_18px_42px_rgba(51,65,85,0.10)] sm:grid-cols-[116px_1fr]"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#66758a]">Immobilie</p>
-                <h2 className="mt-2 text-xl font-black text-slate-950">{card.draft.name || "Unbenannte Immobilie"}</h2>
-                <p className="mt-1 text-sm font-bold text-slate-500">
-                  {[card.draft.postalCode, card.draft.city].filter(Boolean).join(" ") || "Adresse offen"}
-                </p>
-              </div>
-              <span className="rounded-2xl bg-[#eef7f4] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#255f6f]">
-                Detail
-              </span>
+            <div className="flex min-h-[96px] items-center justify-center bg-orange-100 text-orange-600">
+              <Building2 size={38} strokeWidth={1.9} />
             </div>
+            <div className="grid gap-4 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-black text-slate-950">{card.draft.name || "Unbenannte Immobilie"}</h2>
+                  <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
+                    {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
+                      .filter(Boolean)
+                      .join(", ") || "Adresse offen"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+                  Detail
+                </span>
+              </div>
 
-            <div className="mt-5 grid gap-3">
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Marktwert</span>
-                <b>{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+              <div className="grid gap-2 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-bold text-slate-500">Marktwert</span>
+                  <b>{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-bold text-slate-500">Restschuld</span>
+                  <b>{formatCurrency(card.draft.remainingDebt)}</b>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-bold text-slate-500">mtl. Rate</span>
+                  <b>{formatCurrency(card.draft.currentMonthlyRate)}</b>
+                </div>
               </div>
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Restschuld</span>
-                <b>{formatCurrency(card.draft.remainingDebt || card.row?.last_balance)}</b>
-              </div>
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Kreditrate</span>
-                <b>{formatCurrency(card.draft.currentMonthlyRate)}</b>
-              </div>
-            </div>
 
-            <div className="mt-5 flex items-center gap-2 text-sm font-black text-[#255f6f]">
-              <ShieldCheck size={17} /> Detailmaske öffnen
+              <div className="flex items-center gap-2 text-sm font-black text-[#255f6f]">
+                <ShieldCheck size={17} /> Detailmaske öffnen
+              </div>
             </div>
           </Link>
         ))}
+        {isAdmin ? (
+          <Link
+            to="/immobilien/immobilie-anlegen"
+            className="flex min-h-[178px] items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-slate-300 bg-white/70 p-5 text-sm font-black text-orange-700 no-underline shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
+          >
+            <PlusCircle size={18} /> Immobilie hinzufügen
+          </Link>
+        ) : null}
       </section>
     </div>
   );
