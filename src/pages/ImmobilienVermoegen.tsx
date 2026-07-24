@@ -858,6 +858,195 @@ function RosensteinUnitOverview({ entries, year }: { entries: FinanceEntry[]; ye
   );
 }
 
+function RentDataField({
+  label,
+  value,
+  disabled,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+      {label}
+      <input
+        className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 disabled:bg-slate-100 disabled:text-slate-500"
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function StandardRentInfoPanel({
+  extra,
+  propertyId,
+  isAdmin,
+  extraDirty,
+  extraStatus,
+  onExtraChange,
+  onExtraSave,
+}: {
+  extra: PropertyExtraInfo;
+  propertyId: string;
+  isAdmin: boolean;
+  extraDirty?: boolean;
+  extraStatus?: string;
+  onExtraChange: (propertyId: string, field: keyof PropertyExtraInfo, value: string) => void;
+  onExtraSave: (propertyId: string) => Promise<void>;
+}) {
+  const rentSummary = [
+    { label: "Kaltmiete", value: extra.coldRent ? formatCurrencyExact(extra.coldRent) : "—" },
+    { label: "Nebenkosten", value: extra.operatingCosts ? formatCurrencyExact(extra.operatingCosts) : "—" },
+    { label: "Gesamtmiete", value: extra.totalRent ? formatCurrencyExact(extra.totalRent) : "—", highlight: true },
+  ];
+
+  return (
+    <article className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-5 py-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten</p>
+        <h2 className="text-xl font-black text-slate-950">Mieteingang</h2>
+        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Mieterinformationen und Mietkosten sind getrennt gepflegt.</p>
+      </div>
+
+      <div className="grid gap-4 bg-slate-50/70 p-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-base font-black text-slate-950">Mieterinformationen</h3>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {[
+              ["firstName", "Name", "Name"],
+              ["lastName", "Nachname", "Nachname"],
+              ["phone", "Telefon", "Telefon"],
+              ["email", "E-Mail", "E-Mail"],
+            ].map(([field, label, placeholder]) => (
+              <RentDataField
+                key={field}
+                label={label}
+                value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
+                disabled={!isAdmin}
+                placeholder={placeholder}
+                onChange={(value) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, value)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-base font-black text-slate-950">Mietkosten</h3>
+          <div className="mt-4 grid gap-3">
+            {[
+              ["coldRent", "Kaltmiete"],
+              ["operatingCosts", "Betriebskosten / Nebenkosten"],
+              ["totalRent", "Gesamtmiete"],
+            ].map(([field, label]) => (
+              <RentDataField
+                key={field}
+                label={label}
+                value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
+                disabled={!isAdmin}
+                placeholder="0,00"
+                onChange={(value) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, value)}
+              />
+            ))}
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            {rentSummary.map((item) => (
+              <div key={item.label} className={["rounded-2xl border px-3 py-3", item.highlight ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"].join(" ")}>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
+                <b className={["mt-1 block text-sm font-black", item.highlight ? "text-emerald-700" : "text-slate-950"].join(" ")}>{item.value}</b>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          disabled={!isAdmin}
+          onClick={() => void onExtraSave(propertyId)}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-900 bg-white px-4 text-sm font-black text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+        >
+          {extraDirty ? "Mietdaten speichern" : "Speichern"}
+        </button>
+        {extraStatus ? <span className="text-sm font-bold text-slate-500">{extraStatus}</span> : null}
+      </div>
+    </article>
+  );
+}
+
+function RosensteinRentInfoPanel({ entries, year }: { entries: FinanceEntry[]; year: number }) {
+  const units = ROSENSTEIN_PARKING_UNITS.map((unit) => ({
+    ...unit,
+    payment: getRosensteinUnitPayment(entries, unit, year),
+  }));
+
+  return (
+    <article className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-5 py-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten je Einheit</p>
+        <h2 className="text-xl font-black text-slate-950">Mieteingang TG-Stellplätze</h2>
+        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Jeder Stellplatz wird separat als eigene Mietakte dargestellt.</p>
+      </div>
+      <div className="grid gap-4 bg-slate-50/70 p-5 xl:grid-cols-3">
+        {units.map((unit) => (
+          <section key={unit.key} className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">{unit.title}</p>
+                <h3 className="mt-1 text-lg font-black text-slate-950">{unit.shortLabel}</h3>
+                <p className="mt-1 text-xs font-bold text-slate-500">{unit.reference}</p>
+              </div>
+              <span
+                className={[
+                  "rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em]",
+                  unit.status === "rented" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+                ].join(" ")}
+              >
+                {unit.status === "rented" ? "Vermietet" : "Leerstand"}
+              </span>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Mieterinformationen</p>
+              <b className="mt-2 block text-sm font-black text-slate-950">{unit.tenantName}</b>
+              <p className="mt-1 text-xs font-bold text-slate-500">Telefon — · E-Mail —</p>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <span className="font-bold text-slate-500">Kaltmiete</span>
+                <b className="font-black text-slate-950">{formatCurrencyExact(unit.monthlyRent)}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <span className="font-bold text-slate-500">Nebenkosten</span>
+                <b className="font-black text-slate-950">{formatCurrencyExact(0)}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                <span className="font-black text-emerald-700">Gesamtmiete</span>
+                <b className="font-black text-emerald-800">{formatCurrencyExact(unit.monthlyRent)}</b>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Mieteingang {year}</p>
+              <b className="mt-1 block text-lg font-black text-blue-950">{formatCurrencyExact(unit.payment.total)}</b>
+              <p className="mt-1 text-xs font-bold text-blue-700">Letzter Eingang: {unit.payment.lastBookingDate ? new Date(unit.payment.lastBookingDate).toLocaleDateString("de-DE") : "—"}</p>
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function DetailPage({
   card,
   extra,
@@ -975,57 +1164,19 @@ function DetailPage({
               </p>
             </article>
 
-            <article className="rounded-[18px] border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-xl font-black text-slate-950">Mieteingang</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {[
-                  ["firstName", "Name", "Name"],
-                  ["lastName", "Nachname", "Nachname"],
-                  ["phone", "Telefon", "Telefon"],
-                  ["email", "E-Mail", "E-Mail"],
-                ].map(([field, label, placeholder]) => (
-                  <label key={field} className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                    {label}
-                    <input
-                      className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
-                      value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
-                      disabled={!isAdmin}
-                      placeholder={placeholder}
-                      onChange={(event) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, event.target.value)}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {[
-                  ["coldRent", "Kaltmiete"],
-                  ["operatingCosts", "Betriebskosten / Nebenkosten"],
-                  ["totalRent", "Gesamtmiete"],
-                ].map(([field, label]) => (
-                  <label key={field} className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                    {label}
-                    <input
-                      className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
-                      value={String(extra[field as keyof PropertyExtraInfo] ?? "")}
-                      disabled={!isAdmin}
-                      placeholder="0,00"
-                      onChange={(event) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, event.target.value)}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  disabled={!isAdmin}
-                  onClick={() => void onExtraSave(propertyId)}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-900 bg-white px-4 text-sm font-black text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
-                >
-                  {extraDirty ? "Mietdaten speichern" : "Speichern"}
-                </button>
-                {extraStatus ? <span className="text-sm font-bold text-slate-500">{extraStatus}</span> : null}
-              </div>
-            </article>
+            {isRosensteinCard(card) ? (
+              <RosensteinRentInfoPanel entries={entries} year={year} />
+            ) : (
+              <StandardRentInfoPanel
+                extra={extra}
+                propertyId={propertyId}
+                isAdmin={isAdmin}
+                extraDirty={extraDirty}
+                extraStatus={extraStatus}
+                onExtraChange={onExtraChange}
+                onExtraSave={onExtraSave}
+              />
+            )}
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
