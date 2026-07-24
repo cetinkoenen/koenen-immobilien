@@ -418,13 +418,14 @@ function findTemplate(rowName: string): WealthTemplate | undefined {
 }
 
 function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate, stored: Record<string, WealthDraft>): WealthDraft {
-  const id = row?.portfolio_property_id ?? row?.property_id ?? template.key;
+  const legacyId = row?.portfolio_property_id ?? row?.property_id;
   const liveFallback: WealthDraft = row ? { name: template.defaults.name || row.property_name } : {};
 
   return {
     ...template.defaults,
     ...liveFallback,
-    ...(stored[id] ?? {}),
+    ...(legacyId ? (stored[legacyId] ?? {}) : {}),
+    ...(stored[template.key] ?? {}),
   };
 }
 
@@ -437,8 +438,7 @@ function buildCards(rows: PortfolioLoanRow[], stored: Record<string, WealthDraft
       return findTemplate(candidate.property_name)?.key === template.key;
     });
     if (row) usedRowIds.add(row.property_id);
-    const id = row?.portfolio_property_id ?? row?.property_id ?? template.key;
-    return { id, row, draft: mergeDraft(row, template, stored) };
+    return { id: template.key, row, draft: mergeDraft(row, template, stored) };
   });
 
   rows.forEach((row) => {
