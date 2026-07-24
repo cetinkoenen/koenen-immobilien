@@ -105,6 +105,8 @@ type InvestmentChecklistItem = {
   checked: boolean;
 };
 
+type InvestmentSection = "financing" | "wealth" | "persons" | "checklist" | "export";
+
 const requiredDocuments: RequiredDocument[] = [
   {
     label: "Exposé / Objektbeschreibung",
@@ -166,6 +168,14 @@ const checklistTemplates: InvestmentChecklistItem[] = [
 const initialPersons: InvestmentPerson[] = [
   { id: "cetin", name: "Cetin Könen", income: "", expenses: "", assets: "", liabilities: "" },
   { id: "nihal", name: "Nihal Könen", income: "", expenses: "", assets: "", liabilities: "" },
+];
+
+const investmentSections: { id: InvestmentSection; label: string }[] = [
+  { id: "financing", label: "Finanzierungsanalyse" },
+  { id: "wealth", label: "Immobilienvermögen" },
+  { id: "persons", label: "Personenprofile" },
+  { id: "checklist", label: "Checkliste" },
+  { id: "export", label: "Export" },
 ];
 
 const formatFileSize = (bytes: number) => {
@@ -338,14 +348,19 @@ export default function InvestmentBericht() {
   const [targetRent, setTargetRent] = useState("");
   const [apartmentRent, setApartmentRent] = useState("");
   const [parkingRent, setParkingRent] = useState("");
+  const [nkPrepayment, setNkPrepayment] = useState("");
   const [livingArea, setLivingArea] = useState("");
   const [rooms, setRooms] = useState("");
   const [monthlyHousegeld, setMonthlyHousegeld] = useState("");
-  const [interestRate, setInterestRate] = useState("3,50");
-  const [amortizationRate, setAmortizationRate] = useState("2,00");
+  const [interestRate, setInterestRate] = useState("4,62");
+  const [amortizationRate, setAmortizationRate] = useState("1,00");
   const [monthlyBankRate, setMonthlyBankRate] = useState("");
   const [personalTaxRate, setPersonalTaxRate] = useState("44,30");
+  const [plannedRentIncreaseRate, setPlannedRentIncreaseRate] = useState("2,00");
+  const [additionalMaintenance, setAdditionalMaintenance] = useState("30");
+  const [nonDeductibleHousegeld, setNonDeductibleHousegeld] = useState("40");
   const [location, setLocation] = useState("");
+  const [activeSection, setActiveSection] = useState<InvestmentSection>("financing");
   const [calculationOpen, setCalculationOpen] = useState(false);
   const [persons, setPersons] = useState<InvestmentPerson[]>(initialPersons);
   const [checklist, setChecklist] = useState<InvestmentChecklistItem[]>(checklistTemplates);
@@ -388,19 +403,36 @@ export default function InvestmentBericht() {
     const apartment = pickNumber(apartmentRent, null);
     const parking = pickNumber(parkingRent, null);
     const target = pickNumber(targetRent, null);
-    const monthlyIncome = (apartment ?? 0) + (parking ?? 0) || target || 0;
+    const coldRent = (apartment ?? 0) + (parking ?? 0) || target || 0;
+    const nkAdvance = pickNumber(nkPrepayment, 0) ?? 0;
+    const warmIncome = coldRent + nkAdvance;
     const housegeld = pickNumber(monthlyHousegeld, 0) ?? 0;
     const calculatedRate = loan ? (loan * ((interest + amortization) / 100)) / 12 : 0;
     const bankRate = fixedRate ?? calculatedRate;
+    const plannedRentIncrease = pickNumber(plannedRentIncreaseRate, 2) ?? 2;
+    const maintenance = pickNumber(additionalMaintenance, 30) ?? 30;
+    const nonDeductible = pickNumber(nonDeductibleHousegeld, 40) ?? 40;
     const transferTax = purchase ? purchase * 0.05 : 0;
     const notary = purchase ? purchase * 0.02 : 0;
     const broker = provisionInput ?? (purchase ? purchase * 0.0357 : 0);
+    const equityForPurchase = purchase !== null && loan !== null ? purchase - loan : 0;
     const requiredEquity = transferTax + notary + broker;
-    const riskBuffer = monthlyIncome * 0.0755;
+    const totalEquity = equityForPurchase + requiredEquity;
+    const rentLossRisk = coldRent * 0.02;
     const monthlyInterest = loan ? (loan * (interest / 100)) / 12 : 0;
-    const taxRefund = monthlyInterest * (taxRate / 100) * 0.5;
-    const realCashflowAfterTax = monthlyIncome - housegeld - bankRate - riskBuffer + taxRefund;
-    const monthlyWealthBuild = loan ? (loan * (amortization / 100)) / 12 : 0;
+    const monthlyPrincipal = Math.max(bankRate - monthlyInterest, 0);
+    const depreciation = purchase ? (purchase * 0.8) / 50 / 12 : 0;
+    const cashflowBeforeTax = warmIncome - bankRate - housegeld - rentLossRisk - maintenance;
+    const taxableResult = coldRent - monthlyInterest - depreciation - nonDeductible;
+    const taxRefund = taxableResult < 0 ? -taxableResult * (taxRate / 100) : 0;
+    const realCashflowAfterTax = cashflowBeforeTax + taxRefund;
+    const monthlyWealthBuild = monthlyPrincipal;
+    const tenYearPaidPrincipal = monthlyPrincipal * 120;
+    const tenYearRemainingLoan = (loan ?? 0) - tenYearPaidPrincipal;
+    const tenthYearColdRent = coldRent * ((1 + plannedRentIncrease / 100) ** 10);
+    const tenthYearCashflowBeforeTax = tenthYearColdRent - (tenthYearColdRent * 0.02) - maintenance - bankRate - housegeld;
+    const tenYearValueGain = purchase ? purchase * (1.02 ** 10) - purchase : 0;
+    const equityReturnPa = totalEquity > 0 ? ((tenYearPaidPrincipal + tenYearValueGain) / 10 / totalEquity) * 100 : null;
 
     return {
       purchase,
@@ -409,18 +441,37 @@ export default function InvestmentBericht() {
       amortization,
       bankRate,
       taxRate,
-      monthlyIncome,
+      coldRent,
+      nkAdvance,
+      monthlyIncome: coldRent,
+      warmIncome,
       housegeld,
+      plannedRentIncrease,
+      maintenance,
+      nonDeductible,
       transferTax,
       notary,
       broker,
+      equityForPurchase,
       requiredEquity,
-      riskBuffer,
+      totalEquity,
+      rentLossRisk,
+      monthlyInterest,
+      monthlyPrincipal,
+      depreciation,
+      cashflowBeforeTax,
+      taxableResult,
       taxRefund,
       realCashflowAfterTax,
       monthlyWealthBuild,
+      tenYearPaidPrincipal,
+      tenYearRemainingLoan,
+      tenthYearColdRent,
+      tenthYearCashflowBeforeTax,
+      tenYearValueGain,
+      equityReturnPa,
     };
-  }, [amortizationRate, apartmentRent, buyerProvision, interestRate, loanAmount, monthlyBankRate, monthlyHousegeld, parkingRent, personalTaxRate, purchasePrice, targetRent]);
+  }, [additionalMaintenance, amortizationRate, apartmentRent, buyerProvision, interestRate, loanAmount, monthlyBankRate, monthlyHousegeld, nkPrepayment, nonDeductibleHousegeld, parkingRent, personalTaxRate, plannedRentIncreaseRate, purchasePrice, targetRent]);
 
   const existingNetCashflow = useMemo(() => {
     return appData.portfolioRows.reduce((sum, row) => {
@@ -625,11 +676,22 @@ export default function InvestmentBericht() {
       ["Maklerprovision", formatEuro(investmentCalculation.broker)],
       ["Benötigtes Eigenkapital", formatEuro(investmentCalculation.requiredEquity)],
       ["Einnahmen Kaltmiete + Stellplatz", formatEuroMonthly(investmentCalculation.monthlyIncome)],
+      ["Nebenkostenvorauszahlung", formatEuroMonthly(investmentCalculation.nkAdvance)],
+      ["Gesamteinnahmen warm", formatEuroMonthly(investmentCalculation.warmIncome)],
       ["Ausgaben Hausgeld + Rate", formatEuroMonthly(-(investmentCalculation.housegeld + investmentCalculation.bankRate))],
-      ["Risikopuffer Instandhaltung/Leerstand", formatEuroMonthly(-investmentCalculation.riskBuffer)],
+      ["Mietausfallwagnis 2 %", formatEuroMonthly(-investmentCalculation.rentLossRisk)],
+      ["Zusätzliche Instandhaltung", formatEuroMonthly(-investmentCalculation.maintenance)],
+      ["Gebäudeabschreibung AfA", formatEuroMonthly(investmentCalculation.depreciation)],
+      ["Steuerliches Ergebnis", formatSignedEuroMonthly(investmentCalculation.taxableResult)],
       ["Steuererstattung Leverage", formatEuroMonthly(investmentCalculation.taxRefund)],
       ["Realer Cashflow nach Steuern", formatSignedEuroMonthly(investmentCalculation.realCashflowAfterTax)],
       ["Monatlicher Vermögensaufbau", formatEuroMonthly(investmentCalculation.monthlyWealthBuild)],
+      ["Gezahlte Tilgung nach 10 Jahren", formatEuro(investmentCalculation.tenYearPaidPrincipal)],
+      ["Restschuld nach 10 Jahren", formatEuro(investmentCalculation.tenYearRemainingLoan)],
+      ["Kaltmiete im 10. Jahr", formatEuroMonthly(investmentCalculation.tenthYearColdRent)],
+      ["Cashflow vor Steuern im 10. Jahr", formatSignedEuroMonthly(investmentCalculation.tenthYearCashflowBeforeTax)],
+      ["Wertsteigerung nach 10 Jahren", formatEuro(investmentCalculation.tenYearValueGain)],
+      ["Eigenkapitalrendite p.a.", formatPercent(investmentCalculation.equityReturnPa)],
     ]
       .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(String(value))}</td></tr>`)
       .join("");
@@ -1035,6 +1097,24 @@ export default function InvestmentBericht() {
         </button>
       </PageHeader>
 
+      <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-5">
+        {investmentSections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => setActiveSection(section.id)}
+            className={`min-h-12 rounded-2xl px-4 py-3 text-sm font-black transition ${
+              activeSection === section.id
+                ? "bg-[#356778] text-white shadow-sm"
+                : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-white"
+            }`}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === "wealth" ? (
       <section className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -1087,7 +1167,10 @@ export default function InvestmentBericht() {
           </div>
         </div>
       </section>
+      ) : null}
 
+      {activeSection === "financing" ? (
+      <>
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
@@ -1145,6 +1228,10 @@ export default function InvestmentBericht() {
               <input value={parkingRent} onChange={(event) => setParkingRent(event.target.value)} placeholder="z.B. 60 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
+              Nebenkostenvorauszahlung
+              <input value={nkPrepayment} onChange={(event) => setNkPrepayment(event.target.value)} placeholder="z.B. 240 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
               Wohnfläche
               <input value={livingArea} onChange={(event) => setLivingArea(event.target.value)} placeholder="z.B. 41 m²" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
@@ -1171,6 +1258,18 @@ export default function InvestmentBericht() {
             <label className="grid gap-2 text-sm font-black text-slate-700">
               Persönlicher Steuersatz
               <input value={personalTaxRate} onChange={(event) => setPersonalTaxRate(event.target.value)} placeholder="z.B. 44,30 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Mietsteigerung p.a.
+              <input value={plannedRentIncreaseRate} onChange={(event) => setPlannedRentIncreaseRate(event.target.value)} placeholder="z.B. 2,00 %" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Instandhaltung pauschal
+              <input value={additionalMaintenance} onChange={(event) => setAdditionalMaintenance(event.target.value)} placeholder="z.B. 30 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              Nicht umlagefähiges Hausgeld
+              <input value={nonDeductibleHousegeld} onChange={(event) => setNonDeductibleHousegeld(event.target.value)} placeholder="z.B. 40 EUR" className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
           </div>
         </div>
@@ -1260,9 +1359,16 @@ export default function InvestmentBericht() {
                   ["Notar 2 %", formatEuro(investmentCalculation.notary)],
                   ["Makler / Käuferprovision", formatEuro(investmentCalculation.broker)],
                   ["Kaltmiete Wohnung + Stellplatz", formatEuroMonthly(investmentCalculation.monthlyIncome)],
+                  ["Nebenkostenvorauszahlung", formatEuroMonthly(investmentCalculation.nkAdvance)],
+                  ["Gesamteinnahmen warm", formatEuroMonthly(investmentCalculation.warmIncome)],
                   ["Hausgeld / Mietvoranschlag", formatEuroMonthly(investmentCalculation.housegeld)],
-                  ["Risikopuffer", formatEuroMonthly(investmentCalculation.riskBuffer)],
+                  ["Mietausfallwagnis 2 %", formatEuroMonthly(investmentCalculation.rentLossRisk)],
+                  ["Zusätzliche Instandhaltung", formatEuroMonthly(investmentCalculation.maintenance)],
+                  ["Gebäudeabschreibung AfA", formatEuroMonthly(investmentCalculation.depreciation)],
+                  ["Steuerliches Ergebnis", formatSignedEuroMonthly(investmentCalculation.taxableResult)],
                   ["Steuererstattung indikativ", formatEuroMonthly(investmentCalculation.taxRefund)],
+                  ["Restschuld nach 10 Jahren", formatEuro(investmentCalculation.tenYearRemainingLoan)],
+                  ["EK-Rendite p.a. nach 10 Jahren", formatPercent(investmentCalculation.equityReturnPa)],
                 ].map(([label, value]) => (
                   <div key={label} className="grid grid-cols-[1.1fr_0.9fr] border-t border-slate-100 px-4 py-3 text-sm">
                     <span className="font-bold text-slate-600">{label}</span>
@@ -1274,7 +1380,11 @@ export default function InvestmentBericht() {
           </div>
         ) : null}
       </section>
+      </>
+      ) : null}
 
+      {activeSection === "checklist" ? (
+      <>
       <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionPanel
           eyebrow="Unterlagen"
@@ -1376,8 +1486,12 @@ export default function InvestmentBericht() {
           </div>
         </SectionPanel>
       </section>
+      </>
+      ) : null}
 
+      {activeSection === "persons" || activeSection === "checklist" ? (
       <section className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+        {activeSection === "persons" ? (
         <SectionPanel
           eyebrow="Finanzierung"
           title="Personenprofile"
@@ -1420,7 +1534,9 @@ export default function InvestmentBericht() {
             Weitere Person hinzufügen
           </button>
         </SectionPanel>
+        ) : null}
 
+        {activeSection === "checklist" ? (
         <SectionPanel
           eyebrow="Checkliste"
           title="Finanzierungsvorbereitung"
@@ -1450,8 +1566,12 @@ export default function InvestmentBericht() {
             ))}
           </div>
         </SectionPanel>
+        ) : null}
       </section>
+      ) : null}
 
+      {activeSection === "export" ? (
+      <>
       <SectionPanel
         eyebrow="KI-Erstbewertung"
         title="Direkte Bewertung in der App"
@@ -1583,9 +1703,9 @@ export default function InvestmentBericht() {
 
       <section className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
         <SectionPanel
-        eyebrow="Export"
-        title="Bericht herunterladen"
-        description="Sobald Objekt und Kaufpreis eingetragen sind, kannst du den Bank-Entwurf als Word-Datei herunterladen oder über den Browser als PDF speichern. Die KI-Bewertung kann den Bericht zusätzlich fachlich vertiefen."
+          eyebrow="Export"
+          title="Bericht herunterladen"
+          description="Sobald Objekt und Kaufpreis eingetragen sind, kannst du den Bank-Entwurf als Word-Datei herunterladen oder über den Browser als PDF speichern. Die KI-Bewertung kann den Bericht zusätzlich fachlich vertiefen."
         >
           <div className="grid gap-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1654,6 +1774,8 @@ export default function InvestmentBericht() {
           </a>
         </SectionPanel>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }
