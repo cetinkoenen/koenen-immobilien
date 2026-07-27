@@ -1,0 +1,159 @@
+import { supabase } from "../lib/supabaseClient";
+import { parseLocaleNumber } from "../utils/numberParser";
+
+export const MILEAGE_TRIP_REASONS = [
+  "Handwerkertermin",
+  "Eigentümerversammlung",
+  "Mieterwechsel/Besichtigung",
+  "Kontrollfahrt",
+  "Bank-/Notartermin",
+] as const;
+
+export type MileageTripReason = (typeof MILEAGE_TRIP_REASONS)[number];
+
+export type MileageTripRow = {
+  id: string;
+  user_id?: string;
+  property_id: string;
+  portfolio_property_id: string | null;
+  property_label: string;
+  datum: string;
+  grund: MileageTripReason;
+  start_adresse: string;
+  zieladresse: string;
+  distanz_km: number;
+  hin_und_rueckfahrt: boolean;
+  berechneter_betrag: number;
+  beleg_url: string | null;
+  steuerjahr: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type MileageTripInput = {
+  id?: string;
+  property_id: string;
+  portfolio_property_id?: string | null;
+  property_label: string;
+  datum: string;
+  grund: MileageTripReason;
+  start_adresse: string;
+  zieladresse: string;
+  distanz_km: number | string;
+  hin_und_rueckfahrt: boolean;
+  beleg_url?: string | null;
+};
+
+export type MileageTripFilters = {
+  propertyId?: string;
+  year?: number;
+};
+
+export const MILEAGE_RECEIPT_BUCKET = "property-mileage-receipts";
+export const MILEAGE_RATE_EUR = 0.3;
+
+function toNumber(value: unknown, fallback = 0) {
+  return parseLocaleNumber(value, fallback);
+}
+
+function normalizeRow(row: Record<string, unknown>): MileageTripRow {
+  return {
+    id: String(row.id ?? ""),
+    user_id: row.user_id ? String(row.user_id) : undefined,
+    property_id: String(row.property_id ?? ""),
+    portfolio_property_id: row.portfolio_property_id ? String(row.portfolio_property_id) : null,
+    property_label: String(row.property_label ?? ""),
+    datum: String(row.datum ?? ""),
+    grund: MILEAGE_TRIP_REASONS.includes(row.grund as MileageTripReason) ? (row.grund as MileageTripReason) : "Kontrollfahrt",
+    start_adresse: String(row.start_adresse ?? ""),
+    zieladresse: String(row.zieladresse ?? ""),
+    distanz_km: toNumber(row.distanz_km),
+    hin_und_rueckfahrt: row.hin_und_rueckfahrt !== false,
+    berechneter_betrag: toNumber(row.berechneter_betrag),
+    beleg_url: row.beleg_url ? String(row.beleg_url) : null,
+    steuerjahr: Number(row.steuerjahr ?? 0),
+    created_at: row.created_at ? String(row.created_at) : undefined,
+    updated_at: row.updated_at ? String(row.updated_at) : undefined,
+  };
+}
+
+function sanitizeFileName(fileName: string) {
+  return fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 100) || "beleg";
+}
+
+export function calculateMileageAmount(distanceKm: number | string, roundTrip: boolean) {
+  const distance = Math.max(0, toNumber(distanceKm));
+  return Math.round(distance * (roundTrip ? 2 : 1) * MILEAGE_RATE_EUR * 100) / 100;
+}
+
+export function extractMileageTaxYear(date: string) {
+  const year = Number(String(date).slice(0, 4));
+  return Number.isFinite(year) ? year : new Date().getFullYear();
+}
+
+export async function listMileageTrips(filters: MileageTripFilters = {}): Promise<MileageTripRow[]> {
+  let query = supabase
+    .from("property_mileage_trips")
+    .select("*")
+    .order("datum", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (filters.propertyId) query = query.eq("property_id", filters.propertyId);
+  if (filters.year) query = query.eq("steuerjahr", filters.year);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((row) => normalizeRow(row as Record<string, unknown>));
+}
+
+export async function saveMileageTrip(input: MileageTripInput): Promise<MileageTripRow> {
+  const distance = Math.max(0, toNumber(input.distanz_km));
+  const payload = {
+    property_id: input.property_id,
+    portfolio_property_id: input.portfolio_property_id ?? null,
+    property_label: input.property_label.trim(),
+    datum: input.datum,
+    grund: input.grund,
+    start_adresse: input.start_adresse.trim(),
+    zieladresse: input.zieladresse.trim(),
+    distanz_km: distance,
+    hin_und_rueckfahrt: input.hin_und_rueckfahrt,
+    beleg_url: input.beleg_url?.trim() || null,
+  };
+
+  const request = input.id
+    ? supabase.from("property_mileage_trips").update(payload).eq("id", input.id).select("*").single()
+    : supabase.from("property_mileage_trips").insert(payload).select("*").single();
+
+  const { data, error } = await request;
+  if (error) throw error;
+  return normalizeRow((data ?? {}) as Record<string, unknown>);
+}
+
+export async function deleteMileageTrip(id: string) {
+  const { error } = await supabase.from("property_mileage_trips").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function uploadMileageReceipt(propertyId: string, file: File) {
+  const filePath = `${propertyId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+  const { error } = await supabase.storage
+    .from(MILEAGE_RECEIPT_BUCKET)
+    .upload(filePath, file, { upsert: false, contentType: file.type || undefined });
+  if (error) throw error;
+  return filePath;
+}
+
+export async function openMileageReceipt(path: string) {
+  const { data, error } = await supabase.storage
+    .from(MILEAGE_RECEIPT_BUCKET)
+    .createSignedUrl(path, 60 * 5);
+  if (error) throw error;
+  if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+}

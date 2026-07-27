@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { Download, FileText, Printer, RefreshCw, Search } from "lucide-react";
+import { Car, Download, ExternalLink, FileText, Printer, RefreshCw, Search, X } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
 import { canonicalizeFinanceCategory } from "../lib/financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
+import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
 
@@ -42,6 +43,15 @@ type TaxVacancyRow = UnitVacancy & {
   tax_hint: string;
 };
 
+type MileageSummaryRow = {
+  property_id: string;
+  property_label: string;
+  year: number;
+  trips: MileageTripRow[];
+  total_km: number;
+  total_amount: number;
+};
+
 type ClassifiedEntry = EntryRow & {
   object_label: string;
   tax_group: string;
@@ -75,6 +85,7 @@ type TaxTotals = {
   net: number;
   taxIncome: number;
   taxExpense: number;
+  mileageExpense: number;
   taxNetIncludingLoans: number;
   loanInterest: number;
   loanPrincipal: number;
@@ -195,6 +206,17 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     gap: 8,
   },
+  linkButton: {
+    border: 0,
+    background: "transparent",
+    padding: 0,
+    color: "#255f6f",
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: "pointer",
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+  },
   advisorGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
@@ -288,6 +310,25 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     color: "#0f172a",
     verticalAlign: "top",
+  },
+  modalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 50,
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    overflow: "auto",
+    background: "rgba(15, 23, 42, 0.45)",
+    padding: 18,
+  },
+  modal: {
+    width: "min(980px, 100%)",
+    margin: "24px 0",
+    borderRadius: 22,
+    background: "#ffffff",
+    boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+    padding: 18,
   },
 };
 
@@ -455,6 +496,8 @@ function downloadAdvisorCsv(
     summary: SummaryRow[];
     loanRows: LoanTaxRow[];
     vacancyRows: TaxVacancyRow[];
+    mileageSummaryRows: MileageSummaryRow[];
+    mileageRows: MileageTripRow[];
     rows: ClassifiedEntry[];
   },
 ) {
@@ -473,6 +516,7 @@ function downloadAdvisorCsv(
     ["Kennzahlen"],
     ["Steuer-Einnahmen", amount(payload.totals.taxIncome)],
     ["Steuer-Ausgaben aus Buchungen", amount(payload.totals.taxExpense)],
+    ["Fahrtkosten Werbungskosten Anlage V", amount(payload.totals.mileageExpense)],
     ["Darlehenszinsen aus Seite Darlehen", amount(payload.totals.loanInterest)],
     ["Steuerlicher Ueberschuss inkl. Darlehen", amount(payload.totals.taxNetIncludingLoans)],
     ["Tilgung dokumentiert, nicht steuerrelevant", amount(payload.totals.loanPrincipal)],
@@ -498,6 +542,30 @@ function downloadAdvisorCsv(
       row.reason || "",
       row.notes || "",
       row.tax_hint,
+    ]),
+    [],
+    ["Fahrtkosten-Nachweise"],
+    ["Objekt", "Jahr", "Fahrten", "Abgerechnete km", "Werbungskosten Anlage V"],
+    ...payload.mileageSummaryRows.map((row) => [
+      row.property_label,
+      row.year,
+      row.trips.length,
+      amount(row.total_km),
+      amount(row.total_amount),
+    ]),
+    [],
+    ["Fahrtenbuch Details"],
+    ["Datum", "Objekt", "Grund", "Start", "Ziel", "Einfache km", "Hin und Rueckfahrt", "Betrag", "Beleg"],
+    ...payload.mileageRows.map((row) => [
+      row.datum,
+      row.property_label,
+      row.grund,
+      row.start_adresse,
+      row.zieladresse,
+      amount(row.distanz_km),
+      row.hin_und_rueckfahrt ? "Ja" : "Nein",
+      amount(row.berechneter_betrag),
+      row.beleg_url || "",
     ]),
     [],
     ["Buchungen"],
@@ -536,6 +604,8 @@ export default function SteuerCenter() {
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [loanTaxRows, setLoanTaxRows] = useState<LoanTaxRow[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
+  const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
+  const [selectedMileageProperty, setSelectedMileageProperty] = useState<MileageSummaryRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -700,12 +770,20 @@ export default function SteuerCenter() {
       setLoanTaxRows(completeLoanRows);
       const vacancyRows = await listVacancies({ from: range.from, to: yearEnd(year) });
       setVacancies(vacancyRows);
+      try {
+        const mileageRows = await listMileageTrips({ year });
+        setMileageTrips(mileageRows);
+      } catch (mileageError) {
+        console.warn("property_mileage_trips load skipped:", mileageError);
+        setMileageTrips([]);
+      }
     } catch (loadError) {
       const message = getLoadErrorMessage(loadError);
       setError(message);
       setEntries([]);
       setLoanTaxRows([]);
       setVacancies([]);
+      setMileageTrips([]);
     } finally {
       setLoading(false);
     }
@@ -793,11 +871,48 @@ export default function SteuerCenter() {
     return Array.from(map.values()).sort((a, b) => Math.abs(b.income - b.expense) - Math.abs(a.income - a.expense));
   }, [filteredRows]);
 
+  const filteredMileageTrips = useMemo(() => {
+    const selectedLabel = objectCode === "ALL" ? "" : objectLabelByCode.get(objectCode) ?? objectCode;
+    return mileageTrips.filter((trip) => {
+      if (trip.steuerjahr !== year) return false;
+      if (objectCode === "ALL") return true;
+      const tripLabel = normalize(trip.property_label);
+      const tripPropertyId = normalize(trip.property_id);
+      const selectedCode = normalize(objectCode);
+      const selectedName = normalize(selectedLabel);
+      return (
+        tripPropertyId === selectedCode ||
+        (tripLabel && selectedName && (tripLabel.includes(selectedName) || selectedName.includes(tripLabel)))
+      );
+    });
+  }, [mileageTrips, objectCode, objectLabelByCode, year]);
+
+  const mileageSummaryRows = useMemo<MileageSummaryRow[]>(() => {
+    const map = new Map<string, MileageSummaryRow>();
+    for (const trip of filteredMileageTrips) {
+      const key = trip.property_id || trip.property_label;
+      const current = map.get(key) ?? {
+        property_id: trip.property_id,
+        property_label: trip.property_label || trip.property_id,
+        year,
+        trips: [],
+        total_km: 0,
+        total_amount: 0,
+      };
+      current.trips.push(trip);
+      current.total_km += trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1);
+      current.total_amount += trip.berechneter_betrag;
+      map.set(key, current);
+    }
+    return Array.from(map.values()).sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
+  }, [filteredMileageTrips, year]);
+
   const totals = useMemo<TaxTotals>(() => {
     const income = filteredRows.filter((row) => row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
     const expense = filteredRows.filter((row) => row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
     const taxIncome = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
     const taxExpense = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
+    const mileageExpense = mileageSummaryRows.reduce((sum, row) => sum + row.total_amount, 0);
     const loanInterest = loanTaxRows.reduce((sum, row) => sum + row.interest, 0);
     const loanPrincipal = loanTaxRows.reduce((sum, row) => sum + row.principal, 0);
     const taxRows = filteredRows.filter((row) => row.relevance === "tax").length;
@@ -808,14 +923,15 @@ export default function SteuerCenter() {
       net: income - expense,
       taxIncome,
       taxExpense,
-      taxNetIncludingLoans: taxIncome - taxExpense - loanInterest,
+      mileageExpense,
+      taxNetIncludingLoans: taxIncome - taxExpense - mileageExpense - loanInterest,
       loanInterest,
       loanPrincipal,
       taxRows,
       checkRows,
       count: filteredRows.length,
     };
-  }, [filteredRows, loanTaxRows]);
+  }, [filteredRows, loanTaxRows, mileageSummaryRows]);
 
   const taxVacancyRows = useMemo<TaxVacancyRow[]>(() => {
     const from = `${year}-01-01`;
@@ -881,6 +997,11 @@ export default function SteuerCenter() {
       label: "Leerstands-Nachweise aus Seite Leerstand",
       value: taxVacancyRows.length ? `${taxVacancyRows.length} Zeitraum(e)` : "Keine Leerstände",
       relevance: taxVacancyRows.length ? "tax" : "private",
+    },
+    {
+      label: "Fahrtkosten-Nachweise aus Fahrtenbuch",
+      value: mileageSummaryRows.length ? `${filteredMileageTrips.length} Fahrt(en)` : "Keine Fahrten",
+      relevance: mileageSummaryRows.length ? "tax" : "private",
     },
     {
       label: "Objekt- und Jahresfilter",
@@ -1015,6 +1136,8 @@ export default function SteuerCenter() {
                   summary,
                   loanRows: loanTaxRows,
                   vacancyRows: taxVacancyRows,
+                  mileageSummaryRows,
+                  mileageRows: filteredMileageTrips,
                   rows: filteredRows,
                 })}
                 style={styles.primaryButton}
@@ -1049,6 +1172,7 @@ export default function SteuerCenter() {
       <section style={styles.grid3}>
         <MetricCard label="Steuer-Einnahmen" value={loading ? "..." : eur(totals.taxIncome)} tone="green" />
         <MetricCard label="Steuer-Ausgaben Buchungen" value={loading ? "..." : eur(totals.taxExpense)} tone="red" />
+        <MetricCard label="Fahrtkosten Anlage V" value={loading ? "..." : eur(totals.mileageExpense)} tone="red" />
         <MetricCard label="Darlehenszinsen" value={loading ? "..." : eur(totals.loanInterest)} tone="red" />
         <MetricCard label="Steuerlicher Ueberschuss inkl. Darlehen" value={loading ? "..." : eur(totals.taxNetIncludingLoans)} tone={totals.taxNetIncludingLoans >= 0 ? "blue" : "red"} />
         <MetricCard label="Tilgung nicht steuerrelevant" value={loading ? "..." : eur(totals.loanPrincipal)} tone="slate" />
@@ -1092,6 +1216,54 @@ export default function SteuerCenter() {
               ))}
               {!loanTaxRows.length ? (
                 <tr><td colSpan={6} style={styles.td}>Keine Darlehenswerte fuer diese Auswahl gefunden. Bitte Seite Darlehen pruefen und Jahreswerte erfassen.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section style={styles.panel}>
+        <SectionHeading
+          title="Fahrtkosten (Werbungskosten Anlage V)"
+          subtitle="Kommt aus Immobilienvermögen > Fahrtenbuch. Betrag = einfache Strecke x Hin/Rück-Faktor x 0,30 EUR und wird dem Steuerjahr automatisch zugeordnet."
+        />
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Objekt</th>
+                <th style={styles.th}>Jahr</th>
+                <th style={styles.th}>Fahrten</th>
+                <th style={styles.th}>Abgerechnete km</th>
+                <th style={styles.th}>Werbungskosten</th>
+                <th style={styles.th}>Nachweis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mileageSummaryRows.map((row) => (
+                <tr key={`${row.property_id}-${row.year}`}>
+                  <td style={styles.td}><strong>{row.property_label}</strong></td>
+                  <td style={styles.td}>{row.year}</td>
+                  <td style={styles.td}>{row.trips.length}</td>
+                  <td style={styles.td}>{row.total_km.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km</td>
+                  <td style={styles.td}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMileageProperty(row)}
+                      style={{ ...styles.linkButton, fontSize: 16, color: "#047857" }}
+                    >
+                      {eur(row.total_amount)}
+                    </button>
+                  </td>
+                  <td style={styles.td}>
+                    <button type="button" onClick={() => setSelectedMileageProperty(row)} style={styles.button}>
+                      <Car size={16} /> Details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!mileageSummaryRows.length ? (
+                <tr><td colSpan={6} style={styles.td}>Keine Fahrten fuer diese Steuer-Auswahl dokumentiert.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -1214,6 +1386,84 @@ export default function SteuerCenter() {
           </table>
         </div>
       </section>
+
+      {selectedMileageProperty ? (
+        <div
+          style={styles.modalBackdrop}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mileage-tax-detail-title"
+          onClick={() => setSelectedMileageProperty(null)}
+        >
+          <div style={styles.modal} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={styles.eyebrow}><Car size={16} /> Fahrtenbuch</div>
+                <h2 id="mileage-tax-detail-title" style={{ ...styles.advisorTitle, marginTop: 10 }}>
+                  {selectedMileageProperty.property_label} · Steuerjahr {selectedMileageProperty.year}
+                </h2>
+                <p style={styles.text}>
+                  Detailnachweis für Anlage V: Gründe, Strecke, Kilometer, Belege und berechnete Werbungskosten.
+                </p>
+              </div>
+              <button type="button" onClick={() => setSelectedMileageProperty(null)} style={styles.button} aria-label="Fahrtenbuch-Details schließen">
+                <X size={16} /> Schließen
+              </button>
+            </div>
+            <div style={styles.advisorMeta}>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Fahrten</div>
+                <div style={styles.metaValue}>{selectedMileageProperty.trips.length}</div>
+              </div>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Abgerechnete km</div>
+                <div style={styles.metaValue}>{selectedMileageProperty.total_km.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Werbungskosten</div>
+                <div style={styles.metaValue}>{eur(selectedMileageProperty.total_amount)}</div>
+              </div>
+            </div>
+            <div style={{ ...styles.tableWrap, marginTop: 14 }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Datum</th>
+                    <th style={styles.th}>Grund</th>
+                    <th style={styles.th}>Start</th>
+                    <th style={styles.th}>Ziel</th>
+                    <th style={styles.th}>km</th>
+                    <th style={styles.th}>Betrag</th>
+                    <th style={styles.th}>Beleg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedMileageProperty.trips.map((trip) => (
+                    <tr key={trip.id}>
+                      <td style={styles.td}><strong>{dateDE(trip.datum)}</strong></td>
+                      <td style={styles.td}>{trip.grund}</td>
+                      <td style={styles.td}>{trip.start_adresse}</td>
+                      <td style={styles.td}>{trip.zieladresse}</td>
+                      <td style={styles.td}>
+                        {(trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div style={{ color: "#64748b", fontSize: 12 }}>{trip.hin_und_rueckfahrt ? "Hin und Rückfahrt" : "Einfache Fahrt"}</div>
+                      </td>
+                      <td style={styles.td}><strong>{eur(trip.berechneter_betrag)}</strong></td>
+                      <td style={styles.td}>
+                        {trip.beleg_url ? (
+                          <button type="button" onClick={() => void openMileageReceipt(trip.beleg_url ?? "")} style={styles.button}>
+                            <ExternalLink size={16} /> Öffnen
+                          </button>
+                        ) : "Kein Beleg"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
