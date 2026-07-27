@@ -418,7 +418,7 @@ export default function PortfolioPropertyLayout() {
   }, [propertyId]);
 
   if (!propertyId) {
-    return <Navigate to="/portfolio" replace />;
+    return <Navigate to="/immobilienvermoegen" replace />;
   }
 
   if (!isUuid(propertyId)) {

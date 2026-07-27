@@ -50,7 +50,7 @@ function formatTime(ts?: number) {
 /**
  * Determine "from" target:
  * - we keep it as a string path (recommended)
- * - fallback: "/portfolio"
+ * - fallback: "/immobilienvermoegen"
  */
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;

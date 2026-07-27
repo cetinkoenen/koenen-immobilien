@@ -721,7 +721,7 @@ export default function Datenpruefung() {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={row.risk} label={row.notes.length ? `${row.notes.length} Hinweis(e)` : "Stabil"} />
                     </div>
-                    <NavLink to={`/portfolio/${row.id}/objektakte`} className="block break-words text-lg font-black leading-tight text-slate-950 underline decoration-slate-300 underline-offset-4 transition hover:text-indigo-700">
+                    <NavLink to={`/immobilienvermoegen/${row.id}`} className="block break-words text-lg font-black leading-tight text-slate-950 underline decoration-slate-300 underline-offset-4 transition hover:text-indigo-700">
                       {row.name}
                     </NavLink>
                     <div className="mt-1 font-mono text-[11px] text-slate-400">{row.aliases.length > 1 ? `${row.aliases.length} verknüpfte IDs` : row.id}</div>

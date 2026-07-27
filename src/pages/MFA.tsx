@@ -37,7 +37,7 @@ function getFromPath(locationState: unknown): string {
     return from.pathname;
   }
 
-  return "/portfolio";
+  return "/immobilienvermoegen";
 }
 
 export default function MFA() {

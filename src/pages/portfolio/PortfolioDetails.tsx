@@ -1,4 +1,4 @@
-// src/pages/portfolio/PortfolioDetails.tsx
+// src/pages/immobilienvermoegen/PortfolioDetails.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
@@ -258,7 +258,7 @@ export default function PortfolioDetails() {
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={() => navigate("/portfolio")}
+            onClick={() => navigate("/immobilienvermoegen")}
             style={{
               padding: "10px 14px",
               borderRadius: 12,

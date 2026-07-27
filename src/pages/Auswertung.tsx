@@ -881,22 +881,22 @@ const FINANCE_MODULE_LINKS: FinanceModuleLink[] = [
   {
     label: "Darlehensübersicht / Edit",
     description: "Tilgung, Restschuld, Ledger und Bearbeitung",
-    to: (propertyId) => `/portfolio/${propertyId}/darlehen`,
+    to: (propertyId) => `/immobilienvermoegen/${propertyId}/darlehen`,
   },
   {
     label: "Finance pro Jahr",
     description: "Jahreswerte, Cashflow und Finanzentwicklung",
-    to: (propertyId) => `/portfolio/${propertyId}/finance-pro-jahr`,
+    to: (propertyId) => `/immobilienvermoegen/${propertyId}/finance-pro-jahr`,
   },
   {
     label: "Income",
     description: "Mieten, Einnahmen und Ertragsdaten",
-    to: (propertyId) => `/portfolio/${propertyId}/income`,
+    to: (propertyId) => `/immobilienvermoegen/${propertyId}/income`,
   },
   {
     label: "Capex",
     description: "Sanierung, Reparatur und Investitionen",
-    to: (propertyId) => `/portfolio/${propertyId}/capex`,
+    to: (propertyId) => `/immobilienvermoegen/${propertyId}/capex`,
   },
 ];
 
@@ -1465,7 +1465,7 @@ function ObjectFinanceModuleButtons() {
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>Finanzakte · 4 Module · Darlehensverlauf</div>
               </div>
               <NavLink
-                to={`/portfolio/${property.id}`}
+                to={`/immobilienvermoegen/${property.id}`}
                 style={{
                   border: "1px solid #bfdbfe",
                   background: "#eff6ff",
@@ -1689,8 +1689,8 @@ function PhaseTwoObjectFileDashboard() {
       subtitle: "Alle Informationen je Immobilie werden in einer digitalen Objektakte gebündelt statt über mehrere Hauptseiten verteilt.",
       status: "Objektakte",
       tone: "blue",
-      actionLabel: "Portfolio öffnen",
-      to: "/portfolio",
+      actionLabel: "Immobilienvermögen öffnen",
+      to: "/immobilienvermoegen",
       items: [
         "Schnellzugriff auf Übersicht, Finanzen, Darlehen, Income und Capex",
         "Finanzmodule bleiben mit der jeweiligen Immobilie verknüpft",
@@ -1755,7 +1755,7 @@ function ProfessionalWorkflowBoard() {
     { area: "Finanzen", master: "Monate / Buchungen", output: "Cashflow, Einnahmen, Ausgaben, Kategorien", status: "Single Source" },
     { area: "Darlehen", master: "property_loan_ledger", output: "Restschuld, Tilgung, Verlauf, Darlehensübersicht", status: "Zentral" },
     { area: "Capex", master: "Monate mit Sanierung/Reparatur/Modernisierung", output: "Capex-Auswertung, Objektakte, Jahreswerte", status: "Referenziert" },
-    { area: "Vermietung", master: "Portfolio / Mieteingang", output: "Mieter, Kaltmiete, Nebenkosten, Mietcheck", status: "Objektbezogen" },
+    { area: "Vermietung", master: "Immobilienvermögen / Mieteingang", output: "Mieter, Kaltmiete, Nebenkosten, Mietcheck", status: "Objektbezogen" },
     { area: "Nebenkosten", master: "NK-Wohnungen / NK-Tiefgaragen", output: "Abrechnung, Archiv, PDF, Referenzunterlagen", status: "Workflow" },
     { area: "Dokumente", master: "Objektakte / Uploads", output: "Exposé, Verträge, Rechnungen, WEG, Energieausweis", status: "Vorbereitet" },
   ];
@@ -1853,12 +1853,12 @@ const OBJECT_WORKSPACE_TABS: { key: ObjectWorkspaceTab; label: string; hint: str
 ];
 
 const DOCUMENT_CATEGORIES = [
-  { title: "Mietverträge", text: "Verträge, Nachträge, Übergabeprotokolle", route: "/portfolio", tone: "blue" as const },
+  { title: "Mietverträge", text: "Verträge, Nachträge, Übergabeprotokolle", route: "/immobilienvermoegen", tone: "blue" as const },
   { title: "Rechnungen", text: "Handwerker, Sanierung, Reparatur, Wartung", route: "/monate", tone: "green" as const },
   { title: "Nebenkosten", text: "Abrechnungen, Referenzunterlagen, CO₂-Anlagen", route: "/nebenkosten/wohnungen", tone: "amber" as const },
   { title: "Darlehen", text: "Darlehensverträge, Tilgungspläne, Restschuldnachweise", route: "/darlehensuebersicht", tone: "slate" as const },
-  { title: "WEG / Objekt", text: "Protokolle, Teilungserklärung, Energieausweis", route: "/portfolio", tone: "blue" as const },
-  { title: "Exposé", text: "Objekt-PDFs, Bilder und Vermarktungsunterlagen", route: "/portfolio", tone: "green" as const },
+  { title: "WEG / Objekt", text: "Protokolle, Teilungserklärung, Energieausweis", route: "/immobilienvermoegen", tone: "blue" as const },
+  { title: "Exposé", text: "Objekt-PDFs, Bilder und Vermarktungsunterlagen", route: "/immobilienvermoegen", tone: "green" as const },
 ];
 
 function ObjectWorkspacePhaseTwoA() {
@@ -1918,11 +1918,11 @@ function ObjectWorkspacePhaseTwoA() {
 
   const objectRoutes = selectedProperty
     ? [
-        { label: "Portfolio", to: `/portfolio/${selectedProperty.id}` },
-        { label: "Darlehen", to: `/portfolio/${selectedProperty.id}/darlehen` },
-        { label: "Income", to: `/portfolio/${selectedProperty.id}/income` },
-        { label: "Capex", to: `/portfolio/${selectedProperty.id}/capex` },
-        { label: "Finance pro Jahr", to: `/portfolio/${selectedProperty.id}/finance-pro-jahr` },
+        { label: "Portfolio", to: `/immobilienvermoegen/${selectedProperty.id}` },
+        { label: "Darlehen", to: `/immobilienvermoegen/${selectedProperty.id}/darlehen` },
+        { label: "Income", to: `/immobilienvermoegen/${selectedProperty.id}/income` },
+        { label: "Capex", to: `/immobilienvermoegen/${selectedProperty.id}/capex` },
+        { label: "Finance pro Jahr", to: `/immobilienvermoegen/${selectedProperty.id}/finance-pro-jahr` },
       ]
     : [];
 
@@ -1975,7 +1975,7 @@ function ObjectWorkspacePhaseTwoA() {
                   <div style={{ marginTop: 5, fontSize: 12, color: "#64748b", fontWeight: 750 }}>Digitale Objektakte · Stammdaten, Finanzen, Vermietung, NK, Dokumente und Historie</div>
                 </div>
                 <NavLink
-                  to={`/portfolio/${selectedProperty.id}`}
+                  to={`/immobilienvermoegen/${selectedProperty.id}`}
                   style={{ border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "9px 13px", fontSize: 12, fontWeight: 950, textDecoration: "none" }}
                 >
                   Vollständige Objektakte öffnen

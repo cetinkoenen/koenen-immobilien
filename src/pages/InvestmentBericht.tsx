@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Banknote,
@@ -194,6 +194,7 @@ const investmentSections: { id: InvestmentSection; label: string }[] = [
 ];
 
 const WEALTH_STORAGE_KEY = "koenen:immobilienvermoegen:v2";
+const WEALTH_UPDATED_EVENT = "koenen:immobilienvermoegen:updated";
 
 const wealthDefaults: Array<{
   id: string;
@@ -441,6 +442,7 @@ function createFileId(file: File) {
 
 export default function InvestmentBericht() {
   const appData = useAppData();
+  const [wealthDrafts, setWealthDrafts] = useState<Record<string, WealthDraft>>(() => loadWealthDrafts());
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [objectName, setObjectName] = useState("Neue Investition");
   const [unitDescription, setUnitDescription] = useState("");
@@ -471,6 +473,16 @@ export default function InvestmentBericht() {
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiError, setAiError] = useState("");
+
+  useEffect(() => {
+    const refresh = () => setWealthDrafts(loadWealthDrafts());
+    window.addEventListener(WEALTH_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(WEALTH_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
 
@@ -576,8 +588,8 @@ export default function InvestmentBericht() {
   }, [additionalMaintenance, amortizationRate, apartmentRent, buyerProvision, interestRate, loanAmount, monthlyBankRate, monthlyHousegeld, nkPrepayment, nonDeductibleHousegeld, parkingRent, personalTaxRate, plannedRentIncreaseRate, purchasePrice, targetRent]);
 
   const investmentWealthCards = useMemo(
-    () => buildInvestmentWealthCards(appData.portfolioRows, loadWealthDrafts()),
-    [appData.portfolioRows],
+    () => buildInvestmentWealthCards(appData.portfolioRows, wealthDrafts),
+    [appData.portfolioRows, wealthDrafts],
   );
 
   const investmentWealthTotals = useMemo(
@@ -1302,8 +1314,22 @@ export default function InvestmentBericht() {
       <SectionPanel
         eyebrow="Quelle: Immobilien Vermögen Seite"
         title="Immobilienbestand als Vermögensnachweis"
-        description="Diese Karten werden im Investment-Bericht für die Bank-/Finanzierungsprüfung übernommen. Detaildaten bleiben zentral in Immobilien Vermögen gepflegt."
+        description="Diese Übersicht übernimmt automatisch die aktuellen Daten aus Immobilienvermögen. Änderungen an Marktwert, Restschuld, Rate oder Stammdaten werden hier als Vermögensnachweis für Bank und Finanzierungsprüfung weiterverwendet."
       >
+        <div className="mb-4 flex flex-col gap-3 rounded-[18px] border border-teal-100 bg-teal-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-teal-700">Single Source</p>
+            <p className="mt-1 text-sm font-bold leading-6 text-teal-900">
+              Pflege nur unter Immobilienvermögen. Dieser Investment-Bereich ist der lesende Vermögensnachweis.
+            </p>
+          </div>
+          <Link
+            to="/immobilienvermoegen"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#356778] px-4 py-2 text-sm font-black text-white no-underline shadow-sm"
+          >
+            Immobilienvermögen öffnen
+          </Link>
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           {investmentWealthCards.map((card) => (
             <Link

@@ -126,7 +126,6 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 const EntryAdd = lazy(() => import("./pages/EntryAdd"));
 const Cockpit = lazy(() => import("./pages/Cockpit"));
 const Monate = lazy(() => import("./pages/Monate"));
-const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
 const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
@@ -146,14 +145,6 @@ const EinAuszug = lazy(() => import("./pages/EinAuszug"));
 const Transaktionsregeln = lazy(() => import("./pages/Transaktionsregeln"));
 const Darlehensuebersicht = lazy(() => import("./pages/Darlehensuebersicht"));
 const Datenpruefung = lazy(() => import("./pages/Datenpruefung"));
-const PortfolioAddress = lazy(() => import("./pages/portfolio/PortfolioAddress"));
-const PortfolioDetails = lazy(() => import("./pages/portfolio/PortfolioDetails"));
-const PortfolioEnergy = lazy(() => import("./pages/portfolio/PortfolioEnergy"));
-const PortfolioFinance = lazy(() => import("./pages/portfolio/PortfolioFinance"));
-const PortfolioPropertyLayout = lazy(() => import("./pages/portfolio/PortfolioPropertyLayout"));
-const PortfolioRenting = lazy(() => import("./pages/portfolio/PortfolioRenting"));
-const PortfolioObjectDetail = lazy(() => import("./pages/portfolio/PortfolioObjectDetail"));
-const PortfolioFinanceModules = lazy(() => import("./pages/portfolio/PortfolioFinanceModules"));
 
 function RouteFallback() {
   return (
@@ -252,8 +243,8 @@ const auswertungSubNav = [
 
 
 function RedirectObjectRoute({ section = "objektakte" }: { section?: string }) {
-  const { propertyId } = useParams<{ propertyId: string }>();
-  return <Navigate to={propertyId ? `/portfolio/${encodeURIComponent(propertyId)}/${section}` : "/portfolio"} replace />;
+  void section;
+  return <Navigate to="/immobilienvermoegen" replace />;
 }
 
 function RedirectLoanRoute() {
@@ -311,7 +302,7 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
 ];
 
 const immobilienSubpages: WorkspaceSubpage[] = [
-  { path: "/immobilien/objektuebersicht", label: "Objektübersicht", icon: Building2 },
+  { path: "/immobilienvermoegen", label: "Immobilienvermögen", icon: Landmark },
   { path: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", icon: PlusCircle, adminOnly: true },
   { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
   { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
@@ -2143,7 +2134,6 @@ function AppShell() {
     () => [
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
-      { to: "/immobilien/objektuebersicht", label: "Objekte", group: "Immobilien", icon: Building2 },
       ...(isAdmin ? [{ to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle }] : []),
       { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
@@ -2443,12 +2433,12 @@ export default function App() {
         />
         <Route path="/cockpit" element={<Navigate to="/dashboard/finanz-kennzahlen" replace />} />
 
-        <Route path="/portfolio" element={<Portfolio />} />
-        <Route path="/immobilien" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
-        <Route path="/Immobilien" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
+        <Route path="/portfolio" element={<Navigate to="/immobilienvermoegen" replace />} />
+        <Route path="/immobilien" element={<Navigate to="/immobilienvermoegen" replace />} />
+        <Route path="/Immobilien" element={<Navigate to="/immobilienvermoegen" replace />} />
         <Route
           path="/immobilien/objektuebersicht"
-          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienObjekte}><Portfolio /></ModuleWorkspacePage>}
+          element={<Navigate to="/immobilienvermoegen" replace />}
         />
         <Route
           path="/immobilien/immobilie-anlegen"
@@ -2460,7 +2450,7 @@ export default function App() {
         />
         <Route
           path="/immobilien/einheiten-verwaltung"
-          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienEinheiten}><Portfolio /></ModuleWorkspacePage>}
+          element={<Navigate to="/immobilienvermoegen" replace />}
         />
         <Route
           path="/immobilien/zaehlerstaende-verbrauch"
@@ -2470,44 +2460,10 @@ export default function App() {
           path="/immobilien/objekt-dokumente"
           element={<ModuleWorkspacePage config={workspaceConfigs.immobilienDokumente}><OrganisationHubPage kind="dokumente" /></ModuleWorkspacePage>}
         />
-        <Route
-          path="/portfolio/:propertyId"
-          element={<PortfolioPropertyLayout />}
-        >
-          <Route index element={<Navigate to="details" replace />} />
-          <Route path="address" element={<PortfolioAddress />} />
-          <Route path="details" element={<PortfolioDetails />} />
-          <Route path="objektakte" element={<PortfolioObjectDetail />} />
-          <Route path="darlehen" element={<PortfolioFinanceModules focus="darlehen" />} />
-          <Route path="finance-pro-jahr" element={<PortfolioFinanceModules focus="finance" />} />
-          <Route path="income" element={<PortfolioFinanceModules focus="income" />} />
-          <Route path="capex" element={<PortfolioFinanceModules focus="capex" />} />
-          <Route path="finanzen" element={<PortfolioFinance />} />
-          <Route path="energie" element={<PortfolioEnergy />} />
-          <Route path="vermietung" element={<PortfolioRenting />} />
-        </Route>
-        <Route path="/immobilien/:propertyId" element={<PortfolioPropertyLayout />}>
-          <Route index element={<Navigate to="objektakte" replace />} />
-          <Route path="uebersicht" element={<PortfolioObjectDetail />} />
-          <Route path="einheiten" element={<PortfolioDetails />} />
-          <Route path="mieter" element={<PortfolioRenting />} />
-          <Route path="leerstand" element={<Leerstand />} />
-          <Route path="finanzen" element={<PortfolioFinance />} />
-          <Route path="dokumente" element={<PortfolioObjectDetail />} />
-          <Route path="historie" element={<PortfolioObjectDetail />} />
-          <Route path="einstellungen" element={<PortfolioDetails />} />
-          <Route path="address" element={<PortfolioAddress />} />
-          <Route path="details" element={<PortfolioDetails />} />
-          <Route path="objektakte" element={<PortfolioObjectDetail />} />
-          <Route path="darlehen" element={<PortfolioFinanceModules focus="darlehen" />} />
-          <Route path="finance-pro-jahr" element={<PortfolioFinanceModules focus="finance" />} />
-          <Route path="income" element={<PortfolioFinanceModules focus="income" />} />
-          <Route path="capex" element={<PortfolioFinanceModules focus="capex" />} />
-          <Route path="energie" element={<PortfolioEnergy />} />
-          <Route path="vermietung" element={<PortfolioRenting />} />
-        </Route>
+        <Route path="/portfolio/:propertyId/*" element={<Navigate to="/immobilienvermoegen" replace />} />
+        <Route path="/immobilien/:propertyId/*" element={<Navigate to="/immobilienvermoegen" replace />} />
 
-        <Route path="/objekte" element={<Navigate to="/immobilien/objektuebersicht" replace />} />
+        <Route path="/objekte" element={<Navigate to="/immobilienvermoegen" replace />} />
         <Route
           path="/objekte/:propertyId"
           element={<RedirectObjectRoute section="objektakte" />}

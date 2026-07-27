@@ -86,6 +86,7 @@ type FieldConfig = {
 
 const STORAGE_KEY = "koenen:immobilienvermoegen:v2";
 const EXPOSE_STORAGE_KEY = "koenen:portfolio:exposes:v1";
+const WEALTH_UPDATED_EVENT = "koenen:immobilienvermoegen:updated";
 
 const ROSENSTEIN_PARKING_UNITS: ParkingUnit[] = [
   {
@@ -1212,7 +1213,7 @@ function DetailPage({
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektfoto</p>
                 <h2 className="mt-2 text-xl font-black text-slate-950">{image?.title ?? card.draft.name ?? "Immobilie"}</h2>
                 <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
-                  Fotoquelle: Seite Objekte / Portfolio-Galerie. Ein Klick auf das Foto öffnet die vergrößerte Ansicht wie in der bestehenden Objektseite.
+                  Fotoquelle: Portfolio-Galerie. Ein Klick auf das Foto öffnet die vergrößerte Ansicht.
                 </p>
               </div>
             </article>
@@ -1405,7 +1406,14 @@ export default function ImmobilienVermoegen() {
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
-  const selectedCard = params.propertyId ? cards.find((card) => card.id === params.propertyId) : undefined;
+  const selectedCard = useMemo(() => {
+    if (!params.propertyId) return undefined;
+    const routeId = decodeURIComponent(params.propertyId);
+    return cards.find((card) => {
+      const row = card.row;
+      return card.id === routeId || row?.property_id === routeId || row?.portfolio_property_id === routeId;
+    });
+  }, [cards, params.propertyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1500,6 +1508,7 @@ export default function ImmobilienVermoegen() {
         },
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event(WEALTH_UPDATED_EVENT));
       return next;
     });
     setSaveStatus((current) => ({ ...current, [id]: "Ungespeicherte Änderung lokal vorgemerkt." }));
@@ -1507,6 +1516,7 @@ export default function ImmobilienVermoegen() {
 
   function saveDraft(id: string) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedDrafts));
+    window.dispatchEvent(new Event(WEALTH_UPDATED_EVENT));
     setSaveStatus((current) => ({ ...current, [id]: "Gespeichert." }));
   }
 
@@ -1604,7 +1614,7 @@ export default function ImmobilienVermoegen() {
       <PageHeader
         eyebrow="Immobilienvermögen"
         title="Immobilienvermögen"
-        description="Dynamische Vermögensübersicht als neue Listenansicht für alle Immobilien. Die bestehende Objektübersicht unter Immobilien → Objekte bleibt unverändert erhalten."
+        description="Dynamische Vermögensübersicht als zentrale Immobilienquelle für Bestand, Vermögensnachweis, Investment-Bericht, Fotos, Exposé, Mieter- und Finanzdaten."
         meta={[
           { label: "Quelle", value: "Portfolio, Darlehen, manuelle Vermögensmaske" },
           { label: "Objekte", value: cards.length },

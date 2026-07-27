@@ -249,7 +249,7 @@ export default function PortfolioDetails() {
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={() => navigate("/portfolio")}
+            onClick={() => navigate("/immobilienvermoegen")}
             style={{
               padding: "10px 14px",
               borderRadius: 12,

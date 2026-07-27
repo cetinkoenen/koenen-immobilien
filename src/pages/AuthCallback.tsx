@@ -25,7 +25,7 @@ export default function AuthCallback() {
           return;
         }
 
-        navigate("/portfolio", { replace: true });
+        navigate("/immobilienvermoegen", { replace: true });
       } catch (err) {
         console.error("[AuthCallback] unexpected error:", err);
 

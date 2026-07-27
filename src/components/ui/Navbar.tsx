@@ -80,7 +80,7 @@ export default function Navbar() {
       >
         {/* Brand */}
         <Link
-          to="/portfolio"
+          to="/immobilienvermoegen"
           style={{
             display: "flex",
             alignItems: "center",
@@ -117,7 +117,7 @@ export default function Navbar() {
             marginLeft: 18,
           }}
         >
-          <PillLink to="/portfolio" label="Portfolio" />
+          <PillLink to="/immobilienvermoegen" label="Immobilienvermögen" />
           <PillLink to="/exports" label="Exports" />
           <PillLink to="/uebersicht" label="Übersicht" />
           <PillLink to="/auswertung" label="Auswertung" />
