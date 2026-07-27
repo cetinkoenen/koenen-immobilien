@@ -151,11 +151,62 @@ const Datenpruefung = lazy(() => import("./pages/Datenpruefung"));
 function RouteFallback() {
   return (
     <div className="mx-auto max-w-[1760px] px-3 py-6 sm:px-5 lg:px-8">
-      <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm font-black text-slate-600 shadow-sm">
-        Seite wird geladen...
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="h-3 w-36 animate-pulse rounded-full bg-slate-200" />
+        <div className="mt-4 h-8 w-full max-w-xl animate-pulse rounded-2xl bg-slate-100" />
+        <div className="mt-3 h-4 w-full max-w-3xl animate-pulse rounded-full bg-slate-100" />
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="h-20 animate-pulse rounded-2xl border border-slate-100 bg-slate-50" />
+          ))}
+        </div>
+        <div className="sr-only" aria-live="polite">
+          Seite wird geladen
+        </div>
       </div>
     </div>
   );
+}
+
+const routePreloaders: Record<string, () => Promise<unknown>> = {
+  "/dashboard/finanz-kennzahlen": () => import("./pages/Cockpit"),
+  "/dashboard/warnmeldungen": () => import("./pages/Datenpruefung"),
+  "/dashboard/aktuelle-todos": async () => undefined,
+  "/immobilienvermoegen": () => import("./pages/ImmobilienVermoegen"),
+  "/immobilien/immobilie-anlegen": () => import("./pages/Administrator"),
+  "/immobilien/mietentwicklung": () => import("./pages/Mietentwicklung"),
+  "/immobilien/einheiten-verwaltung": async () => undefined,
+  "/immobilien/zaehlerstaende-verbrauch": () => import("./pages/NebenkostenWohnungen"),
+  "/immobilien/objekt-dokumente": async () => undefined,
+  "/investment-bericht": () => import("./pages/InvestmentBericht"),
+  "/mieter/stammdaten": () => import("./pages/MieterAnlegen"),
+  "/mieter/mieteingang": () => import("./pages/Mietuebersicht"),
+  "/ein-auszug": () => import("./pages/EinAuszug"),
+  "/buchhaltung/einnahmen-ausgaben": () => import("./pages/EntryAdd"),
+  "/buchhaltung/buchungen": async () => undefined,
+  "/buchhaltung/steuer-center-berater": () => import("./pages/SteuerCenter"),
+  "/buchhaltung/fahrtenbuch": () => import("./pages/Fahrtenbuch"),
+  "/buchhaltung/berichte-exporte": async () => undefined,
+  "/darlehen": () => import("./pages/Darlehensuebersicht"),
+  "/nebenkosten": () => import("./pages/NebenkostenWohnungen"),
+  "/nebenkosten/wohnungen": () => import("./pages/NebenkostenWohnungen"),
+  "/nebenkosten/tiefgarage": () => import("./pages/NebenkostenTiefgarage"),
+  "/mahnwesen": () => import("./pages/Mahnwesen"),
+  "/ticketsystem/schadenmeldungen": async () => undefined,
+  "/dokumente": async () => undefined,
+  "/einstellungen/benutzer-rechteverwaltung": () => import("./pages/Administrator"),
+  "/einstellungen/datenschutz-sicherheit": () => import("./pages/Datenschutz"),
+};
+
+const preloadedRoutes = new Set<string>();
+
+function preloadRoute(to: string) {
+  const preload = routePreloaders[to];
+  if (!preload || preloadedRoutes.has(to)) return;
+  preloadedRoutes.add(to);
+  void preload().catch(() => {
+    preloadedRoutes.delete(to);
+  });
 }
 
 function sidebarNavLinkClass(isActive: boolean): string {
@@ -2238,6 +2289,8 @@ function AppShell() {
                       <NavLink
                         to={item.to}
                         end={item.end}
+                        onMouseEnter={() => preloadRoute(item.to)}
+                        onFocus={() => preloadRoute(item.to)}
                         className={({ isActive }) => sidebarNavLinkClass(isActive)}
                       >
                         {({ isActive }) => (
@@ -2359,6 +2412,8 @@ function AppShell() {
                             <NavLink
                               to={item.to}
                               end={item.end}
+                              onMouseEnter={() => preloadRoute(item.to)}
+                              onFocus={() => preloadRoute(item.to)}
                               onClick={() => setMobileMenuOpen(false)}
                               className={({ isActive }) =>
                                 [

@@ -147,3 +147,49 @@ td {
   text-align: left;
   vertical-align: middle;
 }
+
+/* Final app typography layer after Tailwind utilities. */
+.module-workspace h1,
+.module-workspace .page-title {
+  max-width: 1100px;
+  font-size: clamp(28px, 2.8vw, 42px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: 0 !important;
+}
+
+.module-workspace h2,
+.module-workspace .section-title {
+  font-size: clamp(19px, 1.45vw, 25px) !important;
+  line-height: 1.18 !important;
+  letter-spacing: 0 !important;
+}
+
+.module-workspace .text-5xl,
+.module-workspace .text-4xl,
+.module-workspace .text-3xl {
+  font-size: clamp(22px, 1.85vw, 30px) !important;
+  line-height: 1.1 !important;
+}
+
+.module-workspace h1.text-2xl,
+.module-workspace h1.text-3xl {
+  font-size: clamp(28px, 2.8vw, 42px) !important;
+}
+
+@media (max-width: 760px) {
+  .module-workspace {
+    font-size: 14px;
+  }
+
+  .module-workspace h1,
+  .module-workspace .page-title,
+  .module-workspace h1.text-2xl,
+  .module-workspace h1.text-3xl {
+    font-size: clamp(25px, 7vw, 34px) !important;
+  }
+
+  .module-workspace h2,
+  .module-workspace .section-title {
+    font-size: clamp(18px, 5vw, 23px) !important;
+  }
+}
