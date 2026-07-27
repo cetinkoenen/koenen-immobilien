@@ -23,8 +23,19 @@ import {
 
 import { PageHeader, SectionPanel } from "@/components/ui/professional";
 import logo from "@/assets/koenen-brand-logo.webp";
+import { useAuth } from "@/auth/AuthProvider";
+import { isAdminEmail } from "@/auth/accessControl";
 import { useAppData, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { runInvestmentAiAnalysis, type InvestmentAiFile } from "@/services/investmentAiService";
+import {
+  archiveInvestmentRequest,
+  listInvestmentRequests,
+  saveInvestmentRequest,
+  type InvestmentRequestFileMetadata,
+  type InvestmentRequestPayload,
+  type InvestmentRequestRow,
+  type InvestmentRequestStatus,
+} from "@/services/investmentRequestService";
 
 type UploadedFile = InvestmentAiFile;
 
@@ -440,11 +451,35 @@ function createFileId(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}-${randomPart}`;
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addMonthsIsoDate(months: number) {
+  const date = new Date();
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function toDateInputValue(value: string | null) {
+  return value ? value.slice(0, 10) : "";
+}
+
 export default function InvestmentBericht() {
   const appData = useAppData();
+  const { user } = useAuth();
+  const canManageInvestmentRequests = isAdminEmail(user?.email);
   const [wealthDrafts, setWealthDrafts] = useState<Record<string, WealthDraft>>(() => loadWealthDrafts());
+  const [investmentRequests, setInvestmentRequests] = useState<InvestmentRequestRow[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestSaveState, setRequestSaveState] = useState("");
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [objectName, setObjectName] = useState("Neue Investition");
+  const [requestAddress, setRequestAddress] = useState("");
+  const [requestDate, setRequestDate] = useState(() => todayIsoDate());
+  const [requestStatus, setRequestStatus] = useState<InvestmentRequestStatus>("draft");
+  const [requestExpiresAt, setRequestExpiresAt] = useState(() => addMonthsIsoDate(6));
   const [unitDescription, setUnitDescription] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [loanAmount, setLoanAmount] = useState("");
@@ -474,6 +509,188 @@ export default function InvestmentBericht() {
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiError, setAiError] = useState("");
 
+  const selectedRequest = useMemo(
+    () => investmentRequests.find((request) => request.id === selectedRequestId) ?? null,
+    [investmentRequests, selectedRequestId],
+  );
+
+  const requestFileMetadata = useMemo<InvestmentRequestFileMetadata[]>(
+    () =>
+      files.map((file) => ({
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.file.lastModified,
+      })),
+    [files],
+  );
+
+  function buildRequestPayload(): InvestmentRequestPayload {
+    return {
+      unitDescription,
+      purchasePrice,
+      loanAmount,
+      buyerProvision,
+      equity,
+      targetRent,
+      apartmentRent,
+      parkingRent,
+      nkPrepayment,
+      livingArea,
+      rooms,
+      monthlyHousegeld,
+      interestRate,
+      amortizationRate,
+      monthlyBankRate,
+      personalTaxRate,
+      plannedRentIncreaseRate,
+      additionalMaintenance,
+      nonDeductibleHousegeld,
+      persons,
+      checklist,
+    };
+  }
+
+  function resetInvestmentRequestForm() {
+    setSelectedRequestId("");
+    setRequestSaveState("Neue Anfrage bereit. Nach dem Eintragen speichern.");
+    setObjectName("Neue Investition");
+    setRequestAddress("");
+    setRequestDate(todayIsoDate());
+    setRequestStatus("draft");
+    setRequestExpiresAt(addMonthsIsoDate(6));
+    setLocation("");
+    setUnitDescription("");
+    setPurchasePrice("");
+    setLoanAmount("");
+    setBuyerProvision("");
+    setEquity("");
+    setTargetRent("");
+    setApartmentRent("");
+    setParkingRent("");
+    setNkPrepayment("");
+    setLivingArea("");
+    setRooms("");
+    setMonthlyHousegeld("");
+    setInterestRate("4,62");
+    setAmortizationRate("1,00");
+    setMonthlyBankRate("");
+    setPersonalTaxRate("44,30");
+    setPlannedRentIncreaseRate("2,00");
+    setAdditionalMaintenance("30");
+    setNonDeductibleHousegeld("40");
+    setPersons(initialPersons);
+    setChecklist(checklistTemplates);
+    setFiles([]);
+    setAiStatus("idle");
+    setAiReport(null);
+    setAiError("");
+  }
+
+  function applyInvestmentRequest(request: InvestmentRequestRow) {
+    const payload = request.payload ?? {};
+    setSelectedRequestId(request.id);
+    setRequestSaveState("");
+    setObjectName(request.object_name || request.title || "Neue Investition");
+    setRequestAddress(request.address ?? "");
+    setRequestDate(request.request_date || todayIsoDate());
+    setRequestStatus(request.status);
+    setRequestExpiresAt(toDateInputValue(request.expires_at));
+    setLocation(request.location ?? "");
+    setUnitDescription(payload.unitDescription ?? "");
+    setPurchasePrice(payload.purchasePrice ?? "");
+    setLoanAmount(payload.loanAmount ?? "");
+    setBuyerProvision(payload.buyerProvision ?? "");
+    setEquity(payload.equity ?? "");
+    setTargetRent(payload.targetRent ?? "");
+    setApartmentRent(payload.apartmentRent ?? "");
+    setParkingRent(payload.parkingRent ?? "");
+    setNkPrepayment(payload.nkPrepayment ?? "");
+    setLivingArea(payload.livingArea ?? "");
+    setRooms(payload.rooms ?? "");
+    setMonthlyHousegeld(payload.monthlyHousegeld ?? "");
+    setInterestRate(payload.interestRate ?? "4,62");
+    setAmortizationRate(payload.amortizationRate ?? "1,00");
+    setMonthlyBankRate(payload.monthlyBankRate ?? "");
+    setPersonalTaxRate(payload.personalTaxRate ?? "44,30");
+    setPlannedRentIncreaseRate(payload.plannedRentIncreaseRate ?? "2,00");
+    setAdditionalMaintenance(payload.additionalMaintenance ?? "30");
+    setNonDeductibleHousegeld(payload.nonDeductibleHousegeld ?? "40");
+    setPersons(Array.isArray(payload.persons) ? (payload.persons as InvestmentPerson[]) : initialPersons);
+    setChecklist(Array.isArray(payload.checklist) ? (payload.checklist as InvestmentChecklistItem[]) : checklistTemplates);
+    setFiles([]);
+    setAiReport(request.ai_report ? (request.ai_report as unknown as AiReport) : null);
+    setAiStatus(request.ai_report ? "ready" : "idle");
+    setAiError("");
+  }
+
+  async function refreshInvestmentRequests(nextSelectedId?: string) {
+    setRequestsLoading(true);
+    try {
+      const rows = await listInvestmentRequests();
+      setInvestmentRequests(rows);
+      if (nextSelectedId) {
+        const nextRequest = rows.find((request) => request.id === nextSelectedId);
+        if (nextRequest) applyInvestmentRequest(nextRequest);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Investment-Anfragen konnten nicht geladen werden.";
+      setRequestSaveState(message);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }
+
+  async function saveCurrentInvestmentRequest(statusOverride?: InvestmentRequestStatus, reportOverride?: AiReport | null) {
+    if (!canManageInvestmentRequests) {
+      setRequestSaveState("Nur-Lesen-Zugang: Investment-Anfragen können angesehen, aber nicht gespeichert werden.");
+      return;
+    }
+    setRequestSaveState("Investment-Anfrage wird gespeichert...");
+    try {
+      const reportToSave = reportOverride ?? aiReport;
+      const saved = await saveInvestmentRequest({
+        id: selectedRequestId || undefined,
+        title: objectName || "Neue Investition",
+        objectName,
+        requestDate,
+        address: requestAddress,
+        location,
+        status: statusOverride ?? requestStatus,
+        expiresAt: requestExpiresAt || null,
+        payload: buildRequestPayload(),
+        aiReport: reportToSave ? (reportToSave as unknown as Record<string, unknown>) : null,
+        fileMetadata: requestFileMetadata,
+      });
+      setSelectedRequestId(saved.id);
+      setRequestStatus(saved.status);
+      setRequestSaveState(`Gespeichert am ${new Date(saved.updated_at).toLocaleString("de-DE")}.`);
+      await refreshInvestmentRequests(saved.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Investment-Anfrage konnte nicht gespeichert werden.";
+      setRequestSaveState(message);
+    }
+  }
+
+  async function archiveCurrentInvestmentRequest() {
+    if (!selectedRequestId) return;
+    if (!canManageInvestmentRequests) {
+      setRequestSaveState("Nur-Lesen-Zugang: Archivieren ist dem Admin vorbehalten.");
+      return;
+    }
+    setRequestSaveState("Investment-Anfrage wird archiviert...");
+    try {
+      const archived = await archiveInvestmentRequest(selectedRequestId);
+      setRequestStatus(archived.status);
+      setRequestSaveState("Investment-Anfrage wurde archiviert.");
+      await refreshInvestmentRequests(archived.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Investment-Anfrage konnte nicht archiviert werden.";
+      setRequestSaveState(message);
+    }
+  }
+
   useEffect(() => {
     const refresh = () => setWealthDrafts(loadWealthDrafts());
     window.addEventListener(WEALTH_UPDATED_EVENT, refresh);
@@ -482,6 +699,10 @@ export default function InvestmentBericht() {
       window.removeEventListener(WEALTH_UPDATED_EVENT, refresh);
       window.removeEventListener("storage", refresh);
     };
+  }, []);
+
+  useEffect(() => {
+    void refreshInvestmentRequests();
   }, []);
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);
@@ -611,7 +832,7 @@ export default function InvestmentBericht() {
   const investmentProfile = useMemo(
     () =>
       buildInvestmentProfile({
-        objectName,
+        objectName: requestAddress || objectName,
         purchasePrice,
         buyerProvision,
         livingArea,
@@ -621,7 +842,7 @@ export default function InvestmentBericht() {
         interestRate,
         amortizationRate,
       }),
-    [amortizationRate, buyerProvision, interestRate, investmentCalculation.monthlyIncome, livingArea, monthlyHousegeld, objectName, purchasePrice, rooms, targetRent],
+    [amortizationRate, buyerProvision, interestRate, investmentCalculation.monthlyIncome, livingArea, monthlyHousegeld, objectName, purchasePrice, requestAddress, rooms, targetRent],
   );
 
   const financingScenarios = useMemo<FinancingScenario[]>(() => {
@@ -1182,7 +1403,7 @@ export default function InvestmentBericht() {
     try {
       const report = await runInvestmentAiAnalysis({
         objectName,
-        location,
+        location: location || requestAddress,
         purchasePrice,
         buyerProvision,
         equity,
@@ -1195,7 +1416,7 @@ export default function InvestmentBericht() {
         files,
       });
 
-      setAiReport({
+      const nextReport: AiReport = {
         generatedAt: report.generatedAt ?? new Date().toLocaleString("de-DE"),
         statusLabel: report.statusLabel,
         summary: report.summary,
@@ -1208,8 +1429,10 @@ export default function InvestmentBericht() {
         riskMatrix: report.riskMatrix,
         openQuestions: report.openQuestions,
         documentFindings: report.documentFindings,
-      });
+      };
+      setAiReport(nextReport);
       setAiStatus("ready");
+      void saveCurrentInvestmentRequest("in_review", nextReport);
     } catch (error) {
       const message = error instanceof Error ? error.message : "KI-Bewertung konnte nicht gestartet werden.";
       setAiStatus("blocked");
@@ -1239,6 +1462,132 @@ export default function InvestmentBericht() {
           KI-Bewertung starten
         </button>
       </PageHeader>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Investment-Anfragen</p>
+            <h2 className="mt-2 text-xl font-black text-slate-950">Gespeicherte Anfrage bearbeiten</h2>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">
+              Lege eine Investment-Anfrage als Entwurf an, speichere Datum, Adresse, Kalkulation, Checkliste und KI-Ergebnis in Supabase und öffne sie später wieder zur Bearbeitung.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={resetInvestmentRequestForm}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-800 shadow-sm transition hover:bg-slate-50"
+            >
+              Neue Anfrage
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveCurrentInvestmentRequest()}
+              disabled={!canManageInvestmentRequests}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#356778] px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-[#285464] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+            >
+              <CheckCircle2 size={17} />
+              Anfrage speichern
+            </button>
+            <button
+              type="button"
+              onClick={() => void archiveCurrentInvestmentRequest()}
+              disabled={!canManageInvestmentRequests || !selectedRequestId || requestStatus === "archived"}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileArchive size={17} />
+              Archivieren
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[1.2fr_0.9fr_0.7fr_0.7fr_0.7fr]">
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Gespeicherte Anfrage
+            <select
+              value={selectedRequestId}
+              onChange={(event) => {
+                const request = investmentRequests.find((entry) => entry.id === event.target.value);
+                if (request) applyInvestmentRequest(request);
+                else resetInvestmentRequestForm();
+              }}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            >
+              <option value="">{requestsLoading ? "Anfragen werden geladen..." : "Neue / nicht gespeicherte Anfrage"}</option>
+              {investmentRequests.map((request) => (
+                <option key={request.id} value={request.id}>
+                  {request.title} - {new Date(request.request_date).toLocaleDateString("de-DE")} ({request.status === "archived" ? "Archiv" : "Aktiv"})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Name
+            <input
+              value={objectName}
+              onChange={(event) => setObjectName(event.target.value)}
+              placeholder="z.B. Hasengasse 3"
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Datum
+            <input
+              type="date"
+              value={requestDate}
+              onChange={(event) => setRequestDate(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Aufbewahren bis
+            <input
+              type="date"
+              value={requestExpiresAt}
+              onChange={(event) => setRequestExpiresAt(event.target.value)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Status
+            <select
+              value={requestStatus}
+              onChange={(event) => setRequestStatus(event.target.value as InvestmentRequestStatus)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            >
+              <option value="draft">Entwurf</option>
+              <option value="in_review">In Prüfung</option>
+              <option value="bank_sent">An Bank gesendet</option>
+              <option value="archived">Archiviert</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_0.7fr]">
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Adresse
+            <input
+              value={requestAddress}
+              onChange={(event) => setRequestAddress(event.target.value)}
+              placeholder="Straße, Hausnummer, PLZ, Ort"
+              className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400"
+            />
+          </label>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Datenbankstatus</p>
+            <p className="mt-1 text-sm font-bold leading-6 text-slate-700">
+              {selectedRequest
+                ? `Gespeichert: ${new Date(selectedRequest.updated_at).toLocaleString("de-DE")}`
+                : "Noch nicht gespeichert"}
+              {requestFileMetadata.length ? ` · ${requestFileMetadata.length} Unterlage(n) vorgemerkt` : ""}
+            </p>
+            {requestSaveState ? <p className="mt-1 text-sm font-black text-[#356778]">{requestSaveState}</p> : null}
+            {!canManageInvestmentRequests ? (
+              <p className="mt-1 text-sm font-black text-slate-500">Nur Admins können Investment-Anfragen speichern oder archivieren.</p>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-5">
         {investmentSections.map((section) => (
@@ -1403,7 +1752,7 @@ export default function InvestmentBericht() {
 
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             <label className="grid gap-2 text-sm font-black text-slate-700">
-              Objekt / Adresse
+              Name der Investition
               <input value={objectName} onChange={(event) => setObjectName(event.target.value)} className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-950 outline-none focus:border-slate-400" />
             </label>
             <label className="grid gap-2 text-sm font-black text-slate-700">
