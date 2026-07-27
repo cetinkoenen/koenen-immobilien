@@ -44,7 +44,7 @@ type TaxVacancyRow = UnitVacancy & {
 };
 
 type MileageSummaryRow = {
-  property_id: string;
+  property_id: string | null;
   property_label: string;
   year: number;
   trips: MileageTripRow[];
@@ -875,6 +875,7 @@ export default function SteuerCenter() {
     const selectedLabel = objectCode === "ALL" ? "" : objectLabelByCode.get(objectCode) ?? objectCode;
     return mileageTrips.filter((trip) => {
       if (trip.steuerjahr !== year) return false;
+      if (trip.trip_scope === "investment") return objectCode === "ALL";
       if (objectCode === "ALL") return true;
       const tripLabel = normalize(trip.property_label);
       const tripPropertyId = normalize(trip.property_id);
@@ -890,10 +891,10 @@ export default function SteuerCenter() {
   const mileageSummaryRows = useMemo<MileageSummaryRow[]>(() => {
     const map = new Map<string, MileageSummaryRow>();
     for (const trip of filteredMileageTrips) {
-      const key = trip.property_id || trip.property_label;
+      const key = trip.property_id || `investment:${trip.property_label}`;
       const current = map.get(key) ?? {
         property_id: trip.property_id,
-        property_label: trip.property_label || trip.property_id,
+        property_label: trip.property_label || trip.investment_address || "Investment-Prüfung",
         year,
         trips: [],
         total_km: 0,

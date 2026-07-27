@@ -17,14 +17,12 @@ import {
 } from "lucide-react";
 
 import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/professional";
-import { MileageTripBook } from "@/components/MileageTripBook";
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfolioGallery";
 import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
-import { listMileageTrips, type MileageTripRow } from "@/services/mileageTripService";
 import type { MasterFinanceSnapshot } from "@/services/masterDataService";
 
 type WealthDraft = Record<string, string>;
@@ -1135,9 +1133,6 @@ function DetailPage({
   onExposeGenerate,
   onExposeUpload,
   onImageOpen,
-  mileageTrips,
-  mileageLoading,
-  onMileageChanged,
   extraDirty,
   extraStatus,
   saveStatus,
@@ -1158,9 +1153,6 @@ function DetailPage({
   onExposeGenerate: (card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) => void;
   onExposeUpload: (propertyId: string) => void;
   onImageOpen: (image: PortfolioGalleryItem) => void;
-  mileageTrips: MileageTripRow[];
-  mileageLoading: boolean;
-  onMileageChanged: () => Promise<void> | void;
   extraDirty?: boolean;
   extraStatus?: string;
   saveStatus?: string;
@@ -1168,10 +1160,6 @@ function DetailPage({
 }) {
   const navigate = useNavigate();
   const propertyId = card.row?.property_id ?? card.id;
-  const propertyAddress = [
-    card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(),
-    [card.draft.postalCode, card.draft.city].filter(Boolean).join(" "),
-  ].filter(Boolean).join(", ");
   const appendValue = (key: string, value: string) => {
     const current = card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
@@ -1273,17 +1261,6 @@ function DetailPage({
                 onExtraSave={onExtraSave}
               />
             )}
-
-            <MileageTripBook
-              propertyId={propertyId}
-              portfolioPropertyId={card.row?.portfolio_property_id ?? null}
-              propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-              propertyAddress={propertyAddress}
-              trips={mileageTrips}
-              loading={mileageLoading}
-              isAdmin={isAdmin}
-              onChanged={onMileageChanged}
-            />
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
@@ -1427,8 +1404,6 @@ export default function ImmobilienVermoegen() {
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
-  const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
-  const [mileageLoading, setMileageLoading] = useState(false);
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
   const selectedCard = useMemo(() => {
@@ -1451,31 +1426,6 @@ export default function ImmobilienVermoegen() {
       cancelled = true;
     };
   }, []);
-
-  const selectedPropertyId = selectedCard?.row?.property_id ?? selectedCard?.id ?? "";
-
-  const loadMileageTripsForSelectedProperty = useCallback(async () => {
-    if (!selectedPropertyId) {
-      setMileageTrips([]);
-      return;
-    }
-    setMileageLoading(true);
-    try {
-      const rows = await listMileageTrips({ propertyId: selectedPropertyId });
-      setMileageTrips(rows);
-    } catch (error) {
-      console.warn("property_mileage_trips load skipped:", error);
-      setMileageTrips([]);
-    } finally {
-      setMileageLoading(false);
-    }
-  }, [selectedPropertyId]);
-
-  useEffect(() => {
-    if (!params.propertyId) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadMileageTripsForSelectedProperty();
-  }, [loadMileageTripsForSelectedProperty, params.propertyId]);
 
   const findSnapshotForCard = useCallback((card: WealthCard): MasterFinanceSnapshot | undefined => {
     const row = card.row;
@@ -1647,9 +1597,6 @@ export default function ImmobilienVermoegen() {
           onExposeGenerate={generateExpose}
           onExposeUpload={openUpload}
           onImageOpen={setSelectedImage}
-          mileageTrips={mileageTrips}
-          mileageLoading={mileageLoading}
-          onMileageChanged={loadMileageTripsForSelectedProperty}
           extraDirty={dirtyExtras[propertyId]}
           extraStatus={extraStatus[propertyId]}
           saveStatus={saveStatus[selectedCard.id]}

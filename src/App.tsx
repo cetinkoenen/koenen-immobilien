@@ -18,6 +18,7 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarCheck,
+  Car,
   ChevronDown,
   ClipboardList,
   DoorOpen,
@@ -128,6 +129,7 @@ const Cockpit = lazy(() => import("./pages/Cockpit"));
 const Monate = lazy(() => import("./pages/Monate"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
+const Fahrtenbuch = lazy(() => import("./pages/Fahrtenbuch"));
 const Funktionsvergleich = lazy(() => import("./pages/Funktionsvergleich"));
 const InvestmentBericht = lazy(() => import("./pages/InvestmentBericht"));
 const ImmobilienVermoegen = lazy(() => import("./pages/ImmobilienVermoegen"));
@@ -298,6 +300,7 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", icon: PlusCircle },
   { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
+  { path: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", icon: Car },
   { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
 ];
 
@@ -606,6 +609,20 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
       { label: "Einnahmen-Aufstellung", description: "Kaltmieten, Umlagen, Garagen und steuerpflichtige Zuflüsse." },
       { label: "Werbungskosten-Erfassung", description: "Erhaltungsaufwand, Verwaltungskosten und sonstige Abzüge." },
       { label: "Grundsteuer & Abgaben", description: "Nicht umlagefähige öffentliche Lasten und Abgaben." },
+    ],
+  },
+  buchhaltungFahrtenbuch: {
+    eyebrow: "4. Modul | Buchhaltung & Finanzen",
+    title: "Fahrtenbuch & Fahrtkosten-Rechner",
+    description: "Zentrale steuerliche Fahrtenliste für Bestandsimmobilien und neue Investment-Prüfungen.",
+    basePath: "/buchhaltung",
+    source: "Fahrtenbuch, Immobilienvermögen, Investment-Prüfung",
+    subpages: buchhaltungSubpages,
+    tabs: [
+      { label: "Fahrten erfassen", description: "Besichtigung, Makler, Notar, Handwerker und Kontrollfahrten dokumentieren." },
+      { label: "Steuerjahr prüfen", description: "Fahrtkosten je Jahr und Objekt für Anlage V nachvollziehen." },
+      { label: "Belege", description: "Fotos und Dokumente für Finanzamt und Steuerberater öffnen." },
+      { label: "Investment-Fahrten", description: "Noch nicht gekaufte Objekte als ernsthafte Kaufprüfung separat nachhalten." },
     ],
   },
   buchhaltungBerichte: {
@@ -2151,6 +2168,7 @@ function AppShell() {
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
       { to: "/buchhaltung/buchungen", label: "Buchungen", group: "Buchhaltung", icon: WalletCards },
       { to: "/buchhaltung/steuer-center-berater", label: "Steuer", group: "Buchhaltung", icon: Euro },
+      { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Buchhaltung", icon: Car },
       { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "Buchhaltung", icon: BarChart3 },
       { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
       { to: "/nebenkosten", label: "Übersicht", group: "Nebenkosten", icon: ClipboardList },
@@ -2516,6 +2534,10 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungSteuer}><SteuerCenter /></ModuleWorkspacePage>}
         />
         <Route
+          path="/buchhaltung/fahrtenbuch"
+          element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungFahrtenbuch}><Fahrtenbuch /></ModuleWorkspacePage>}
+        />
+        <Route
           path="/buchhaltung/berichte-exporte"
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><ReportsExportsPage /></ModuleWorkspacePage>}
         />
@@ -2544,7 +2566,10 @@ export default function App() {
         <Route path="/berichte-exporte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
-        <Route path="/steuer" element={<SteuerCenter />} />
+        <Route path="/buchhaltung/fahrten" element={<Navigate to="/buchhaltung/fahrtenbuch" replace />} />
+        <Route path="/fahrtenbuch" element={<Navigate to="/buchhaltung/fahrtenbuch" replace />} />
+        <Route path="/steuer/fahrtenbuch" element={<Navigate to="/buchhaltung/fahrtenbuch" replace />} />
+        <Route path="/steuer" element={<Navigate to="/buchhaltung/steuer-center-berater" replace />} />
         <Route path="/auswertungen" element={<Auswertung />} />
         <Route path="/berichte" element={<Auswertung />} />
         <Route path="/funktionsvergleich" element={<Funktionsvergleich />} />

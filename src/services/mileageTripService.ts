@@ -14,9 +14,11 @@ export type MileageTripReason = (typeof MILEAGE_TRIP_REASONS)[number];
 export type MileageTripRow = {
   id: string;
   user_id?: string;
-  property_id: string;
+  property_id: string | null;
   portfolio_property_id: string | null;
   property_label: string;
+  trip_scope: "property" | "investment";
+  investment_address: string | null;
   datum: string;
   grund: MileageTripReason;
   start_adresse: string;
@@ -32,9 +34,11 @@ export type MileageTripRow = {
 
 export type MileageTripInput = {
   id?: string;
-  property_id: string;
+  property_id?: string | null;
   portfolio_property_id?: string | null;
   property_label: string;
+  trip_scope?: "property" | "investment";
+  investment_address?: string | null;
   datum: string;
   grund: MileageTripReason;
   start_adresse: string;
@@ -47,6 +51,7 @@ export type MileageTripInput = {
 export type MileageTripFilters = {
   propertyId?: string;
   year?: number;
+  scope?: "property" | "investment";
 };
 
 export const MILEAGE_RECEIPT_BUCKET = "property-mileage-receipts";
@@ -60,9 +65,11 @@ function normalizeRow(row: Record<string, unknown>): MileageTripRow {
   return {
     id: String(row.id ?? ""),
     user_id: row.user_id ? String(row.user_id) : undefined,
-    property_id: String(row.property_id ?? ""),
+    property_id: row.property_id ? String(row.property_id) : null,
     portfolio_property_id: row.portfolio_property_id ? String(row.portfolio_property_id) : null,
     property_label: String(row.property_label ?? ""),
+    trip_scope: row.trip_scope === "investment" ? "investment" : "property",
+    investment_address: row.investment_address ? String(row.investment_address) : null,
     datum: String(row.datum ?? ""),
     grund: MILEAGE_TRIP_REASONS.includes(row.grund as MileageTripReason) ? (row.grund as MileageTripReason) : "Kontrollfahrt",
     start_adresse: String(row.start_adresse ?? ""),
@@ -106,6 +113,7 @@ export async function listMileageTrips(filters: MileageTripFilters = {}): Promis
 
   if (filters.propertyId) query = query.eq("property_id", filters.propertyId);
   if (filters.year) query = query.eq("steuerjahr", filters.year);
+  if (filters.scope) query = query.eq("trip_scope", filters.scope);
 
   const { data, error } = await query;
   if (error) throw error;
@@ -115,9 +123,11 @@ export async function listMileageTrips(filters: MileageTripFilters = {}): Promis
 export async function saveMileageTrip(input: MileageTripInput): Promise<MileageTripRow> {
   const distance = Math.max(0, toNumber(input.distanz_km));
   const payload = {
-    property_id: input.property_id,
+    property_id: input.property_id || null,
     portfolio_property_id: input.portfolio_property_id ?? null,
     property_label: input.property_label.trim(),
+    trip_scope: input.trip_scope ?? (input.property_id ? "property" : "investment"),
+    investment_address: input.investment_address?.trim() || null,
     datum: input.datum,
     grund: input.grund,
     start_adresse: input.start_adresse.trim(),
