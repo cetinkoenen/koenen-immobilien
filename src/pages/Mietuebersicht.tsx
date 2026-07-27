@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
@@ -37,6 +38,18 @@ type OverviewRow = {
   year: number;
   month: number;
   expectedSource: string;
+};
+
+type AnnualOverviewRow = {
+  key: string;
+  objectId: string;
+  label: string;
+  unitLabel?: string;
+  referenceLabel?: string;
+  tenantLookupKey: string;
+  months: Array<OverviewRow | undefined>;
+  yearExpected: number;
+  yearPaid: number;
 };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
@@ -217,6 +230,25 @@ function statusClass(status: RentStatus): string {
   if (status === "inactive") return "is-inactive";
   if (status === "vacant") return "is-vacant";
   return "is-missing";
+}
+
+function monthShortLabel(month: number): string {
+  return new Intl.DateTimeFormat("de-DE", { month: "short" }).format(new Date(2025, month - 1, 1)).replace(".", "");
+}
+
+function paymentTimingTone(row: OverviewRow | undefined): string {
+  if (!row) return "bg-slate-50 text-slate-300 border-slate-100";
+  if (row.status === "vacant") return "bg-zinc-100 text-zinc-700 border-zinc-200";
+  if (row.status === "inactive") return "bg-slate-100 text-slate-500 border-slate-200";
+  if (row.status === "missing") return "bg-rose-50 text-rose-800 border-rose-200";
+  if (row.status === "partial") return "bg-amber-50 text-amber-800 border-amber-200";
+
+  const day = bookingDayOfMonth(row.lastBookingDate);
+  if (day === null) return "bg-emerald-50 text-emerald-800 border-emerald-200";
+  if (day <= 5) return "bg-emerald-50 text-emerald-800 border-emerald-200";
+  if (day <= 10) return "bg-teal-50 text-teal-800 border-teal-200";
+  if (day <= 20) return "bg-sky-50 text-sky-800 border-sky-200";
+  return "bg-indigo-50 text-indigo-800 border-indigo-200";
 }
 
 function normalizeFilterText(value: string | null | undefined): string {
@@ -818,6 +850,8 @@ function DonutChart({ paid, partial, missing, inactive, vacant }: { paid: number
 }
 
 export default function Mietuebersicht() {
+  const location = useLocation();
+  const annualOverviewMode = location.pathname.includes("jahresuebersicht");
   // Ab dem 25. gebuchte Mieten zählen fachlich zum Folgemonat.
   // Deshalb startet der Mieteingang ab dem 25. automatisch im Folgemonat,
   // damit z. B. eine am 29.05. gebuchte "Juni 2026"-Miete sofort sichtbar ist.
@@ -827,11 +861,12 @@ export default function Mietuebersicht() {
     return addMonthsToYearMonth(now.getFullYear(), now.getMonth() + 1, recommendedMonthOffset());
   };
   const [selectedPeriod, setSelectedPeriod] = useState(() => recommendedYearMonth());
-  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>(annualOverviewMode ? "year" : "month");
   const month = useMemo(() => {
     return monthRangeFromYearMonth(selectedPeriod.year, selectedPeriod.month);
   }, [selectedPeriod.year, selectedPeriod.month]);
-  const displayedPeriods = useMemo(() => buildDisplayedPeriods(selectedPeriod.year, selectedPeriod.month, periodMode), [selectedPeriod.year, selectedPeriod.month, periodMode]);
+  const effectivePeriodMode: PeriodMode = annualOverviewMode ? "year" : periodMode;
+  const displayedPeriods = useMemo(() => buildDisplayedPeriods(selectedPeriod.year, selectedPeriod.month, effectivePeriodMode), [selectedPeriod.year, selectedPeriod.month, effectivePeriodMode]);
   const appData = useAppData();
   const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
@@ -1150,8 +1185,45 @@ export default function Mietuebersicht() {
     });
   }, [rows, objectFilter, statusFilter]);
 
+  const annualRows = useMemo<AnnualOverviewRow[]>(() => {
+    const objectFilteredRows = rows.filter((row) => !objectFilter || row.objectId === objectFilter);
+    const map = new Map<string, AnnualOverviewRow>();
+
+    for (const row of objectFilteredRows) {
+      const key = `${row.objectId}::${row.referenceLabel ?? row.unitLabel ?? "main"}`;
+      const current = map.get(key) ?? {
+        key,
+        objectId: row.objectId,
+        label: row.label,
+        unitLabel: row.unitLabel,
+        referenceLabel: row.referenceLabel,
+        tenantLookupKey: row.tenantLookupKey,
+        months: Array.from({ length: 12 }, () => undefined),
+        yearExpected: 0,
+        yearPaid: 0,
+      };
+      current.months[row.month - 1] = row;
+      current.yearExpected += row.expectedAmount ?? 0;
+      current.yearPaid += row.paidAmount;
+      map.set(key, current);
+    }
+
+    return [...map.values()]
+      .filter((row) => statusFilter === "all" || row.months.some((monthRow) => monthRow?.status === statusFilter))
+      .sort((a, b) => `${a.label} ${a.unitLabel ?? ""}`.localeCompare(`${b.label} ${b.unitLabel ?? ""}`, "de"));
+  }, [objectFilter, rows, statusFilter]);
+
   const resetToRecommendedMonth = () => setSelectedPeriod(recommendedYearMonth());
   const shiftSelectedMonth = (offset: number) => setSelectedPeriod((value) => addMonthsToYearMonth(value.year, value.month, offset));
+
+  const stats = useMemo(() => {
+    const paid = filteredRows.filter((row) => row.status === "paid").length;
+    const partial = filteredRows.filter((row) => row.status === "partial").length;
+    const missing = filteredRows.filter((row) => row.status === "missing").length;
+    const inactive = filteredRows.filter((row) => row.status === "inactive").length;
+    const vacant = filteredRows.filter((row) => row.status === "vacant").length;
+    return { paid, partial, missing, inactive, vacant, total: filteredRows.length, amount: filteredRows.reduce((sum, row) => sum + row.paidAmount, 0) };
+  }, [filteredRows]);
 
   function openFilteredPdf() {
     const rowsHtml = filteredRows.map((row) => `
@@ -1193,23 +1265,22 @@ export default function Mietuebersicht() {
     printWindow.document.close();
   }
 
-  const stats = useMemo(() => {
-    const paid = filteredRows.filter((row) => row.status === "paid").length;
-    const partial = filteredRows.filter((row) => row.status === "partial").length;
-    const missing = filteredRows.filter((row) => row.status === "missing").length;
-    const inactive = filteredRows.filter((row) => row.status === "inactive").length;
-    const vacant = filteredRows.filter((row) => row.status === "vacant").length;
-    return { paid, partial, missing, inactive, vacant, total: filteredRows.length, amount: filteredRows.reduce((sum, row) => sum + row.paidAmount, 0) };
-  }, [filteredRows]);
-
   return (
     <div className="tenant-page">
       <header className="tenant-hero">
-        <h1>Mieteingang</h1>
+        <h1>{annualOverviewMode ? "Mieteingang Jahresübersicht" : "Mieteingang"}</h1>
         <p>
-          Abgleich von Buchhaltung und Portfolio-Vermietungszeiträumen: Ist-Zahlung, Sollmiete,
-          Zeitraum und Abweichungen werden pro Objekt geprüft.
+          {annualOverviewMode
+            ? "Jahresmatrix aus denselben Mieteingangs-Daten: Sollmiete aus Vermietungszeiträumen, Ist-Zahlungen aus Buchhaltung und Zahlungstermine farblich gekennzeichnet."
+            : "Abgleich von Buchhaltung und Portfolio-Vermietungszeiträumen: Ist-Zahlung, Sollmiete, Zeitraum und Abweichungen werden pro Objekt geprüft."}
         </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          {annualOverviewMode ? (
+            <Link to="/mieter/mieteingang" className="tenant-mini-button no-underline">← Monatsprüfung öffnen</Link>
+          ) : (
+            <Link to="/mieter/mieteingang/jahresuebersicht" className="tenant-mini-button no-underline">Jahresübersicht öffnen</Link>
+          )}
+        </div>
         {status.__global ? <div className="tenant-message" style={{ marginTop: 12 }}>{status.__global}</div> : null}
       </header>
 
@@ -1217,7 +1288,7 @@ export default function Mietuebersicht() {
         <aside className="tenant-summary tenant-summary-top">
           <div>
             <h2>Zusammenfassung</h2>
-            <p>{periodMode === "year" ? `Ganzes Jahr ${selectedPeriod.year}` : month.label}</p>
+            <p>{effectivePeriodMode === "year" ? `Ganzes Jahr ${selectedPeriod.year}` : month.label}</p>
           </div>
           <DonutChart paid={stats.paid} partial={stats.partial} missing={stats.missing} inactive={stats.inactive} vacant={stats.vacant} />
           <div className="tenant-summary-lines">
@@ -1233,13 +1304,15 @@ export default function Mietuebersicht() {
         <main className="tenant-card">
           <div className="tenant-card-head">
             <div>
-              <h2>{periodMode === "year" ? `Mieteingänge ${selectedPeriod.year}` : `Mieteingänge ${month.label}`}</h2>
+              <h2>{annualOverviewMode ? `Zahlungskalender ${selectedPeriod.year}` : effectivePeriodMode === "year" ? `Mieteingänge ${selectedPeriod.year}` : `Mieteingänge ${month.label}`}</h2>
               <p>Soll: Portfolio → Vermietungszeiträume. Ist: Buchhaltung. Teilweise = weniger oder mehr als Sollmiete.</p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                <button type="button" onClick={() => shiftSelectedMonth(-1)} className="tenant-mini-button">← Vormonat</button>
-                <button type="button" onClick={resetToRecommendedMonth} className="tenant-mini-button">Aktueller Mietmonat</button>
-                <button type="button" onClick={() => shiftSelectedMonth(1)} className="tenant-mini-button">Folgemonat →</button>
-              </div>
+              {!annualOverviewMode ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <button type="button" onClick={() => shiftSelectedMonth(-1)} className="tenant-mini-button">← Vormonat</button>
+                  <button type="button" onClick={resetToRecommendedMonth} className="tenant-mini-button">Aktueller Mietmonat</button>
+                  <button type="button" onClick={() => shiftSelectedMonth(1)} className="tenant-mini-button">Folgemonat →</button>
+                </div>
+              ) : null}
             </div>
             <div className="tenant-total-box">
               <span>Summe Zahlungseingänge</span>
@@ -1257,21 +1330,25 @@ export default function Mietuebersicht() {
                 ))}
               </select>
             </label>
-            <label>
-              Zeitraum
-              <select value={periodMode} onChange={(event) => setPeriodMode(event.target.value as PeriodMode)}>
-                <option value="month">Monat</option>
-                <option value="year">Ganzes Jahr</option>
-              </select>
-            </label>
-            <label>
-              Monat
-              <select value={selectedPeriod.month} disabled={periodMode === "year"} onChange={(event) => setSelectedPeriod((value) => ({ ...value, month: Number(event.target.value) }))}>
-                {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
-                  <option key={value} value={value}>{new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(2025, value - 1, 1))}</option>
-                ))}
-              </select>
-            </label>
+            {!annualOverviewMode ? (
+              <>
+                <label>
+                  Zeitraum
+                  <select value={periodMode} onChange={(event) => setPeriodMode(event.target.value as PeriodMode)}>
+                    <option value="month">Monat</option>
+                    <option value="year">Ganzes Jahr</option>
+                  </select>
+                </label>
+                <label>
+                  Monat
+                  <select value={selectedPeriod.month} disabled={periodMode === "year"} onChange={(event) => setSelectedPeriod((value) => ({ ...value, month: Number(event.target.value) }))}>
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
+                      <option key={value} value={value}>{new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(2025, value - 1, 1))}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
             <label>
               Jahr
               <input
@@ -1299,7 +1376,69 @@ export default function Mietuebersicht() {
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
           {appData.loading && <div className="tenant-message">Mieteingang wird geladen…</div>}
 
-          {!appData.loading && filteredRows.length > 0 && (
+          {!appData.loading && annualOverviewMode && (
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap gap-2 text-xs font-black">
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">1.-5. Tag</span>
+                  <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">6.-10. Tag</span>
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800">11.-20. Tag</span>
+                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-800">ab 21. Tag</span>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">Teilweise</span>
+                  <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Fehlt</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-slate-600">Neutral</span>
+                </div>
+              </div>
+              {annualRows.length > 0 ? (
+                <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white">
+                  <table className="min-w-[1180px] w-full border-collapse text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        <th className="border-b border-slate-200 p-4">Objekt / Einheit</th>
+                        <th className="border-b border-slate-200 p-4">Mieter</th>
+                        {Array.from({ length: 12 }, (_, index) => (
+                          <th key={index + 1} className="border-b border-slate-200 p-3 text-center">{monthShortLabel(index + 1)}</th>
+                        ))}
+                        <th className="border-b border-slate-200 p-4 text-right">Jahr Ist</th>
+                        <th className="border-b border-slate-200 p-4 text-right">Jahr Soll</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {annualRows.map((row) => {
+                        const tenant = tenantInfo[row.tenantLookupKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
+                        const tenantName = [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "—";
+                        return (
+                          <tr key={row.key} className="align-top">
+                            <td className="border-b border-slate-100 p-4">
+                              <div className="text-sm font-black text-slate-950">{row.label}</div>
+                              {row.unitLabel ? <div className="mt-1 text-xs font-black text-slate-500">{row.unitLabel}</div> : null}
+                              {row.referenceLabel && row.referenceLabel !== row.unitLabel ? <div className="mt-1 text-[11px] font-bold text-slate-400">{row.referenceLabel}</div> : null}
+                            </td>
+                            <td className="border-b border-slate-100 p-4 text-sm font-bold text-slate-600">{tenantName}</td>
+                            {row.months.map((monthRow, index) => (
+                              <td key={`${row.key}-${index}`} className="border-b border-slate-100 p-2">
+                                <div className={`min-h-[72px] rounded-2xl border p-2 text-center ${paymentTimingTone(monthRow)}`} title={monthRow ? `${statusLabel(monthRow.status)} · Eingang ${formatCurrency(monthRow.paidAmount)} · Soll ${monthRow.expectedAmount === null ? "—" : formatCurrency(monthRow.expectedAmount)} · Datum ${formatDate(monthRow.lastBookingDate)}` : "Kein Zeitraum"}>
+                                  <div className="text-[10px] font-black uppercase tracking-[0.08em]">{monthRow ? statusLabel(monthRow.status) : "—"}</div>
+                                  <div className="mt-1 text-xs font-black">{monthRow ? formatCurrency(monthRow.paidAmount) : "—"}</div>
+                                  <div className="mt-1 text-[10px] font-bold opacity-80">{monthRow ? formatDate(monthRow.lastBookingDate) : ""}</div>
+                                </div>
+                              </td>
+                            ))}
+                            <td className="border-b border-slate-100 p-4 text-right text-sm font-black text-emerald-800">{formatCurrency(row.yearPaid)}</td>
+                            <td className="border-b border-slate-100 p-4 text-right text-sm font-black text-slate-900">{formatCurrency(row.yearExpected)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="tenant-message">Keine Jahresdaten für diese Filter gefunden.</div>
+              )}
+            </div>
+          )}
+
+          {!appData.loading && !annualOverviewMode && filteredRows.length > 0 && (
             <div className="tenant-list">
               {filteredRows.map((row) => {
                 const tenant = tenantInfo[row.tenantLookupKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
@@ -1328,7 +1467,7 @@ export default function Mietuebersicht() {
           )}
 
           {!appData.loading && rows.length === 0 && <div className="tenant-message">Keine Objekte gefunden.</div>}
-          {!appData.loading && rows.length > 0 && filteredRows.length === 0 && <div className="tenant-message">Keine Ergebnisse für diese Suche.</div>}
+          {!appData.loading && !annualOverviewMode && rows.length > 0 && filteredRows.length === 0 && <div className="tenant-message">Keine Ergebnisse für diese Suche.</div>}
         </main>
       </section>
     </div>

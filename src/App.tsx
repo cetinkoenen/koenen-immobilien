@@ -2581,6 +2581,7 @@ export default function App() {
         <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
         <Route path="/mieter/zahlungen" element={<Mietuebersicht />} />
         <Route path="/mieter/mieteingang" element={<Mietuebersicht />} />
+        <Route path="/mieter/mieteingang/jahresuebersicht" element={<Mietuebersicht />} />
         <Route path="/mieter/mietentwicklung" element={<Mietentwicklung />} />
         <Route path="/mieter/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
         <Route path="/mieter/historie" element={<EinAuszug />} />
