@@ -19,6 +19,7 @@ import {
 import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/professional";
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
+import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfolioGallery";
 import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
@@ -508,6 +509,11 @@ function isRosensteinCard(card: WealthCard) {
   return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("rosenstein");
 }
 
+function getPropertyImage(name: string): PortfolioGalleryItem | undefined {
+  const normalized = normalize(name);
+  return portfolioGalleryItems.find((item) => item.matchTerms.some((term) => normalized.includes(normalize(term))));
+}
+
 function getEntryYear(entry: FinanceEntry) {
   const raw = entry.booking_date ?? "";
   const parsed = new Date(raw);
@@ -682,6 +688,69 @@ function SourceKpi({ label, value, tone = "neutral" }: { label: string; value: s
     <div className={`rounded-[18px] border p-4 shadow-sm ${toneClass}`}>
       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <b className="mt-3 block text-xl font-black">{value}</b>
+    </div>
+  );
+}
+
+function PropertyImageButton({
+  image,
+  label,
+  className = "",
+  onOpen,
+}: {
+  image?: PortfolioGalleryItem;
+  label: string;
+  className?: string;
+  onOpen: (image: PortfolioGalleryItem) => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!image}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (image) onOpen(image);
+      }}
+      className={[
+        "group relative flex min-h-[120px] overflow-hidden rounded-[18px] border border-slate-200 bg-slate-100 text-left shadow-sm transition enabled:cursor-zoom-in enabled:hover:border-orange-200 enabled:hover:shadow-md disabled:cursor-default",
+        className,
+      ].join(" ")}
+      aria-label={image ? `${image.title} vergrößern` : `Kein Objektbild für ${label} vorhanden`}
+    >
+      {image ? (
+        <>
+          <img src={image.imageUrl} alt={image.title} className="h-full min-h-[120px] w-full object-cover transition duration-300 group-enabled:group-hover:scale-[1.03]" />
+          <span className="absolute inset-x-3 bottom-3 rounded-2xl bg-slate-950/72 px-3 py-2 text-xs font-black text-white backdrop-blur">
+            Foto vergrößern
+          </span>
+        </>
+      ) : (
+        <span className="flex h-full min-h-[120px] w-full items-center justify-center text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+          Objektbild
+        </span>
+      )}
+    </button>
+  );
+}
+
+function PropertyImageModal({ image, onClose }: { image: PortfolioGalleryItem; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="relative w-full max-w-5xl overflow-hidden rounded-[24px] bg-white shadow-[0_28px_80px_rgba(0,0,0,0.32)]" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-2xl font-black text-slate-950 shadow-sm"
+          aria-label="Foto schließen"
+        >
+          ×
+        </button>
+        <img src={image.imageUrl} alt={image.title} className="max-h-[78vh] w-full object-contain bg-slate-950" />
+        <div className="border-t border-slate-200 bg-white px-5 py-4">
+          <b className="block text-lg font-black text-slate-950">{image.title}</b>
+          <span className="mt-1 block text-sm font-bold text-slate-500">{image.subtitle}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1053,6 +1122,7 @@ function DetailPage({
   finance,
   entries,
   year,
+  image,
   uploadedExpose,
   onUpdate,
   onSave,
@@ -1061,6 +1131,7 @@ function DetailPage({
   onExposePreview,
   onExposeGenerate,
   onExposeUpload,
+  onImageOpen,
   extraDirty,
   extraStatus,
   saveStatus,
@@ -1071,6 +1142,7 @@ function DetailPage({
   finance: WealthFinance;
   entries: FinanceEntry[];
   year: number;
+  image?: PortfolioGalleryItem;
   uploadedExpose?: ExposeInfo;
   onUpdate: (id: string, key: string, value: string) => void;
   onSave: (id: string) => void;
@@ -1079,6 +1151,7 @@ function DetailPage({
   onExposePreview: (card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) => void;
   onExposeGenerate: (card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) => void;
   onExposeUpload: (propertyId: string) => void;
+  onImageOpen: (image: PortfolioGalleryItem) => void;
   extraDirty?: boolean;
   extraStatus?: string;
   saveStatus?: string;
@@ -1133,6 +1206,16 @@ function DetailPage({
         </div>
 
         <div className="space-y-5">
+            <article className="grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
+              <PropertyImageButton image={image} label={card.draft.name || "Immobilie"} className="min-h-[190px]" onOpen={onImageOpen} />
+              <div className="flex flex-col justify-center">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektfoto</p>
+                <h2 className="mt-2 text-xl font-black text-slate-950">{image?.title ?? card.draft.name ?? "Immobilie"}</h2>
+                <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
+                  Fotoquelle: Seite Objekte / Portfolio-Galerie. Ein Klick auf das Foto öffnet die vergrößerte Ansicht wie in der bestehenden Objektseite.
+                </p>
+              </div>
+            </article>
             <PropertyEconomicOverview finance={finance} year={year} />
             {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} /> : null}
 
@@ -1319,6 +1402,7 @@ export default function ImmobilienVermoegen() {
   const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
+  const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
   const selectedCard = params.propertyId ? cards.find((card) => card.id === params.propertyId) : undefined;
@@ -1483,6 +1567,7 @@ export default function ImmobilienVermoegen() {
     const propertyId = selectedCard.row?.property_id ?? selectedCard.id;
     const extra = extraInfo[propertyId] ?? emptyPropertyExtra;
     const finance = getFinanceForCard(selectedCard);
+    const image = getPropertyImage(selectedCard.draft.name || selectedCard.row?.property_name || "");
     return (
       <>
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
@@ -1492,6 +1577,7 @@ export default function ImmobilienVermoegen() {
           finance={finance}
           entries={appData.entries}
           year={year}
+          image={image}
           uploadedExpose={exposes[propertyId]}
           onUpdate={updateDraft}
           onSave={saveDraft}
@@ -1500,12 +1586,14 @@ export default function ImmobilienVermoegen() {
           onExposePreview={previewExpose}
           onExposeGenerate={generateExpose}
           onExposeUpload={openUpload}
+          onImageOpen={setSelectedImage}
           extraDirty={dirtyExtras[propertyId]}
           extraStatus={extraStatus[propertyId]}
           saveStatus={saveStatus[selectedCard.id]}
           isAdmin={isAdmin}
         />
         {exposePreview ? <ExposeModal preview={exposePreview} uploaded={exposes[exposePreview.card.row?.property_id ?? exposePreview.card.id]} onClose={() => setExposePreview(null)} /> : null}
+        {selectedImage ? <PropertyImageModal image={selectedImage} onClose={() => setSelectedImage(null)} /> : null}
       </>
     );
   }
@@ -1535,21 +1623,25 @@ export default function ImmobilienVermoegen() {
           </span>
         )}
       </PageHeader>
+      {selectedImage ? <PropertyImageModal image={selectedImage} onClose={() => setSelectedImage(null)} /> : null}
 
       <FinanceOverview totals={totals} year={year} objectValue={totals.value} objectCount={cards.length} />
 
       <section className="grid gap-4 md:grid-cols-2">
         {cards.map((card) => {
           const isRosenstein = isRosensteinCard(card);
+          const image = getPropertyImage(card.draft.name || card.row?.property_name || "");
           return (
-            <Link
+            <article
               key={card.id}
-              to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`}
               className="group grid min-h-[178px] overflow-hidden rounded-[18px] border border-slate-200 bg-white text-slate-950 no-underline shadow-[0_12px_28px_rgba(51,65,85,0.07)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_18px_42px_rgba(51,65,85,0.10)] sm:grid-cols-[116px_1fr]"
             >
-              <div className="flex min-h-[96px] items-center justify-center bg-orange-100 text-orange-600">
-                <Building2 size={38} strokeWidth={1.9} />
-              </div>
+              <PropertyImageButton
+                image={image}
+                label={card.draft.name || card.row?.property_name || "Immobilie"}
+                className="h-full min-h-[178px] rounded-none border-0 shadow-none"
+                onOpen={setSelectedImage}
+              />
               <div className="grid gap-4 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -1587,11 +1679,11 @@ export default function ImmobilienVermoegen() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-sm font-black text-[#255f6f]">
+                <Link to={`/immobilienvermoegen/${encodeURIComponent(card.id)}`} className="flex items-center gap-2 text-sm font-black text-[#255f6f] no-underline">
                   <ShieldCheck size={17} /> Detailmaske öffnen
-                </div>
+                </Link>
               </div>
-            </Link>
+            </article>
           );
         })}
         {isAdmin ? (
