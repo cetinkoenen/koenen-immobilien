@@ -10,6 +10,7 @@ import {
   type OpenPostRow,
   type OpenPostStatus,
 } from "../services/professionalCockpitService";
+import { PROPERTY_TASKS_CHANGED_EVENT } from "../services/workflowTaskService";
 
 function eur(value: number): string {
   return new Intl.NumberFormat("de-DE", {
@@ -68,6 +69,15 @@ export default function Cockpit() {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    function handleTasksChanged() {
+      void load();
+    }
+
+    window.addEventListener(PROPERTY_TASKS_CHANGED_EVENT, handleTasksChanged);
+    return () => window.removeEventListener(PROPERTY_TASKS_CHANGED_EVENT, handleTasksChanged);
   }, []);
 
   async function handleTaskChecklistChange(taskId: string, itemKey: string, done: boolean) {

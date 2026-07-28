@@ -44,6 +44,8 @@ type TaskMeta = {
   vacancy_id?: string;
   vacancy_property_id?: string | null;
   unit_label?: string | null;
+  dismissed_at?: string;
+  deleted_at?: string;
   checklist_done?: Record<string, boolean>;
   checklist_groups?: Array<{ title?: string; items?: string[] }>;
 };
@@ -54,6 +56,7 @@ type ExistingTaskRow = {
   due_date: string | null;
   property_name: string | null;
   objekt_code: string | null;
+  status: string | null;
   meta?: TaskMeta | null;
 };
 
@@ -372,7 +375,7 @@ async function ensureMoveOutChecklistTasks(
     .from("property_tasks")
     .select("id,title,due_date,property_name,objekt_code,meta,status")
     .eq("category", "leerstand")
-    .in("status", ["offen", "in_bearbeitung"]);
+    .neq("status", "erledigt");
 
   if (existingError) {
     console.warn("Leerstand-Aufgaben konnten nicht geprüft werden.", existingError);

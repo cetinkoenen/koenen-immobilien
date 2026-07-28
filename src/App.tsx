@@ -1826,6 +1826,7 @@ type MaintenanceTask = {
   backendPriority: PropertyTaskPriority;
   backendStatus: PropertyTaskStatus;
   history: Array<Record<string, unknown>>;
+  meta: Record<string, unknown>;
 };
 
 type TaskPageMode = "aufgabe" | "schaden" | "handwerker";
@@ -1922,6 +1923,7 @@ function mapPropertyTaskRow(row: PropertyTaskRow, todayIso: string): Maintenance
     backendPriority: row.priority,
     backendStatus: row.status,
     history: Array.isArray(row.meta?.history) ? row.meta.history as Array<Record<string, unknown>> : [],
+    meta: row.meta ?? {},
   };
 }
 
@@ -2215,7 +2217,39 @@ function TasksMaintenancePage({ mode = "aufgabe" }: { mode?: TaskPageMode }) {
     if (!confirmed) return;
     setTaskStatus("Löscht...");
     try {
-      await deletePropertyTask(task.backendId);
+      const isGeneratedVacancyTask = task.source === "aufgabe" && task.backendCategory === "leerstand" && task.meta?.source === "unit_vacancies";
+      if (isGeneratedVacancyTask) {
+        await savePropertyTask({
+          id: task.backendId,
+          propertyId: task.objectId === "all" ? null : task.objectId,
+          portfolioPropertyId: null,
+          objektCode: task.objectId === "all" ? null : task.objectId,
+          propertyName: task.objectLabel,
+          title: task.title,
+          description: task.note || null,
+          category: task.backendCategory,
+          priority: task.backendPriority,
+          status: "archiviert",
+          dueDate: task.dueDate,
+          source: "system",
+          meta: {
+            ...task.meta,
+            dismissed_at: new Date().toISOString(),
+            deleted_at: new Date().toISOString(),
+            history: [
+              ...task.history,
+              {
+                at: new Date().toISOString(),
+                action: "gelöscht",
+                label: task.category,
+                status: "Archiviert",
+              },
+            ],
+          },
+        });
+      } else {
+        await deletePropertyTask(task.backendId);
+      }
       setTasks((current) => current.filter((item) => item.id !== task.id));
       resetTaskForm();
       setTaskStatus("Aufgabe gelöscht.");
@@ -2381,6 +2415,7 @@ function TasksMaintenancePage({ mode = "aufgabe" }: { mode?: TaskPageMode }) {
                   <div className="flex flex-wrap gap-2 xl:justify-end">
                     <button type="button" onClick={() => beginEditTask(task)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-black text-slate-700">Bearbeiten</button>
                     <button type="button" disabled={!isAdmin || task.status === "Archiviert"} onClick={() => void handleArchiveTask(task)} className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-black text-blue-800 disabled:opacity-50">Archiv</button>
+                    <button type="button" disabled={!isAdmin} onClick={() => void handleDeleteTask(task)} className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-black text-red-800 disabled:opacity-50">Löschen</button>
                   </div>
                 </article>
               ))}

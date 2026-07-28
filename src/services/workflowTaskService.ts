@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
+export const PROPERTY_TASKS_CHANGED_EVENT = "koenen:property-tasks-changed";
+
 export type PropertyTaskPriority = "niedrig" | "mittel" | "hoch" | "kritisch";
 export type PropertyTaskStatus = "offen" | "in_bearbeitung" | "erledigt" | "archiviert";
 export type PropertyTaskCategory = "miete" | "nk" | "dokument" | "darlehen" | "capex" | "leerstand" | "prüfung" | "allgemein";
@@ -40,6 +42,11 @@ export type UpsertPropertyTaskInput = {
   relatedDocumentId?: string | null;
   meta?: Record<string, unknown>;
 };
+
+function notifyPropertyTasksChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(PROPERTY_TASKS_CHANGED_EVENT));
+}
 
 export async function listPropertyTasks(params: {
   propertyId?: string | null;
@@ -86,6 +93,7 @@ export async function savePropertyTask(input: UpsertPropertyTaskInput) {
 
   const { data, error } = await query;
   if (error) throw error;
+  notifyPropertyTasksChanged();
   return data as PropertyTaskRow;
 }
 
@@ -97,6 +105,7 @@ export async function completePropertyTask(id: string) {
     .select("*")
     .single();
   if (error) throw error;
+  notifyPropertyTasksChanged();
   return data as PropertyTaskRow;
 }
 
@@ -108,6 +117,7 @@ export async function archivePropertyTask(id: string) {
     .select("*")
     .single();
   if (error) throw error;
+  notifyPropertyTasksChanged();
   return data as PropertyTaskRow;
 }
 
@@ -117,6 +127,7 @@ export async function deletePropertyTask(id: string) {
     .delete()
     .eq("id", id);
   if (error) throw error;
+  notifyPropertyTasksChanged();
 }
 
 export async function getPropertyTaskSummary() {
