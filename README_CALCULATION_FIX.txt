@@ -1,4 +1,4 @@
-Calculation fix patch for koenen-app2
+Calculation fix patch for koenen-investment
 
 Replace these files in the project:
 - src/state/AppDataContext.tsx

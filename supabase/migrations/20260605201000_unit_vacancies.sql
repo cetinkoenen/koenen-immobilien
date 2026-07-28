@@ -1,4 +1,4 @@
--- Koenen App: Leerstandmanagement fuer Einheiten
+-- Koenen Investment: Leerstandmanagement fuer Einheiten
 -- Eigene Tabelle, damit bestehende Buchungen, Portfolio-Zeitraeume und Charts unveraendert bleiben.
 
 create table if not exists public.unit_vacancies (

@@ -1,4 +1,4 @@
-Koenen App – Phase 5A Backend-Finalisierung
+Koenen Investment – Phase 5A Backend-Finalisierung
 ============================================
 
 Dieses Update ergänzt die echte Supabase-/Backend-Grundlage für Dokumente, Aufgaben und Audit-Log.

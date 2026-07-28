@@ -1,4 +1,4 @@
-Koenen App · Buchungen Sicherung Update
+Koenen Investment · Buchungen Sicherung Update
 
 Ziel:
 - Buchungen in finance_entry sollen nicht mehr endgültig gelöscht werden.

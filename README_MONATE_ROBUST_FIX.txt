@@ -1,4 +1,4 @@
-Koenen App · Monate robust Ladefix
+Koenen Investment · Monate robust Ladefix
 
 Geändert:
 - Nur src/pages/Monate.tsx

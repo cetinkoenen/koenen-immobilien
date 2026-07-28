@@ -101,7 +101,7 @@ export default function Navbar() {
             }}
           />
           <div style={{ display: "grid", lineHeight: 1.1 }}>
-            <strong style={{ fontSize: 16 }}>Könen Immobilien</strong>
+            <strong style={{ fontSize: 16 }}>Koenen Investment</strong>
             <span style={{ fontSize: 12, opacity: 0.7 }}>
               Admin Dashboard
             </span>

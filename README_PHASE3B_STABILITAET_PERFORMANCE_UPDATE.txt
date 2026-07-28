@@ -1,4 +1,4 @@
-# Koenen App – Phase 3B Stabilität & Performance Update
+# Koenen Investment – Phase 3B Stabilität & Performance Update
 
 Umgesetzt:
 - neuer Bereich „Stabilität 3B“ im Auswertungscenter

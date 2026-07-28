@@ -1,4 +1,4 @@
-Koenen App – Phase 5F Backend Compatibility Repair
+Koenen Investment – Phase 5F Backend Compatibility Repair
 
 Dieses Paket behebt die Fehler:
 - column v_object_dropdown.objekt_code does not exist

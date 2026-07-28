@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 
 // ======================================================
-// Koenen App Logo Optimizer
+// Koenen Investment Logo Optimizer
 // Converts huge PNG logo into optimized WebP
 // ======================================================
 

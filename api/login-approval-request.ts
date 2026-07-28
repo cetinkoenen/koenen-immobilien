@@ -29,10 +29,10 @@ async function sendAdminMail(email: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.LOGIN_APPROVAL_FROM_EMAIL ?? "Koenen Immobilien <onboarding@resend.dev>",
+      from: process.env.LOGIN_APPROVAL_FROM_EMAIL ?? "Koenen Investment <onboarding@resend.dev>",
       to: ADMIN_EMAIL,
       subject: "Login-Freigabe erforderlich",
-      text: `Der Nutzer ${email} möchte sich in der Koenen Immobilien App anmelden. Bitte Login-Freigabe in Supabase/app_user_access bestätigen.`,
+      text: `Der Nutzer ${email} möchte sich bei Koenen Investment anmelden. Bitte Login-Freigabe in Supabase/app_user_access bestätigen.`,
     }),
   });
 

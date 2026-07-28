@@ -4,8 +4,8 @@ import Image from "next/image";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Könen Immobilien – Admin",
-  description: "Admin Dashboard Könen Immobilien",
+  title: "Koenen Investment – Admin",
+  description: "Admin Dashboard Koenen Investment",
 };
 
 export default function RootLayout({
@@ -47,7 +47,7 @@ export default function RootLayout({
             {/* LOGO */}
             <Image
               src="/logo/koenen.png"
-              alt="Könen Immobilien"
+              alt="Koenen Investment"
               width={150}
               height={38}
               priority
@@ -56,7 +56,7 @@ export default function RootLayout({
             {/* TITLE */}
             <div style={{ lineHeight: 1.1 }}>
               <div style={{ fontWeight: 900, fontSize: 16 }}>
-                Könen Immobilien
+                Koenen Investment
               </div>
               <div style={{ fontSize: 12, opacity: 0.6 }}>
                 Admin Dashboard
@@ -84,7 +84,7 @@ export default function RootLayout({
             textAlign: "center",
           }}
         >
-          © {new Date().getFullYear()} Könen Immobilien
+          © {new Date().getFullYear()} Koenen Investment
         </footer>
       </body>
     </html>

@@ -9,7 +9,7 @@ This package was cleaned for safer sharing and deployment:
 
 Before running locally, create your own `.env.local` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
-# Koenen Immobilien
+# Koenen Investment
 
 A modern real estate web application built with **React**, **Vite**, **TypeScript**, and **Supabase**.  
 The project focuses on a clean frontend architecture, modern tooling, and a production-ready deployment workflow.

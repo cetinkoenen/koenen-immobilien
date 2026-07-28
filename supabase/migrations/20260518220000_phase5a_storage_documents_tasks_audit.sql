@@ -1,4 +1,4 @@
--- Koenen App – Phase 5A
+-- Koenen Investment – Phase 5A
 -- Supabase Storage + Dokumentenarchiv + Aufgaben + Audit-Log + RLS
 -- Ausführen im Supabase SQL Editor oder über Supabase CLI Migration.
 

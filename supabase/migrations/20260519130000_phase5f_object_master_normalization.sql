@@ -1,5 +1,5 @@
 -- =========================================================
--- Koenen App – Phase 5F
+-- Koenen Investment – Phase 5F
 -- Objekt-Master-Normalisierung / Single Source of Truth
 -- Ziel:
 --   - PLZ-/Stadtvarianten und "Objekt X –"-Präfixe zusammenführen

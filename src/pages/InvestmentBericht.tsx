@@ -1173,7 +1173,7 @@ export default function InvestmentBericht() {
 </head>
 <body>
   <section class="cover">
-    <img class="logo" src="${logo}" alt="Koenen Immobilien Logo" />
+    <img class="logo" src="${logo}" alt="Koenen Investment Logo" />
     <div class="eyebrow">Koenen Investment- und Finanzierungsanalyse</div>
     <h1>${safeObjectName}</h1>
     <p><span class="status">${escapeHtml(effectiveReport.statusLabel)}</span></p>
@@ -1236,7 +1236,7 @@ export default function InvestmentBericht() {
   </table>
 	  <h3>Vorläufige Finanzierungsrechnung</h3>
 	  <p>Die folgenden Szenarien dienen der ersten Orientierung. Angenommen werden ${escapeHtml(interestRate || "3,50")} % Sollzins und ${escapeHtml(amortizationRate || "2,00")} % anfängliche Tilgung. Persönliche Bonität, Zusatzsicherheiten, Steuern, Mietausfall und Sondereigentumsreparaturen sind nicht eingerechnet.</p>
-	  <h3>Könen Investment- und Finanzierungsanalyse</h3>
+	  <h3>Koenen Investment- und Finanzierungsanalyse</h3>
 	  <table>
 	    <thead><tr><th>Position</th><th>Wert</th></tr></thead>
 	    <tbody>${calculationRows}</tbody>
@@ -1290,7 +1290,7 @@ export default function InvestmentBericht() {
     <tbody>${chapterRows}</tbody>
   </table>
 
-  <p class="footer">Automatisch erstellt in der Koenen Immobilien App. Dieser Bericht ist eine strukturierte Erstbewertung und ersetzt keine rechtliche, technische oder steuerliche Detailprüfung.</p>
+  <p class="footer">Automatisch erstellt mit Koenen Investment. Dieser Bericht ist eine strukturierte Erstbewertung und ersetzt keine rechtliche, technische oder steuerliche Detailprüfung.</p>
 </body>
 </html>`;
   }, [
@@ -1739,7 +1739,7 @@ export default function InvestmentBericht() {
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50">
-              <img src={logo} alt="Koenen Immobilien Logo" className="h-full w-full object-cover" />
+              <img src={logo} alt="Koenen Investment Logo" className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Deckblatt</p>
@@ -1878,7 +1878,7 @@ export default function InvestmentBericht() {
               <Calculator size={20} />
             </span>
             <span>
-              <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Könen Investment- und Finanzierungsanalyse</span>
+              <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Koenen Investment- und Finanzierungsanalyse</span>
               <span className="mt-1 block text-lg font-black text-slate-950">Realer Cashflow, Nebenkosten, Steuer und Vermögensaufbau</span>
             </span>
           </span>

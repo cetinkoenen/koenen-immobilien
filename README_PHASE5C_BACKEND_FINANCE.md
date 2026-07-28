@@ -1,4 +1,4 @@
-# Koenen App – Phase 5C Backend-Finanzlogik
+# Koenen Investment – Phase 5C Backend-Finanzlogik
 
 Diese Phase ergänzt die Datenbank um eine serverseitige **Single Source of Truth** für zentrale Finanzkennzahlen.
 

@@ -1,4 +1,4 @@
--- Koenen App – Phase 5C
+-- Koenen Investment – Phase 5C
 -- Backend-Finanzlogik / Single Source of Truth
 -- Ziel: Restschuld, Einnahmen, Ausgaben, Capex und Datenprüfung serverseitig vereinheitlichen.
 

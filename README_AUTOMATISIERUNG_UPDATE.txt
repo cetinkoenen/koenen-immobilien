@@ -1,4 +1,4 @@
-Koenen App – Automatisierung & Prüfcenter Update
+Koenen Investment – Automatisierung & Prüfcenter Update
 
 Dieses Update ergänzt eine neue interne Seite:
 /automatisierung

@@ -1,4 +1,4 @@
-Koenen App – Phase 4D Reporting/PDF Update
+Koenen Investment – Phase 4D Reporting/PDF Update
 
 Umgesetzt:
 - Neuer Bereich Auswertung -> Reporting/PDF 4D

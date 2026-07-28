@@ -2568,14 +2568,14 @@ function AppShell() {
           title="Zum Dashboard"
         >
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
-            <img src={logo} alt="Könen Immobilien" className="h-full w-full object-cover" />
+            <img src={logo} alt="Koenen Investment" className="h-full w-full object-cover" />
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9fb5bc]">
-              Property App
+              Koenen Investment
             </div>
             <div className="mt-1 truncate text-base font-black leading-tight text-white">
-              Immobilien-Verwaltung
+              Investment-Verwaltung
             </div>
           </div>
         </NavLink>
@@ -2661,16 +2661,16 @@ function AppShell() {
               <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white/80 shadow-sm sm:h-14 sm:w-14">
                 <img
                   src={logo}
-                  alt="Könen Immobilien"
+                  alt="Koenen Investment"
                   className="h-full w-full object-cover"
                 />
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs sm:tracking-[0.18em]">
-                  Property App
+                  Koenen Investment
                 </div>
                 <div className="max-w-[220px] truncate text-base font-semibold leading-tight text-slate-950 sm:max-w-none sm:text-2xl">
-                  Immobilien-Finanzübersicht
+                  Investment-Finanzübersicht
                 </div>
               </div>
             </NavLink>

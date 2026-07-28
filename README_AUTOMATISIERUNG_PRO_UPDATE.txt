@@ -1,4 +1,4 @@
-Koenen App – Automatisierung & Prüfcenter Professional Update
+Koenen Investment – Automatisierung & Prüfcenter Professional Update
 
 Verbessert in dieser Version:
 - Automatisierungsseite professioneller gestaltet.

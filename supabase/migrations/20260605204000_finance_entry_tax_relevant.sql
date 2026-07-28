@@ -1,4 +1,4 @@
--- Koenen App: Steuerrelevanz direkt an Buchungen
+-- Koenen Investment: Steuerrelevanz direkt an Buchungen
 -- NULL = noch nicht manuell entschieden, true/false = Benutzerentscheidung.
 
 alter table public.finance_entry

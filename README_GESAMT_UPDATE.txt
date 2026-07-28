@@ -1,4 +1,4 @@
-Könen App – Gesamt-Update
+Koenen Investment – Gesamt-Update
 
 Umgesetzt:
 1. .env/.env.local/.DS_Store bleiben aus der ZIP entfernt.

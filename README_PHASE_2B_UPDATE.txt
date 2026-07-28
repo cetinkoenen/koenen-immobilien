@@ -1,4 +1,4 @@
-Koenen App – Phase 2B Upgrade
+Koenen Investment – Phase 2B Upgrade
 
 Umgesetzt:
 - neuer Bereich "Automatisierung 2B" im Auswertungscenter

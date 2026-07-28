@@ -1,4 +1,4 @@
--- Koenen App: professionelle Verwaltungsgrundlage
+-- Koenen Investment: professionelle Verwaltungsgrundlage
 -- Neue Zusatz-Tabellen fuer Sollstellungen, Mahnungen, Regeln und Ein-/Auszugsprozesse.
 -- Bestehende Buchungen bleiben Hauptquelle fuer Ist-Zahlungen und werden nicht veraendert.
 
