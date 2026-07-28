@@ -26,7 +26,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   global: {
     headers: {
-      "x-application-name": "property-dashboard",
+      "x-application-name": "koenen-investment",
     },
   },
 });
