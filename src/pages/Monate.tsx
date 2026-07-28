@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { displayFinanceCategory } from "../lib/financeEntryLabels";
+import { classifyTaxRelevance } from "../lib/taxClassification";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
@@ -88,6 +89,16 @@ function parseNumberInput(raw: string): number {
   const normalized = raw.replace(",", ".").trim();
   const n = Number(normalized);
   return Number.isFinite(n) ? n : NaN;
+}
+
+function taxRuleForRow(row: EntryRow, objectLabel?: string | null) {
+  return classifyTaxRelevance(row, objectLabel);
+}
+
+function effectiveTaxRelevant(row: EntryRow, objectLabel?: string | null): boolean {
+  const rule = taxRuleForRow(row, objectLabel);
+  if (rule.locked) return false;
+  return typeof row.tax_relevant === "boolean" ? row.tax_relevant : rule.taxRelevant;
 }
 
 function compareStrings(a: string, b: string, direction: SortDirection) {
@@ -753,7 +764,7 @@ export default function Monate() {
     setEditDate(row.booking_date);
     setEditAmount(String(row.amount));
     setEditNote(row.note ?? "");
-    setEditTaxRelevant(Boolean(row.tax_relevant));
+    setEditTaxRelevant(effectiveTaxRelevant(row, objectLabelMap.get(row.objekt_code ?? "") ?? row.objekt_code));
     setEditNkRelevant(Boolean(row.nk_relevant));
 
     if (!rawCategory) {
@@ -799,6 +810,11 @@ export default function Monate() {
         : editCategorySelect === "Ohne Kategorie"
         ? ""
         : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
+    const objectLabel = objectLabelMap.get(editRow.objekt_code ?? "") ?? editRow.objekt_code;
+    const editTaxRule = classifyTaxRelevance(
+      { ...editRow, entry_type: editType, category: resolvedCategory, note: editNote },
+      objectLabel,
+    );
 
     setEditSaving(true);
 
@@ -817,7 +833,7 @@ export default function Monate() {
         amount: n,
         category: resolvedCategory || null,
         note: editNote.trim() || null,
-        tax_relevant: editTaxRelevant,
+        tax_relevant: editTaxRule.locked ? false : editTaxRelevant,
         nk_relevant: editNkRelevant,
       };
 
@@ -841,11 +857,20 @@ export default function Monate() {
   }
 
   async function updateTaxRelevant(row: EntryRow, value: boolean) {
-    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: value } : item)));
+    const objectLabel = objectLabelMap.get(row.objekt_code ?? "") ?? row.objekt_code;
+    const rule = taxRuleForRow(row, objectLabel);
+    if (rule.locked && value) {
+      alert(rule.hint);
+      setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: false } : item)));
+      return;
+    }
+
+    const nextValue = rule.locked ? false : value;
+    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: nextValue } : item)));
 
     const { error } = await supabase
       .from("finance_entry")
-      .update({ tax_relevant: value })
+      .update({ tax_relevant: nextValue })
       .eq("id", row.id);
 
     if (error) {
@@ -906,7 +931,7 @@ export default function Monate() {
               maximumFractionDigits: 2,
             }),
             Notiz: r.note?.trim() || "",
-            St: r.tax_relevant ? "Ja" : "Nein",
+            St: effectiveTaxRelevant(r, objectLabel) ? "Ja" : "Nein",
             NK: r.nk_relevant ? "Ja" : "Nein",
           };
         });
@@ -940,7 +965,7 @@ export default function Monate() {
           maximumFractionDigits: 2,
         }),
         Notiz: r.note?.trim() || "",
-        St: r.tax_relevant ? "Ja" : "Nein",
+        St: effectiveTaxRelevant(r, objectLabel) ? "Ja" : "Nein",
         NK: r.nk_relevant ? "Ja" : "Nein",
       };
     });
@@ -962,6 +987,24 @@ export default function Monate() {
 
   const monthLabel = MONTHS.find((x) => x.m === month)?.label ?? String(month);
   const periodLabel = periodMode === "year" ? `Jahr ${year}` : `${monthLabel} ${year}`;
+  const editResolvedCategory =
+    editCategoryMode === "new"
+      ? canonicalizeFinanceCategory(editCategoryCustom.trim(), editType)
+      : editCategorySelect === "Ohne Kategorie"
+        ? ""
+        : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
+  const editTaxRule = editRow
+    ? classifyTaxRelevance(
+        { ...editRow, entry_type: editType, category: editResolvedCategory, note: editNote },
+        objectLabelMap.get(editRow.objekt_code ?? "") ?? editRow.objekt_code,
+      )
+    : null;
+
+  useEffect(() => {
+    if (editTaxRule?.locked && editTaxRelevant) {
+      setEditTaxRelevant(false);
+    }
+  }, [editTaxRelevant, editTaxRule?.locked]);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -1611,9 +1654,10 @@ export default function Monate() {
                       <td style={{ padding: 10, textAlign: "center", whiteSpace: "nowrap" }}>
                         <input
                           type="checkbox"
-                          checked={Boolean(r.tax_relevant)}
+                          checked={effectiveTaxRelevant(r, objectLabel)}
+                          disabled={taxRuleForRow(r, objectLabel).locked}
                           onChange={(event) => void updateTaxRelevant(r, event.target.checked)}
-                          title="Steuerrelevant Ja/Nein"
+                          title={taxRuleForRow(r, objectLabel).hint || "Steuerrelevant Ja/Nein"}
                           style={{ width: 18, height: 18 }}
                         />
                       </td>
@@ -1893,11 +1937,17 @@ export default function Monate() {
               <input
                 type="checkbox"
                 checked={editTaxRelevant}
-                onChange={(event) => setEditTaxRelevant(event.target.checked)}
+                disabled={Boolean(editTaxRule?.locked)}
+                onChange={(event) => setEditTaxRelevant(editTaxRule?.locked ? false : event.target.checked)}
                 style={{ width: 18, height: 18 }}
               />
               St.
             </label>
+            {editTaxRule?.hint ? (
+              <span style={{ flexBasis: "100%", fontSize: 12, fontWeight: 800, color: editTaxRule.locked ? "#9f1239" : "#64748b" }}>
+                {editTaxRule.hint}
+              </span>
+            ) : null}
             <label
               style={{
                 display: "inline-flex",

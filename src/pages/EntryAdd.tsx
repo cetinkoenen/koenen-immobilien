@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
+import { classifyTaxRelevance } from "../lib/taxClassification";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type DropdownRow = {
@@ -90,6 +91,14 @@ export default function EntryAdd() {
     const selected = category === "__NEW__" ? customCategory : category;
     return canonicalizeFinanceCategory(selected, kind);
   }, [category, customCategory, kind]);
+  const taxRule = useMemo(
+    () => classifyTaxRelevance({ entry_type: kind, category: resolvedCategory, note, objekt_code: objektCodePreview }),
+    [kind, note, objektCodePreview, resolvedCategory],
+  );
+
+  useEffect(() => {
+    setTaxRelevant(taxRule.taxRelevant);
+  }, [taxRule.taxRelevant, taxRule.locked, resolvedCategory, kind]);
 
   useEffect(() => {
     let alive = true;
@@ -191,7 +200,7 @@ export default function EntryAdd() {
         amount: amountNumber,
         category: resolvedCategory || null,
         note: note.trim() || null,
-        tax_relevant: taxRelevant,
+        tax_relevant: taxRule.locked ? false : taxRelevant,
         nk_relevant: nkRelevant,
       };
 
@@ -208,7 +217,7 @@ export default function EntryAdd() {
       setCategory("");
       setCustomCategory("");
       setNote("");
-      setTaxRelevant(true);
+      setTaxRelevant(classifyTaxRelevance({ entry_type: kind }).taxRelevant);
       setNkRelevant(false);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -411,11 +420,17 @@ export default function EntryAdd() {
               <input
                 type="checkbox"
                 checked={taxRelevant}
-                onChange={(event) => setTaxRelevant(event.target.checked)}
+                disabled={taxRule.locked}
+                onChange={(event) => setTaxRelevant(taxRule.locked ? false : event.target.checked)}
                 style={{ width: 18, height: 18 }}
               />
               St.
             </label>
+            {taxRule.hint ? (
+              <span style={{ flexBasis: "100%", fontSize: 12, fontWeight: 800, color: taxRule.locked ? "#9f1239" : "#64748b" }}>
+                {taxRule.hint}
+              </span>
+            ) : null}
             <label
               style={{
                 ...fieldLabelStyle(),

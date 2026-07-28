@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Car, Download, ExternalLink, FileText, Printer, RefreshCw, Search, X } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
-import { canonicalizeFinanceCategory } from "../lib/financeCategories";
-import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "../lib/financeEntryLabels";
+import { classifyTaxRelevance, canonicalCategoryForTax } from "../lib/taxClassification";
 import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
@@ -144,6 +143,16 @@ const styles: Record<string, CSSProperties> = {
     color: "#475569",
     fontSize: 14,
     lineHeight: 1.65,
+  },
+  successText: {
+    margin: "14px 0 0",
+    border: "1px solid #bbf7d0",
+    borderRadius: 14,
+    background: "#f0fdf4",
+    color: "#166534",
+    padding: "10px 12px",
+    fontSize: 13,
+    fontWeight: 850,
   },
   panel: {
     border: "1px solid #e5e7eb",
@@ -378,59 +387,38 @@ function normalize(value: string | null | undefined): string {
 }
 
 function classifyEntryByRules(entry: EntryRow, objectLabel: string): ClassifiedEntry {
-  const canonicalCategory = isHohenloherMietbestandteilNk(entry, objectLabel)
-    ? MIETBESTANDTEIL_NK_CATEGORY
-    : canonicalizeFinanceCategory(entry.category, entry.entry_type);
-  const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""}`);
-  const confirmedTax = entry.tax_relevant === true;
-  const relevance: ClassifiedEntry["relevance"] = confirmedTax ? "tax" : "check";
-  const confirmationHint = confirmedTax
-    ? "Automatisch aus Buchung mit St-Kennzeichen in Anlage V einsortiert."
-    : "Noch nicht als St steuerrelevant bestätigt.";
+  const canonicalCategory = canonicalCategoryForTax(entry, objectLabel);
+  const rule = classifyTaxRelevance(entry, objectLabel);
+  const confirmedTax = rule.locked ? false : entry.tax_relevant === true || (entry.tax_relevant === null && rule.taxRelevant);
+  const relevance: ClassifiedEntry["relevance"] = confirmedTax ? "tax" : rule.relevance;
+  const confirmationHint = rule.locked
+    ? "St-Kennzeichen wird fuer laufende Kreditraten bewusst entfernt."
+    : confirmedTax
+      ? "Nach Anlage-V-Regelwerk als steuerrelevant vorbereitet."
+      : "Bitte gezielt pruefen und bei Bedarf als St bestaetigen.";
 
-  const build = (taxGroup: string, taxHint: string): ClassifiedEntry => ({
+  return {
     ...entry,
+    tax_relevant: confirmedTax,
     category: canonicalCategory || entry.category,
     object_label: objectLabel,
-    tax_group: taxGroup,
-    tax_hint: confirmedTax ? `${taxHint} · ${confirmationHint}` : confirmationHint,
+    tax_group: rule.group,
+    tax_hint: `${rule.hint} · ${confirmationHint}`,
     relevance,
-  });
-
-  if (entry.entry_type === "income") {
-    if (canonicalCategory === "Miete Garage" || text.includes("garage") || text.includes("stellplatz")) {
-      return build("Miete Garage (Einnahme)", "Anlage V: Einnahmen aus Garagen-/Stellplatzvermietung");
-    }
-
-    return build("Miete (Einnahme)", "Anlage V: Einnahmen aus Vermietung");
-  }
-
-  const expenseGroups: Record<string, string> = {
-    Kreditrate: "Kreditrate (Werbungskosten)",
-    Reparatur: "Reparatur (Werbungskosten)",
-    "Abfallgebühr": "Abfallgebühr (Werbungskosten)",
-    Schonsteinfeger: "Schonsteinfeger (Werbungskosten)",
-    Versicherung: "Versicherung (Werbungskosten)",
-    Wartung: "Wartung (Werbungskosten)",
-    Kontoführungsgebühr: "Kontoführungskosten (Werbungskosten)",
-    Verwaltungskosten: "Verwaltungskosten (Werbungskosten)",
-    Allgemein: "Allgemein / Sonstige Kosten (Werbungskosten)",
-    Fahrtkosten: "Fahrtkosten (Werbungskosten)",
-    Software: "Software (Werbungskosten)",
   };
-
-  const group = expenseGroups[canonicalCategory] ?? "Allgemein / Sonstige Kosten (Werbungskosten)";
-  return build(group, "Anlage V: Werbungskosten aus steuerrelevant markierter Buchung");
 }
 
 function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
-  if (entry.tax_relevant === false) {
+  const rule = classifyTaxRelevance(entry, objectLabel);
+  if (entry.tax_relevant === false || rule.locked) {
     return {
       ...entry,
+      tax_relevant: false,
+      category: canonicalCategoryForTax(entry, objectLabel) || entry.category,
       object_label: objectLabel,
-      tax_group: "Nicht steuerrelevant",
-      tax_hint: "Manuell als nicht steuerrelevant markiert",
-      relevance: "private",
+      tax_group: rule.locked ? rule.group : "Nicht steuerrelevant",
+      tax_hint: rule.locked ? rule.hint : "Manuell als nicht steuerrelevant markiert",
+      relevance: rule.locked ? "private" : "private",
     };
   }
 
@@ -607,6 +595,8 @@ export default function SteuerCenter() {
   const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
   const [selectedMileageProperty, setSelectedMileageProperty] = useState<MileageSummaryRow | null>(null);
   const [loading, setLoading] = useState(false);
+  const [repairingTaxRules, setRepairingTaxRules] = useState(false);
+  const [taxRepairStatus, setTaxRepairStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const objectLabelByCode = useMemo(() => {
@@ -638,6 +628,7 @@ export default function SteuerCenter() {
   async function loadEntries() {
     setLoading(true);
     setError(null);
+    setTaxRepairStatus(null);
 
     const range = yearRange(year);
 
@@ -786,6 +777,69 @@ export default function SteuerCenter() {
       setMileageTrips([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyTaxRulesToCurrentSelection() {
+    const confirmed = window.confirm(
+      "Steuerrelevanz fuer die aktuelle Auswahl nach Anlage-V-Regeln aktualisieren?\n\n" +
+        "Miete, Garage, Mietbestandteil-NK und klare Werbungskosten werden als St markiert. " +
+        "Laufende Kreditraten werden bewusst ohne St gespeichert. Unklare Faelle bleiben Prueffaelle.",
+    );
+    if (!confirmed) return;
+
+    setRepairingTaxRules(true);
+    setError(null);
+    setTaxRepairStatus(null);
+
+    try {
+      const updates = entries
+        .map((entry) => {
+          const objectLabel = entry.objekt_code
+            ? objectLabelByCode.get(entry.objekt_code) ?? entry.objekt_code
+            : "Ohne Objekt";
+          const rule = classifyTaxRelevance(entry, objectLabel);
+          let nextValue: boolean | null = entry.tax_relevant;
+
+          if (rule.locked) {
+            nextValue = false;
+          } else if (rule.relevance === "tax" && rule.taxRelevant) {
+            nextValue = true;
+          } else if (rule.relevance === "private") {
+            nextValue = false;
+          } else {
+            return null;
+          }
+
+          if (nextValue === entry.tax_relevant) return null;
+          return { id: entry.id, tax_relevant: nextValue };
+        })
+        .filter((item): item is { id: number; tax_relevant: boolean } => Boolean(item));
+
+      if (updates.length === 0) {
+        setTaxRepairStatus("Keine Aenderung noetig. Die aktuelle Auswahl passt bereits zu den Steuerregeln.");
+        return;
+      }
+
+      const results = await Promise.all(
+        updates.map((update) =>
+          supabase
+            .from("finance_entry")
+            .update({ tax_relevant: update.tax_relevant })
+            .eq("id", update.id)
+            .eq("is_deleted", false),
+        ),
+      );
+
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+
+      await loadEntries();
+      setTaxRepairStatus(`${updates.length} Buchung(en) nach Steuerregeln aktualisiert.`);
+    } catch (repairError) {
+      setError(getLoadErrorMessage(repairError, "Steuerregeln konnten nicht angewendet werden."));
+    } finally {
+      setRepairingTaxRules(false);
     }
   }
 
@@ -1032,6 +1086,19 @@ export default function SteuerCenter() {
               <RefreshCw size={16} />
               Aktualisieren
             </button>
+            <button
+              type="button"
+              onClick={() => void applyTaxRulesToCurrentSelection()}
+              disabled={repairingTaxRules || loading}
+              style={{
+                ...styles.button,
+                opacity: repairingTaxRules || loading ? 0.65 : 1,
+                cursor: repairingTaxRules || loading ? "not-allowed" : "pointer",
+              }}
+            >
+              <RefreshCw size={16} />
+              {repairingTaxRules ? "St-Regeln laufen" : "St-Regeln anwenden"}
+            </button>
             <button type="button" onClick={() => window.print()} style={styles.button}>
               <Printer size={16} />
               Drucken
@@ -1046,6 +1113,7 @@ export default function SteuerCenter() {
             </button>
           </div>
         </div>
+        {taxRepairStatus ? <p className="tax-no-print" style={styles.successText}>{taxRepairStatus}</p> : null}
       </section>
 
       <section className="tax-no-print" style={styles.panel}>
