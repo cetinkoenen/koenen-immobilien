@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
 import {
   Link,
   NavLink,
@@ -53,6 +53,15 @@ import { isAdminEmail, isReadonlyApprovalEmail } from "./auth/accessControl";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "./services/vacancyService";
+import {
+  deletePropertyTask,
+  listPropertyTasks,
+  savePropertyTask,
+  type PropertyTaskCategory,
+  type PropertyTaskPriority,
+  type PropertyTaskRow,
+  type PropertyTaskStatus,
+} from "./services/workflowTaskService";
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
@@ -318,12 +327,6 @@ function formatDate(value: string | null): string {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("de-DE");
-}
-
-function addDaysToIsoDate(value: string, days: number): string {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function toIsoDate(date: Date): string {
@@ -1807,17 +1810,120 @@ function ReportsExportsPage() {
 
 type MaintenanceTask = {
   id: string;
+  backendId?: string;
   title: string;
   objectId: string;
   objectLabel: string;
   dueDate: string;
   contractor: string;
   category: string;
-  status: "Neu" | "In Arbeit" | "Erledigt";
+  status: "Neu" | "In Arbeit" | "Erledigt" | "Archiviert";
   priority: "Normal" | "Hoch";
   note: string;
   createdAt: string;
+  source: "aufgabe" | "schaden" | "handwerker";
+  backendCategory: PropertyTaskCategory;
+  backendPriority: PropertyTaskPriority;
+  backendStatus: PropertyTaskStatus;
+  history: Array<Record<string, unknown>>;
 };
+
+type TaskPageMode = "aufgabe" | "schaden" | "handwerker";
+
+const taskModeCopy: Record<TaskPageMode, { category: string; contractor: string; titlePlaceholder: string; description: string }> = {
+  aufgabe: {
+    category: "Verwaltung",
+    contractor: "Intern",
+    titlePlaceholder: "z. B. Wasserhahn in Bad prüfen lassen",
+    description: "Aufgaben werden als zentrale Arbeitsliste und Kalenderfrist sichtbar.",
+  },
+  schaden: {
+    category: "Schadenmeldung",
+    contractor: "Mieter / Intern",
+    titlePlaceholder: "z. B. Wasserschaden Bad dokumentieren",
+    description: "Schadenmeldungen werden als Aufgaben-Ticket mit Verlauf gespeichert.",
+  },
+  handwerker: {
+    category: "Handwerker-Beauftragung",
+    contractor: "Handwerker offen",
+    titlePlaceholder: "z. B. Angebot Sanitärbetrieb einholen",
+    description: "Handwerker-Beauftragungen laufen in derselben Arbeitsliste mit Status und Historie.",
+  },
+};
+
+function statusToBackend(status: MaintenanceTask["status"]): PropertyTaskStatus {
+  if (status === "In Arbeit") return "in_bearbeitung";
+  if (status === "Erledigt") return "erledigt";
+  if (status === "Archiviert") return "archiviert";
+  return "offen";
+}
+
+function statusFromBackend(status: PropertyTaskStatus): MaintenanceTask["status"] {
+  if (status === "in_bearbeitung") return "In Arbeit";
+  if (status === "erledigt") return "Erledigt";
+  if (status === "archiviert") return "Archiviert";
+  return "Neu";
+}
+
+function priorityFromBackend(priority: PropertyTaskPriority): MaintenanceTask["priority"] {
+  return priority === "hoch" || priority === "kritisch" ? "Hoch" : "Normal";
+}
+
+function backendPriorityFromPriority(priority: MaintenanceTask["priority"]): PropertyTaskPriority {
+  return priority === "Hoch" ? "hoch" : "mittel";
+}
+
+function taskCategoryToBackend(category: string): PropertyTaskCategory {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("schaden") || normalized.includes("handwerker") || normalized.includes("reparatur")) return "capex";
+  if (normalized.includes("leerstand")) return "leerstand";
+  if (normalized.includes("mieter") || normalized.includes("miete")) return "miete";
+  if (normalized.includes("nebenkosten") || normalized.includes("nk")) return "nk";
+  if (normalized.includes("dokument")) return "dokument";
+  if (normalized.includes("darlehen")) return "darlehen";
+  if (normalized.includes("prüfung")) return "prüfung";
+  return "allgemein";
+}
+
+function taskSourceFromMeta(meta: Record<string, unknown> | null | undefined): TaskPageMode {
+  const value = String(meta?.task_source ?? meta?.kind ?? "");
+  if (value === "schaden") return "schaden";
+  if (value === "handwerker") return "handwerker";
+  return "aufgabe";
+}
+
+function taskDisplayCategory(row: PropertyTaskRow): string {
+  const metaCategory = typeof row.meta?.display_category === "string" ? row.meta.display_category : "";
+  if (metaCategory) return metaCategory;
+  if (row.category === "capex") return "Reparatur / Mangel";
+  if (row.category === "leerstand") return "Leerstand";
+  if (row.category === "prüfung") return "Gesetzliche Prüfung";
+  return "Verwaltung";
+}
+
+function mapPropertyTaskRow(row: PropertyTaskRow, todayIso: string): MaintenanceTask {
+  const status = statusFromBackend(row.status);
+  const priority = priorityFromBackend(row.priority);
+  return {
+    id: row.id,
+    backendId: row.id,
+    title: row.title,
+    objectId: row.property_id ?? row.portfolio_property_id ?? row.objekt_code ?? "all",
+    objectLabel: row.property_name ?? "Allgemeine Aufgabe",
+    dueDate: row.due_date ?? todayIso,
+    contractor: typeof row.meta?.contractor === "string" ? row.meta.contractor : "Noch nicht zugeordnet",
+    category: taskDisplayCategory(row),
+    status,
+    priority,
+    note: row.description ?? "",
+    createdAt: row.created_at?.slice(0, 10) ?? todayIso,
+    source: taskSourceFromMeta(row.meta),
+    backendCategory: row.category,
+    backendPriority: row.priority,
+    backendStatus: row.status,
+    history: Array.isArray(row.meta?.history) ? row.meta.history as Array<Record<string, unknown>> : [],
+  };
+}
 
 function TaskMonthCalendar({
   monthDate,
@@ -1923,99 +2029,227 @@ function TaskMonthCalendar({
   );
 }
 
-function TasksMaintenancePage() {
+function TasksMaintenancePage({ mode = "aufgabe" }: { mode?: TaskPageMode }) {
   const { objects } = useAppData();
+  const { user } = useAuth();
+  const isAdmin = isAdminEmail(user?.email);
+  const modeDefaults = taskModeCopy[mode];
   const todayIso = new Date().toISOString().slice(0, 10);
   const [objectFilter, setObjectFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
-  const [manualTasks, setManualTasks] = useState<MaintenanceTask[]>([]);
+  const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
+  const [taskStatus, setTaskStatus] = useState("");
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [savingTask, setSavingTask] = useState(false);
   const [form, setForm] = useState({
+    id: "",
     title: "",
     objectId: objects[0]?.id ?? "all",
     dueDate: todayIso,
-    category: "Reparatur / Mangel",
+    category: modeDefaults.category,
+    contractor: modeDefaults.contractor,
+    status: "Neu" as MaintenanceTask["status"],
+    priority: "Normal" as MaintenanceTask["priority"],
     note: "",
   });
 
-  const seedTasks = useMemo<MaintenanceTask[]>(() => {
-    const firstObjects = objects.slice(0, 3);
-    return firstObjects.map((object, index) => ({
-      id: `seed-${object.id}`,
-      title: index === 0 ? "Nebenkostenunterlagen prüfen" : index === 1 ? "Wartungstermin vorbereiten" : "Mietvertrag und Frist prüfen",
-      objectId: object.id,
-      objectLabel: object.label,
-      dueDate: addDaysToIsoDate(todayIso, index + 2),
-      contractor: index === 1 ? "Handwerker offen" : "Intern",
-      category: index === 1 ? "Reparatur / Mangel" : "Verwaltung",
-      status: index === 1 ? "In Arbeit" : "Neu",
-      priority: index === 0 ? "Hoch" : "Normal",
-      note: "Aus vorhandenen Verwaltungsprozessen als Arbeitsliste vorbereitet.",
-      createdAt: todayIso,
-    }));
-  }, [objects, todayIso]);
+  const loadTasks = useCallback(async () => {
+    setLoadingTasks(true);
+    setTaskStatus("");
+    try {
+      const rows = await listPropertyTasks();
+      setTasks(rows.map((row) => mapPropertyTaskRow(row, todayIso)));
+    } catch (error) {
+      setTasks([]);
+      setTaskStatus(error instanceof Error ? error.message : "Aufgaben konnten nicht geladen werden.");
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [todayIso]);
 
-  const tasks = [...manualTasks, ...seedTasks];
-  const overdueTasks = tasks.filter((task) => task.dueDate < todayIso && task.status !== "Erledigt");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadTasks();
+  }, [loadTasks]);
+
+  const visibleTasks = tasks.filter((task) => task.status !== "Archiviert");
+  const overdueTasks = visibleTasks.filter((task) => task.dueDate < todayIso && task.status !== "Erledigt");
   const currentMonthDate = useMemo(() => new Date(), []);
   const nextMonthDate = useMemo(() => addMonthsToDate(new Date(), 1), []);
   const filteredTasks = tasks.filter((task) => {
     if (objectFilter !== "all" && task.objectId !== objectFilter) return false;
+    if (statusFilter === "all" && task.status === "Archiviert") return false;
     if (statusFilter === "overdue" && !(task.dueDate < todayIso && task.status !== "Erledigt")) return false;
     if (statusFilter !== "all" && statusFilter !== "overdue" && task.status !== statusFilter) return false;
     if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
     return true;
   });
 
-  const handleCreateTask = (event: FormEvent<HTMLFormElement>) => {
+  function resetTaskForm() {
+    setForm({
+      id: "",
+      title: "",
+      objectId: objects[0]?.id ?? "all",
+      dueDate: todayIso,
+      category: modeDefaults.category,
+      contractor: modeDefaults.contractor,
+      status: "Neu",
+      priority: "Normal",
+      note: "",
+    });
+    setSelectedTask(null);
+  }
+
+  function beginEditTask(task: MaintenanceTask) {
+    setSelectedTask(task);
+    setForm({
+      id: task.backendId ?? task.id,
+      title: task.title,
+      objectId: task.objectId,
+      dueDate: task.dueDate,
+      category: task.category,
+      contractor: task.contractor,
+      status: task.status,
+      priority: task.priority,
+      note: task.note,
+    });
+  }
+
+  const handleSaveTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!isAdmin || savingTask) return;
     const object = objects.find((item) => item.id === form.objectId);
     const title = form.title.trim();
     if (!title) return;
-    const task: MaintenanceTask = {
-      id: `manual-${Date.now()}`,
-      title,
-      objectId: object?.id ?? "all",
-      objectLabel: object?.label ?? "Allgemeine Aufgabe",
-      dueDate: form.dueDate || todayIso,
-      contractor: "Noch nicht zugeordnet",
-      category: form.category,
-      status: "Neu",
-      priority: form.dueDate && form.dueDate <= todayIso ? "Hoch" : "Normal",
-      note: form.note.trim(),
-      createdAt: todayIso,
-    };
-    setManualTasks((current) => [task, ...current]);
-    setSelectedTask(task);
-    setForm((current) => ({ ...current, title: "", note: "" }));
+    setSavingTask(true);
+    setTaskStatus("Speichert...");
+    try {
+      const existingTask = form.id ? tasks.find((task) => task.backendId === form.id || task.id === form.id) : null;
+      const historyAction = form.id ? "aktualisiert" : "erstellt";
+      const saved = await savePropertyTask({
+        id: form.id || undefined,
+        propertyId: object?.id ?? null,
+        portfolioPropertyId: null,
+        objektCode: object?.id ?? null,
+        propertyName: object?.label ?? "Allgemeine Aufgabe",
+        title,
+        description: form.note.trim() || null,
+        category: taskCategoryToBackend(form.category),
+        priority: backendPriorityFromPriority(form.priority),
+        status: statusToBackend(form.status),
+        dueDate: form.dueDate || todayIso,
+        source: "manuell",
+        meta: {
+          task_source: mode,
+          display_category: form.category,
+          contractor: form.contractor,
+          history: [
+            ...(existingTask?.history ?? []),
+            {
+              at: new Date().toISOString(),
+              action: historyAction,
+              label: form.category,
+              status: form.status,
+            },
+          ],
+        },
+      });
+      const mapped = mapPropertyTaskRow(saved, todayIso);
+      setTasks((current) => [mapped, ...current.filter((task) => task.id !== mapped.id)]);
+      setSelectedTask(mapped);
+      setTaskStatus("Aufgabe gespeichert.");
+      resetTaskForm();
+    } catch (error) {
+      setTaskStatus(error instanceof Error ? error.message : "Aufgabe konnte nicht gespeichert werden.");
+    } finally {
+      setSavingTask(false);
+    }
   };
+
+  async function handleArchiveTask(task: MaintenanceTask) {
+    if (!isAdmin || !task.backendId) return;
+    setTaskStatus("Archiviert...");
+    try {
+      const archived = await savePropertyTask({
+        id: task.backendId,
+        propertyId: task.objectId === "all" ? null : task.objectId,
+        portfolioPropertyId: null,
+        objektCode: task.objectId === "all" ? null : task.objectId,
+        propertyName: task.objectLabel,
+        title: task.title,
+        description: task.note || null,
+        category: task.backendCategory,
+        priority: task.backendPriority,
+        status: "archiviert",
+        dueDate: task.dueDate,
+        source: "manuell",
+        meta: {
+          task_source: task.source,
+          display_category: task.category,
+          contractor: task.contractor,
+          history: [
+            ...task.history,
+            {
+              at: new Date().toISOString(),
+              action: "archiviert",
+              label: task.category,
+              status: "Archiviert",
+            },
+          ],
+        },
+      });
+      const mapped = mapPropertyTaskRow(archived, todayIso);
+      setTasks((current) => current.map((item) => item.id === mapped.id ? mapped : item));
+      setSelectedTask(mapped);
+      setTaskStatus("Aufgabe archiviert.");
+    } catch (error) {
+      setTaskStatus(error instanceof Error ? error.message : "Archivieren fehlgeschlagen.");
+    }
+  }
+
+  async function handleDeleteTask(task: MaintenanceTask) {
+    if (!isAdmin || !task.backendId) return;
+    const confirmed = window.confirm(`Aufgabe "${task.title}" wirklich löschen?`);
+    if (!confirmed) return;
+    setTaskStatus("Löscht...");
+    try {
+      await deletePropertyTask(task.backendId);
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      resetTaskForm();
+      setTaskStatus("Aufgabe gelöscht.");
+    } catch (error) {
+      setTaskStatus(error instanceof Error ? error.message : "Löschen fehlgeschlagen.");
+    }
+  }
 
   return (
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-4">
-        <KpiCard label="Offene Aufgaben" value={tasks.filter((task) => task.status !== "Erledigt").length} icon={ListChecks} tone="blue" />
+        <KpiCard label="Offene Aufgaben" value={visibleTasks.filter((task) => task.status !== "Erledigt").length} icon={ListChecks} tone="blue" />
         <KpiCard label="Überfällig" value={overdueTasks.length} icon={Bell} tone="red" />
-        <KpiCard label="In Arbeit" value={tasks.filter((task) => task.status === "In Arbeit").length} icon={FolderKanban} tone="violet" />
+        <KpiCard label="In Arbeit" value={visibleTasks.filter((task) => task.status === "In Arbeit").length} icon={FolderKanban} tone="violet" />
         <KpiCard label="Erledigt" value={tasks.filter((task) => task.status === "Erledigt").length} icon={ShieldCheck} tone="green" />
       </section>
 
       <SectionPanel eyebrow="Kalenderübersicht" title="Vorgeplante Aufgaben im Kalender" description="Fälligkeiten aus Ihren Aufgaben werden im aktuellen und nächsten Monat als Kalenderübersicht sichtbar. Klicken Sie auf einen Eintrag, um die Aufgabe zu öffnen.">
         <div className="grid gap-4 xl:grid-cols-2">
-          <TaskMonthCalendar monthDate={currentMonthDate} tasks={tasks} todayIso={todayIso} onSelectTask={setSelectedTask} />
-          <TaskMonthCalendar monthDate={nextMonthDate} tasks={tasks} todayIso={todayIso} onSelectTask={setSelectedTask} />
+          <TaskMonthCalendar monthDate={currentMonthDate} tasks={visibleTasks} todayIso={todayIso} onSelectTask={beginEditTask} />
+          <TaskMonthCalendar monthDate={nextMonthDate} tasks={visibleTasks} todayIso={todayIso} onSelectTask={beginEditTask} />
         </div>
       </SectionPanel>
 
       <section className="grid gap-5 2xl:grid-cols-[minmax(360px,0.72fr)_minmax(0,1.68fr)]">
-        <SectionPanel eyebrow="Neue Aufgabe" title="Neue Aufgabe anlegen" description="Aufgaben werden als Arbeitsliste und Kalenderfrist sichtbar. Die Fachseiten bleiben die Datenquelle.">
-          <form onSubmit={handleCreateTask} className="grid gap-4 text-[13px]">
+        <SectionPanel eyebrow={form.id ? "Bearbeiten" : "Neue Aufgabe"} title={form.id ? "Vorgang bearbeiten" : mode === "schaden" ? "Schadenmeldung anlegen" : mode === "handwerker" ? "Handwerker-Beauftragung anlegen" : "Neue Aufgabe anlegen"} description={modeDefaults.description}>
+          <form onSubmit={handleSaveTask} className="grid gap-3 text-[13px]">
             <label className="grid gap-2 font-black leading-5 text-slate-700">
               Was ist zu tun?
               <input
+                disabled={!isAdmin}
                 value={form.title}
                 onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="z. B. Wasserhahn in Bad prüfen lassen"
+                placeholder={modeDefaults.titlePlaceholder}
                 className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm placeholder:text-slate-400"
               />
             </label>
@@ -2023,6 +2257,7 @@ function TasksMaintenancePage() {
               <label className="grid min-w-0 gap-2 font-black leading-5 text-slate-700">
                 Immobilie / Einheit
                 <select
+                  disabled={!isAdmin}
                   value={form.objectId}
                   onChange={(event) => setForm((current) => ({ ...current, objectId: event.target.value }))}
                   className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
@@ -2037,28 +2272,50 @@ function TasksMaintenancePage() {
                 Fällig bis
                 <input
                   type="date"
+                  disabled={!isAdmin}
                   value={form.dueDate}
                   onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
                   className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
                 />
               </label>
             </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="grid gap-2 font-black leading-5 text-slate-700">
+                Art der Aufgabe
+                <select disabled={!isAdmin} value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm">
+                  <option>Schadenmeldung</option>
+                  <option>Handwerker-Beauftragung</option>
+                  <option>Reparatur / Mangel</option>
+                  <option>Verwaltung</option>
+                  <option>Mieterwechsel</option>
+                  <option>Gesetzliche Prüfung</option>
+                </select>
+              </label>
+              <label className="grid gap-2 font-black leading-5 text-slate-700">
+                Status
+                <select disabled={!isAdmin} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as MaintenanceTask["status"] }))} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm">
+                  <option>Neu</option>
+                  <option>In Arbeit</option>
+                  <option>Erledigt</option>
+                  <option>Archiviert</option>
+                </select>
+              </label>
+              <label className="grid gap-2 font-black leading-5 text-slate-700">
+                Priorität
+                <select disabled={!isAdmin} value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value as MaintenanceTask["priority"] }))} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm">
+                  <option>Normal</option>
+                  <option>Hoch</option>
+                </select>
+              </label>
+            </div>
             <label className="grid gap-2 font-black leading-5 text-slate-700">
-              Art der Aufgabe
-              <select
-                value={form.category}
-                onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm"
-              >
-                <option>Reparatur / Mangel</option>
-                <option>Verwaltung</option>
-                <option>Mieterwechsel</option>
-                <option>Gesetzliche Prüfung</option>
-              </select>
+              Zuständig / Handwerker
+              <input disabled={!isAdmin} value={form.contractor} onChange={(event) => setForm((current) => ({ ...current, contractor: event.target.value }))} placeholder="z. B. Intern, Handwerker offen, Firma..." className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-950 shadow-sm placeholder:text-slate-400" />
             </label>
             <label className="grid gap-2 font-black leading-5 text-slate-700">
               Details zur Aufgabe
               <textarea
+                disabled={!isAdmin}
                 value={form.note}
                 onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
                 placeholder="Notiz, Ansprechpartner, gewünschtes Ergebnis..."
@@ -2067,16 +2324,15 @@ function TasksMaintenancePage() {
               />
             </label>
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-[13px] font-bold leading-6 text-blue-900">
-              Dieses Datum wird automatisch als Frist und Erinnerung in Ihren App-Kalender eingetragen.
+              Diese Eingabe wird zentral gespeichert und erscheint unter Aufgaben, Schadenmeldungen und Handwerker-Beauftragung in derselben Arbeitsliste.
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 text-[13px] font-black text-white shadow-sm">
-                Aufgabe speichern
+              <button type="submit" disabled={!isAdmin || savingTask || !form.title.trim()} className="rounded-2xl bg-slate-950 px-5 py-3 text-[13px] font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">
+                {savingTask ? "Speichert..." : form.id ? "Änderung speichern" : "Aufgabe speichern"}
               </button>
-              <button type="button" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-[13px] font-black text-slate-900 shadow-sm">
-                Fotos oder Kostenvoranschlag hinzufügen
-              </button>
+              {form.id ? <button type="button" onClick={resetTaskForm} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-[13px] font-black text-slate-900 shadow-sm">Neu erfassen</button> : null}
             </div>
+            {taskStatus ? <p className="text-[13px] font-bold leading-5 text-slate-500">{taskStatus}</p> : null}
           </form>
         </SectionPanel>
 
@@ -2092,6 +2348,7 @@ function TasksMaintenancePage() {
               <option value="Neu">Neu</option>
               <option value="In Arbeit">In Arbeit</option>
               <option value="Erledigt">Erledigt</option>
+              <option value="Archiviert">Archiviert</option>
             </select>
             <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-950">
               <option value="all">Alle Prioritäten</option>
@@ -2102,16 +2359,14 @@ function TasksMaintenancePage() {
           {filteredTasks.length ? (
             <div className="overflow-hidden rounded-2xl border border-slate-200">
               {filteredTasks.map((task) => (
-                <button
+                <article
                   key={task.id}
-                  type="button"
-                  onClick={() => setSelectedTask(task)}
-                  className="grid w-full gap-3 border-b border-slate-100 bg-white p-4 text-left last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[minmax(190px,1.25fr)_minmax(150px,0.9fr)_110px_minmax(140px,0.8fr)_120px]"
+                  className="grid w-full gap-3 border-b border-slate-100 bg-white p-4 text-left last:border-b-0 hover:bg-[#f8fbfa] xl:grid-cols-[minmax(190px,1.25fr)_minmax(150px,0.9fr)_105px_minmax(130px,0.8fr)_120px_110px]"
                 >
-                  <div>
+                  <button type="button" onClick={() => beginEditTask(task)} className="text-left">
                     <p className="text-[13px] font-black leading-5 text-slate-950">{task.title}</p>
                     <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{task.category}</p>
-                  </div>
+                  </button>
                   <div className="text-[13px] font-bold leading-5 text-slate-600">{task.objectLabel}</div>
                   <div className="whitespace-nowrap text-[13px] font-black text-slate-950">{formatDate(task.dueDate)}</div>
                   <div className="text-[13px] font-bold leading-5 text-slate-600">{task.contractor}</div>
@@ -2123,13 +2378,17 @@ function TasksMaintenancePage() {
                       {task.status}
                     </span>
                   </div>
-                </button>
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
+                    <button type="button" onClick={() => beginEditTask(task)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-black text-slate-700">Bearbeiten</button>
+                    <button type="button" disabled={!isAdmin || task.status === "Archiviert"} onClick={() => void handleArchiveTask(task)} className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-black text-blue-800 disabled:opacity-50">Archiv</button>
+                  </div>
+                </article>
               ))}
             </div>
           ) : (
             <EmptyState
-              title="Aktuell stehen keine Aufgaben an"
-              description="Hervorragend. Neue Aufgaben erscheinen hier, sobald sie angelegt oder aus einem Vorgang abgeleitet werden."
+              title={loadingTasks ? "Aufgaben werden geladen" : "Aktuell stehen keine Aufgaben an"}
+              description={loadingTasks ? "Die zentrale Aufgabenliste wird aus der Datenbank geladen." : "Neue Aufgaben erscheinen hier, sobald sie angelegt oder aus einem Vorgang abgeleitet werden."}
             />
           )}
         </SectionPanel>
@@ -2158,24 +2417,35 @@ function TasksMaintenancePage() {
               />
               <SectionPanel title="Verlauf & Dokumentation" description="Statusänderungen, Notizen und Nachweise werden hier chronologisch gesammelt.">
                 <div className="grid gap-3">
-                  {[
-                    `Aufgabe automatisch im Kalender für ${formatDate(selectedTask.dueDate)} vorgemerkt.`,
-                    `Status geändert auf ${selectedTask.status}.`,
-                    `Aufgabe erstellt: ${selectedTask.category}.`,
-                  ].map((item) => (
-                    <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-700">
-                      {item}
-                    </div>
-                  ))}
+                  {(selectedTask.history.length ? selectedTask.history : [
+                    {
+                      at: selectedTask.createdAt,
+                      action: "erstellt",
+                      label: selectedTask.category,
+                      status: selectedTask.status,
+                    },
+                  ]).map((entry, index) => {
+                    const entryDate = typeof entry.at === "string" ? entry.at.slice(0, 10) : selectedTask.createdAt;
+                    const entryAction = typeof entry.action === "string" ? entry.action : "aktualisiert";
+                    const entryLabel = typeof entry.label === "string" ? entry.label : selectedTask.category;
+                    const entryStatus = typeof entry.status === "string" ? entry.status : selectedTask.status;
+                    return (
+                      <div key={`${entryDate}-${entryAction}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-700">
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{formatDate(entryDate)}</p>
+                        <p className="mt-1 text-slate-950">{entryAction}: {entryLabel}</p>
+                        <p className="mt-1 text-xs text-slate-500">Status: {entryStatus}</p>
+                      </div>
+                    );
+                  })}
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold text-blue-900">
+                    Aufgabe automatisch im Kalender für {formatDate(selectedTask.dueDate)} vorgemerkt.
+                  </div>
                 </div>
-                <textarea
-                  placeholder="Neuen Verlaufseintrag oder Notiz hinzufügen..."
-                  rows={3}
-                  className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm"
-                />
-                <button type="button" className="mt-3 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">
-                  Notiz speichern
-                </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => beginEditTask(selectedTask)} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm">Bearbeiten</button>
+                  <button type="button" disabled={!isAdmin || selectedTask.status === "Archiviert"} onClick={() => void handleArchiveTask(selectedTask)} className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm font-black text-blue-800 disabled:opacity-50">Archivieren</button>
+                  <button type="button" disabled={!isAdmin} onClick={() => void handleDeleteTask(selectedTask)} className="rounded-2xl border border-red-100 bg-red-50 px-5 py-3 text-sm font-black text-red-800 disabled:opacity-50">Löschen</button>
+                </div>
               </SectionPanel>
             </div>
           </aside>
@@ -2715,11 +2985,11 @@ export default function App() {
         <Route path="/ticketsystem" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route
           path="/ticketsystem/schadenmeldungen"
-          element={<ModuleWorkspacePage config={workspaceConfigs.ticketSchaden}><TasksMaintenancePage /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketSchaden}><TasksMaintenancePage mode="schaden" /></ModuleWorkspacePage>}
         />
         <Route
           path="/ticketsystem/handwerker-beauftragung"
-          element={<ModuleWorkspacePage config={workspaceConfigs.ticketHandwerker}><TasksMaintenancePage /></ModuleWorkspacePage>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.ticketHandwerker}><TasksMaintenancePage mode="handwerker" /></ModuleWorkspacePage>}
         />
         <Route path="/ticketing" element={<Navigate to="/ticketsystem/schadenmeldungen" replace />} />
         <Route path="/dokumente" element={<OrganisationHubPage kind="dokumente" />} />

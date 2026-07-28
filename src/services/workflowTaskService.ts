@@ -100,6 +100,25 @@ export async function completePropertyTask(id: string) {
   return data as PropertyTaskRow;
 }
 
+export async function archivePropertyTask(id: string) {
+  const { data, error } = await supabase
+    .from("property_tasks")
+    .update({ status: "archiviert" })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as PropertyTaskRow;
+}
+
+export async function deletePropertyTask(id: string) {
+  const { error } = await supabase
+    .from("property_tasks")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export async function getPropertyTaskSummary() {
   const { data, error } = await supabase.rpc("get_property_task_summary");
   if (error) throw error;
