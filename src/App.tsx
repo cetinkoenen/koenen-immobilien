@@ -2568,7 +2568,16 @@ function AppShell() {
           title="Zum Dashboard"
         >
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
-            <img src={logo} alt="Koenen Investment" className="h-full w-full object-cover" />
+            <img
+              src={logo}
+              alt="Koenen Investment"
+              className="h-full w-full object-cover"
+              onError={(event) => {
+                if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
+                  event.currentTarget.src = "/logo/koenen.png";
+                }
+              }}
+            />
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9fb5bc]">
@@ -2663,6 +2672,11 @@ function AppShell() {
                   src={logo}
                   alt="Koenen Investment"
                   className="h-full w-full object-cover"
+                  onError={(event) => {
+                    if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
+                      event.currentTarget.src = "/logo/koenen.png";
+                    }
+                  }}
                 />
               </div>
               <div className="min-w-0">
